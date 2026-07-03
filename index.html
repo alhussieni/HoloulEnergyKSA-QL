@@ -188,6 +188,7 @@ const DEFAULT_DB = {
   installationPerKW: 75,
   transportPerTrip: 500,
   combinerHeadroom: 1.1,
+  leadsWebhookUrl: '',
 
   panels: [
     {brand:"Aiko", power:665, vimp:45.6, voc:54.4, iimp:14.59, isc:15.24, priceW:0.555},
@@ -438,18 +439,29 @@ const state = {
   panelsPerStringAdjust: DB.panelsPerStringAdjust,
   stringsAdjust: DB.stringsAdjust,
   inverterPowerIncrease: DB.inverterPowerIncrease,
+  discountOverrideIdx: null,
   toggles: {panel:true, inverter:true, ip65:true, combiner:true, cables:true, mc4:true,
             structure:true, concrete:true, earth:false, reactor:false, installation:true, supply:true},
   client: '',
   clientPhone: ''
 };
+let discountUnlocked = false;
+let adminInfoUnlocked = false;
+
+function adminPasswordGate(cb){
+  const p = prompt('كلمة سر الأدمن:');
+  if(p==null) return;
+  const cred = getAdminCred();
+  if(cred && hashStr(p)===cred.pass) cb();
+  else alert('كلمة السر غير صحيحة');
+}
 
 function currentQuote(){
   return computeQuote({
     hp: state.hp,
     panel: DB.panels[state.panelIdx],
     structureType: 'FIXED',
-    discountFactor: DB.discountTiers[DB.defaultDiscountIdx ?? 1].factor,
+    discountFactor: DB.discountTiers[state.discountOverrideIdx ?? (DB.defaultDiscountIdx ?? 1)].factor,
     manualDiscountPct: 0,
     panelsPerStringAdjust: state.panelsPerStringAdjust,
     stringsAdjust: state.stringsAdjust,
@@ -468,12 +480,16 @@ function buildQLCode(q){
 }
 const fmt1 = n => n.toLocaleString('en-US', {maximumFractionDigits:1});
 
-/* ---- lead capture (no backend: store locally + send via WhatsApp) ---- */
+/* ---- lead capture: local cache + optional cloud sync (Google Sheet Web App) ---- */
 const LEADS_KEY = 'holoul_leads_v1';
 function saveLead(q){
+  const lead = {name:state.client, phone:state.clientPhone, hp:state.hp, total:Math.round(q.finalTotal), date:new Date().toISOString()};
   const leads = JSON.parse(localStorage.getItem(LEADS_KEY)||'[]');
-  leads.unshift({name:state.client, phone:state.clientPhone, hp:state.hp, total:Math.round(q.finalTotal), date:new Date().toISOString()});
+  leads.unshift(lead);
   localStorage.setItem(LEADS_KEY, JSON.stringify(leads.slice(0,500)));
+  if(DB.leadsWebhookUrl){
+    fetch(DB.leadsWebhookUrl, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain'}, body:JSON.stringify(lead)}).catch(()=>{});
+  }
 }
 function validateClient(){
   if(!state.client.trim() || !state.clientPhone.trim()){
@@ -521,7 +537,10 @@ function renderCalc(){
       <div class="card">
         <h3>بيانات المشروع</h3>
         <label>القدرة المطلوبة (حصان HP)</label>
-        <input type="number" id="in_hp" value="${state.hp}" min="1" step="1">
+        <div style="display:flex;gap:8px">
+          <input type="number" id="in_hp" value="${state.hp}" min="1" step="1" style="flex:1">
+          <button class="btn small" id="hp_confirm" type="button">تأكيد</button>
+        </div>
 
         <label>نوع اللوح الشمسي</label>
         <select id="in_panel">
@@ -536,6 +555,12 @@ function renderCalc(){
           <input type="number" id="in_str" value="${state.stringsAdjust}" step="1">
           <label>هامش زيادة قدرة الانفرتر (KW)</label>
           <input type="number" id="in_invinc" value="${state.inverterPowerIncrease}" step="1">
+
+          <label>🔒 فئة خصم العميل <span style="color:var(--muted);font-weight:400">(تعديلها يتطلب كلمة سر الأدمن)</span></label>
+          <select id="in_discount" ${discountUnlocked?'':'disabled'}>
+            ${DB.discountTiers.map((d,i)=>`<option value="${i}" ${i==(state.discountOverrideIdx ?? (DB.defaultDiscountIdx??1))?'selected':''}>${d.label}</option>`).join('')}
+          </select>
+          ${discountUnlocked ? '' : '<button class="btn ghost small" id="unlockDiscount" type="button" style="margin-top:6px">فك القفل</button>'}
         </details>
       </div>
 
@@ -654,8 +679,38 @@ function renderCalc(){
           <button class="btn" style="background:#25D366;color:#fff" onclick="sendLeadWhatsapp()">💬 إرسال الطلب عبر واتساب</button>
         </div>
       </div>
+
+      <div class="card no-print">
+        <h3>معلومات إضافية <span class="tag">خاص بالإدارة</span></h3>
+        ${adminInfoUnlocked ? renderAdminFinancials(q) : `<button class="btn ghost small" id="unlockAdminInfo" type="button">🔒 عرض التفاصيل المالية (يتطلب كلمة سر الأدمن)</button>`}
+      </div>
     </div>
   </div>`;
+}
+
+function renderAdminFinancials(q){
+  const onItems = q.items.filter(it=>it.on);
+  const totalCost = onItems.reduce((s,it)=>s+it.costBasis,0);
+  const profit = q.netAfterDiscount - totalCost;
+  const profitPct = q.netAfterDiscount ? (profit/q.netAfterDiscount*100) : 0;
+  return `
+    <table class="admtable">
+      <thead><tr><th>البند</th><th>سعر التكلفة</th><th>سعر البيع</th><th>الهامش</th></tr></thead>
+      <tbody>
+        ${onItems.map(it=>`<tr><td>${it.label}</td><td class="num">${fmt(it.costBasis)}</td><td class="num">${fmt(it.sell)}</td><td class="num">${fmt(it.sell-it.costBasis)}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="stats" style="margin-top:10px">
+      <div class="stat"><div class="v">${fmt(totalCost)}</div><div class="l">إجمالي التكلفة الفعلية</div></div>
+      <div class="stat"><div class="v">${fmt(q.sellTotal)}</div><div class="l">إجمالي سعر البيع (قبل الخصم)</div></div>
+      <div class="stat"><div class="v">${fmt(q.discountTotal)}</div><div class="l">إجمالي الخصم الممنوح</div></div>
+      <div class="stat"><div class="v">${fmt(q.netAfterDiscount)}</div><div class="l">الصافي بعد الخصم (بدون ضريبة)</div></div>
+      <div class="stat"><div class="v">${fmt(q.vat)}</div><div class="l">قيمة ضريبة القيمة المضافة</div></div>
+      <div class="stat"><div class="v">${fmt(profit)}</div><div class="l">صافي الربح المتوقع</div></div>
+      <div class="stat"><div class="v">${profitPct.toFixed(1)}%</div><div class="l">نسبة هامش الربح</div></div>
+    </div>
+    <button class="btn ghost small" id="lockAdminInfo" type="button" style="margin-top:10px">🔒 إخفاء</button>
+  `;
 }
 
 /* =======================================================================
@@ -670,6 +725,24 @@ function renderFeas(){
   const chart = buildChart(f.cfGrid, f.cfDiesel);
 
   return `
+  <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:center">
+    <div style="display:flex;align-items:center;gap:8px">
+      <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:38px;height:38px;object-fit:contain">
+      <div>
+        <div style="font-family:'Cairo',sans-serif;font-weight:800;font-size:13px">حلول الطاقة المتجددة والمقاولات</div>
+        <div style="font-size:10px;color:var(--muted)">دراسة جدوى — HoloulEnergy</div>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:11px;color:var(--muted)">دراسة جدوى مُقدَّمة إلى</div>
+      <div style="font-family:'Cairo',sans-serif;font-weight:700;font-size:14px">${state.client || '—'}</div>
+    </div>
+    <div style="text-align:left">
+      <div style="font-size:11px;color:var(--muted)">التاريخ</div>
+      <div class="num" style="font-size:12px">${new Date().toLocaleDateString('en-GB')}</div>
+    </div>
+  </div>
+
   <div class="card no-print">
     <h3>افتراضات دراسة الجدوى <span class="tag">القدرة: ${fmt1(q.calcKW)} KW — CAPEX: ${fmt(q.finalTotal)} ﷼</span></h3>
     <div class="assump">
@@ -715,6 +788,10 @@ function renderFeas(){
       <div class="stat"><div class="v">${fmt(f.litersYear1)}</div><div class="l">لتر ديزل موفّر / سنة</div></div>
       <div class="stat"><div class="v">${fmt1(f.co2Year1)}</div><div class="l">طن CO₂ موفّر / سنة</div></div>
     </div>
+  </div>
+
+  <div class="no-print" style="margin-top:4px">
+    <button class="btn" onclick="window.print()">🖨️ طباعة دراسة الجدوى / حفظ PDF</button>
   </div>`;
 }
 
@@ -748,6 +825,22 @@ function renderLeadsRows(){
     '</tbody>';
 }
 
+async function loadCloudLeads(){
+  const el = document.getElementById('leadsTable');
+  if(!el || !DB.leadsWebhookUrl) return;
+  el.innerHTML = '<tr><td style="padding:10px;color:var(--muted)">جارِ التحميل من Google Sheet...</td></tr>';
+  try{
+    const res = await fetch(DB.leadsWebhookUrl);
+    const data = await res.json();
+    if(!data.length){ el.innerHTML = '<tr><td style="color:var(--muted);padding:10px">لا توجد طلبات مسجلة بعد</td></tr>'; return; }
+    el.innerHTML = '<thead><tr><th>الاسم</th><th>الهاتف</th><th>القدرة HP</th><th>الإجمالي</th><th>التاريخ</th></tr></thead><tbody>' +
+      data.slice().reverse().map(l=>`<tr><td>${l.name}</td><td class="num">${l.phone}</td><td class="num">${l.hp}</td><td class="num">${fmt(+l.total)} ﷼</td><td>${new Date(l.date).toLocaleString('en-GB')}</td></tr>`).join('') +
+      '</tbody>';
+  }catch(err){
+    el.innerHTML = renderLeadsRows() + '<tr><td style="color:#B0432C;font-size:11px;padding:6px">تعذر الاتصال بـ Google Sheet — تم عرض النسخة المحلية بدلاً منها. تأكد من صحة الرابط ومن أن النشر (Deployment) بحالة "Anyone".</td></tr>';
+  }
+}
+
 function renderAdmin(){
   return `
   <div class="card">
@@ -774,16 +867,22 @@ function renderAdmin(){
   <div class="card">
     <h3>الانفرتر (VEICHI) — حسب قدرة KW</h3>
     <table class="admtable">
-      <thead><tr><th>KW</th><th>سعر التكلفة</th><th>سعر القائمة (البيع)</th></tr></thead>
+      <thead><tr><th>KW</th><th>سعر البيع (Sell)</th><th>نسبة الخصم % (منها تُحسب التكلفة)</th><th>سعر التكلفة (محسوب تلقائيًا)</th></tr></thead>
       <tbody id="adm_inv">
-        ${DB.inverters.map((row,i)=>`
+        ${DB.inverters.map((row,i)=>{
+          const [kw,cost,list]=row;
+          const disc = list>0 ? ((1-cost/list)*100) : 0;
+          return `
           <tr>
-            <td><input data-i="${i}" data-f="0" type="number" value="${row[0]}"></td>
-            <td><input data-i="${i}" data-f="1" type="number" value="${row[1]}"></td>
-            <td><input data-i="${i}" data-f="2" type="number" value="${row[2]}"></td>
-          </tr>`).join('')}
+            <td><input data-i="${i}" data-f="kw" type="number" value="${kw}"></td>
+            <td><input data-i="${i}" data-f="list" type="number" value="${list}"></td>
+            <td><input data-i="${i}" data-f="disc" type="number" step="0.1" value="${disc.toFixed(1)}"></td>
+            <td class="num" style="color:var(--muted)">${fmt(cost)}</td>
+          </tr>`;
+        }).join('')}
       </tbody>
     </table>
+    <div class="note">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي).</div>
   </div>
 
   <div class="card">
@@ -820,11 +919,16 @@ function renderAdmin(){
   </div>
 
   <div class="card">
-    <h3>طلبات العملاء المُسجّلة <span class="tag">محفوظة محليًا على هذا الجهاز</span></h3>
-    <table class="admtable" id="leadsTable">${renderLeadsRows()}</table>
+    <h3>طلبات العملاء المُسجّلة <span class="tag">${DB.leadsWebhookUrl?'مُزامَنة سحابيًا — Google Sheet':'محفوظة محليًا على هذا الجهاز فقط'}</span></h3>
+    <label>رابط المزامنة السحابية (Google Apps Script Web App URL)</label>
+    <input type="text" id="a_webhook" value="${DB.leadsWebhookUrl}" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+    <div class="note" style="margin-top:6px">لما تضيف الرابط ده، أي عرض سعر يُطبع أو يُرسل عبر واتساب هيتسجل تلقائيًا في Google Sheet خاص بيك — تقدر تفتحه من أي جهاز في أي وقت. راجع شرح الإعداد في آخر رسالة من المساعد.</div>
+    <table class="admtable" id="leadsTable" style="margin-top:10px">${renderLeadsRows()}</table>
     <div style="display:flex;gap:10px;margin-top:8px" class="no-print">
-      <button class="btn ghost small" id="leadsClear">🗑️ مسح القائمة</button>
+      <button class="btn ghost small" id="leadsClear">🗑️ مسح النسخة المحلية</button>
+      <button class="btn ghost small" id="leadsRefresh">🔄 تحديث من السحابة</button>
     </div>
+  </div>
   </div>
 
   <div class="card no-print">
@@ -902,11 +1006,17 @@ function wire(){
   if(currentView==='calc'){
     document.getElementById('in_client').oninput = e=>{state.client=e.target.value; document.getElementById('bannerName').textContent=state.client||'—';};
     document.getElementById('in_phone').oninput = e=>{state.clientPhone=e.target.value; document.getElementById('bannerPhone').textContent=state.clientPhone||'—';};
-    document.getElementById('in_hp').oninput = e=>{state.hp=+e.target.value||1; render();};
+    const confirmHp = ()=>{ state.hp = +document.getElementById('in_hp').value || 1; render(); };
+    document.getElementById('hp_confirm').onclick = confirmHp;
+    document.getElementById('in_hp').onkeydown = e=>{ if(e.key==='Enter') confirmHp(); };
     document.getElementById('in_panel').onchange = e=>{state.panelIdx=+e.target.value; render();};
     document.getElementById('in_pps').oninput = e=>{state.panelsPerStringAdjust=+e.target.value||0; render();};
     document.getElementById('in_str').oninput = e=>{state.stringsAdjust=+e.target.value||0; render();};
     document.getElementById('in_invinc').oninput = e=>{state.inverterPowerIncrease=+e.target.value||0; render();};
+    const discSel = document.getElementById('in_discount');
+    if(discSel) discSel.onchange = e=>{ state.discountOverrideIdx=+e.target.value; render(); };
+    const unlockBtn = document.getElementById('unlockDiscount');
+    if(unlockBtn) unlockBtn.onclick = ()=>adminPasswordGate(()=>{ discountUnlocked=true; render(); });
     document.querySelectorAll('[data-tgl]').forEach(c=>c.onchange=()=>{state.toggles[c.dataset.tgl]=c.checked; render();});
     document.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>{
       if(b.dataset.preset==='materials'){
@@ -918,6 +1028,10 @@ function wire(){
       }
       render();
     });
+    const unlockInfoBtn = document.getElementById('unlockAdminInfo');
+    if(unlockInfoBtn) unlockInfoBtn.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked=true; render(); });
+    const lockInfoBtn = document.getElementById('lockAdminInfo');
+    if(lockInfoBtn) lockInfoBtn.onclick = ()=>{ adminInfoUnlocked=false; render(); };
   }
   if(currentView==='feas'){
     const map = {f_psh:'psh',f_deg:'panelDegradationPct',f_gridp:'gridPrice',f_gride:'gridEscalationPct',
@@ -933,9 +1047,16 @@ function wire(){
         const i=+inp.dataset.p, f=inp.dataset.f;
         DB.panels[i][f] = (f==='brand') ? inp.value : +inp.value;
       });
+      const invRows = {};
       document.querySelectorAll('[data-i]').forEach(inp=>{
-        const i=+inp.dataset.i, f=+inp.dataset.f;
-        DB.inverters[i][f] = +inp.value;
+        const i=+inp.dataset.i, f=inp.dataset.f;
+        invRows[i] = invRows[i] || {};
+        invRows[i][f] = +inp.value;
+      });
+      Object.keys(invRows).forEach(i=>{
+        const r = invRows[i];
+        const cost = r.list * (1 - (r.disc||0)/100);
+        DB.inverters[i] = [r.kw, +cost.toFixed(2), r.list];
       });
       document.querySelectorAll('[data-d]').forEach(inp=>{
         const i=+inp.dataset.d, f=inp.dataset.f;
@@ -953,13 +1074,16 @@ function wire(){
       DB.transportPerTrip=+document.getElementById('a_trans').value;
       DB.vat=+document.getElementById('a_vat').value;
       DB.defaultDiscountIdx=+document.getElementById('a_defdisc').value;
+      DB.leadsWebhookUrl=document.getElementById('a_webhook').value.trim();
       saveDB(DB);
       alert('تم حفظ التعديلات ✔');
       render();
     };
     document.getElementById('leadsClear').onclick = ()=>{
-      if(confirm('مسح كل طلبات العملاء المسجلة؟')){ localStorage.removeItem(LEADS_KEY); render(); }
+      if(confirm('مسح كل طلبات العملاء المسجلة محليًا؟ (لن يؤثر على بيانات Google Sheet)')){ localStorage.removeItem(LEADS_KEY); render(); }
     };
+    document.getElementById('leadsRefresh').onclick = ()=>loadCloudLeads();
+    if(DB.leadsWebhookUrl) loadCloudLeads();
     document.getElementById('adm_changecred').onclick = ()=>{
       const cred=getAdminCred();
       const nu=document.getElementById('adm_newuser').value.trim();
