@@ -559,7 +559,7 @@ function getCaptureScale(){
 
 async function downloadQuotePdf(filename){
   const src = document.getElementById('quotePrintArea');
-  if(!src || typeof html2pdf==='undefined') return false;
+  if(!src || typeof html2canvas==='undefined') return false;
   const clone = src.cloneNode(true);
 
   // Flatten colors BEFORE removing .no-print nodes, so the live/clone
@@ -571,6 +571,11 @@ async function downloadQuotePdf(filename){
   clone.style.maxWidth = CAPTURE_WIDTH+'px';
   clone.style.width = CAPTURE_WIDTH+'px';
   clone.style.backgroundColor = '#ffffff';
+  // Force the correct text direction/language explicitly on the clone
+  // itself (belt-and-suspenders on top of inheriting it from <html>),
+  // since it's what keeps Arabic word-joining and bidi digit order correct.
+  clone.setAttribute('dir','rtl');
+  clone.setAttribute('lang','ar');
 
   // IMPORTANT: keep the clone inside the viewport's coordinate space
   // (top:0; left:0) instead of pushing it far off-screen (e.g. left:-9999px).
@@ -579,6 +584,7 @@ async function downloadQuotePdf(filename){
   // bounds, which produced the fully white/blank PDF. Using a very low
   // z-index keeps it invisible behind the real page instead.
   const wrapper = document.createElement('div');
+  wrapper.setAttribute('dir','rtl');
   wrapper.style.cssText = [
     'position:fixed',
     'top:0',
@@ -599,20 +605,47 @@ async function downloadQuotePdf(filename){
   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 
   try{
-    await html2pdf().set({
-      margin: 8,
-      filename: filename,
-      image: {type:'jpeg', quality:0.95},
-      html2canvas: {
-        scale: getCaptureScale(),
-        useCORS: true,
-        backgroundColor: '#ffffff',
-        windowWidth: CAPTURE_WIDTH+28,
-        windowHeight: Math.max(wrapper.scrollHeight, clone.scrollHeight)
-      },
-      jsPDF: {unit:'mm', format:'a4', orientation:'portrait'},
-      pagebreak: {mode:['css','legacy']}
-    }).from(clone).save();
+    // We call html2canvas directly on our OWN clone — which is still
+    // attached to the live document and correctly inherits dir="rtl",
+    // fonts and (now-flattened) real colors — instead of going through
+    // html2pdf.js's .from().save() pipeline. html2pdf.js clones the
+    // element a SECOND time internally into a hidden iframe before
+    // rendering, and that step was dropping the RTL/bidi context. That
+    // is what caused the fused/overlapping Arabic words and the scrambled
+    // phone-number digits in the last PDF.
+    const canvas = await html2canvas(clone, {
+      scale: getCaptureScale(),
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      windowWidth: CAPTURE_WIDTH+28,
+      windowHeight: Math.max(wrapper.scrollHeight, clone.scrollHeight)
+    });
+
+    const JsPdfCtor = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+    if(!JsPdfCtor) throw new Error('jsPDF not available');
+
+    // Build the PDF ourselves so we can force everything onto ONE A4 page
+    // (shrink-to-fit) instead of the automatic multi-page splitting that
+    // produced a 2-page PDF before.
+    const pdf = new JsPdfCtor({unit:'mm', format:'a4', orientation:'portrait'});
+    const pageW = 210, pageH = 297, margin = 8;
+    const usableW = pageW - margin*2, usableH = pageH - margin*2;
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const imgRatio = canvas.height / canvas.width;
+
+    let drawW = usableW;
+    let drawH = drawW * imgRatio;
+    if(drawH > usableH){
+      // Content is taller than one page at full width — shrink further so
+      // the whole thing still fits within a single A4 page.
+      drawH = usableH;
+      drawW = drawH / imgRatio;
+    }
+    const x = margin + (usableW - drawW)/2;
+    const y = margin + (usableH - drawH)/2;
+
+    pdf.addImage(imgData, 'JPEG', x, y, drawW, drawH);
+    pdf.save(filename);
     return true;
   }catch(err){
     console.error('PDF generation failed', err);
@@ -1266,6 +1299,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
 
 render();
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </body>
 </html>
