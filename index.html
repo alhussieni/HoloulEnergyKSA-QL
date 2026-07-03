@@ -129,16 +129,16 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
   .stat{padding:5px 6px!important;background:#F7F8F7!important;}
   .stat .v{font-size:12px!important;}
   .stat .l{font-size:8px!important;}
-  table.bom{font-size:10.5px!important;}
-  table.bom th{font-size:9.5px!important;padding:4px 5px!important;}
-  table.bom td{padding:4px 5px!important;}
-  .totalbar{padding:9px 14px!important;margin-top:7px!important;border-radius:8px!important;}
-  .totalbar .big{font-size:19px!important;}
-  .totalbar .lbl{font-size:10px!important;}
-  .pay3{margin-top:7px!important;gap:6px!important;}
-  .pay3 div{padding:6px!important;}
-  .pay3 .p{font-size:11.5px!important;}
-  .pay3 .l{font-size:8px!important;}
+  table.bom{font-size:9.5px!important;}
+  table.bom th{font-size:8.5px!important;padding:3px 4px!important;}
+  table.bom td{padding:3px 4px!important;}
+  .totalbar{padding:8px 12px!important;margin-top:6px!important;border-radius:8px!important;}
+  .totalbar .big{font-size:17px!important;}
+  .totalbar .lbl{font-size:9.5px!important;}
+  .pay3{margin-top:6px!important;gap:5px!important;}
+  .pay3 div{padding:5px!important;}
+  .pay3 .p{font-size:10.5px!important;}
+  .pay3 .l{font-size:7.5px!important;}
   .note{font-size:9px!important;padding:6px 8px!important;}
 }
 </style>
@@ -326,22 +326,35 @@ function computeQuote(inp){
 
   const t = inp.toggles;
   const items = [];
-  const push=(key,label,on,sell,costBasis)=>items.push({key,label,on,sell:on?sell:0,costBasis});
+  const push=(key,label,on,sell,costBasis,meta={})=>items.push({key,label,on,sell:on?sell:0,costBasis,
+      type: meta.type||'-', qty: on?(meta.qty||'-'):'لا يوجد', warranty: on?(meta.warranty||'-'):'لا يوجد'});
 
-  push('panel','ألواح الطاقة الشمسية', t.panel, panelCost, panelCost);
-  push('inverter','الانفرتر', t.inverter, invList, invCost);
-  push('ip65','لوحة الحماية IP65', t.ip65, steelPanelCost*1.25, steelPanelCost);
-  push('combiner',`لوحة تجميع (${combiner[0]} مدخل)`, t.combiner, combinerCost*1.3, combinerCost);
-  push('cables','الكابلات DC', t.cables, cablesCost*1.5, cablesCost);
-  push('mc4','وصلات MC4', t.mc4, mc4Cost*1.5, mc4Cost);
-  push('structure','الشاسيه/الحوامل ('+(inp.structureType==='ROTATIONAL'?'متحرك':'ثابت')+')', t.structure, structureCost*1.1, structureCost);
-  push('concrete','الخرسانة', t.concrete, concreteCost*1.1, concreteCost);
-  push('earth','التأريض (بئر أرضي)', t.earth, earthCost, earthCost);
-  push('reactor','الريأكتور', t.reactor, reactorCost, reactorCost);
+  push('panel','ألواح الطاقة الشمسية', t.panel, panelCost, panelCost, {
+    type:`${panel.brand} ${panel.power}W أو ما يعادلها`, qty:`#${totalPanels}#`,
+    warranty:'12 سنة ضد عيوب الصناعة / 30 سنة ضد التناقص الإنتاجي عن %80'});
+  push('inverter','الانفرتر', t.inverter, invList, invCost, {
+    type:`VEICHI أو ما يعادلها ${invKW} KW`, qty:'#1#', warranty:'سنة واحدة'});
+  push('ip65','لوحة الحماية IP65', t.ip65, steelPanelCost*1.25, steelPanelCost, {
+    type:`خاصة بانفرتر ${invKW} KW`, qty:'#1#', warranty:'سنة واحدة'});
+  push('combiner',`VEICHI Combiner box ${String(combiner[0]).padStart(3,'0')}`, t.combiner, combinerCost*1.3, combinerCost, {
+    type:'-', qty:'#1#', warranty:'سنة واحدة'});
+  push('cables','الكابلات - DC', t.cables, cablesCost*1.5, cablesCost, {
+    type:'VEICHI / LEADER / SUNTREE 6mm', qty:`${cablesLen} متر (تقريبي — يُحدد نهائيًا عند التوريد)`, warranty:'سنة واحدة'});
+  push('mc4','وصلات MC4', t.mc4, mc4Cost*1.5, mc4Cost, {
+    type:'Suntree / VEICHI / LEADER', qty:`#${arrays}#`, warranty:'---'});
+  push('structure','الشاسيه/الحوامل ('+(inp.structureType==='ROTATIONAL'?'متحرك':'ثابت')+')', t.structure, structureCost*1.1, structureCost, {
+    type:'HDG - تصنيع محلي', qty:`#${arrays}#`, warranty:'عشر سنوات'});
+  push('concrete','الخرسانة', t.concrete, concreteCost*1.1, concreteCost, {
+    type:'مصبوبة في الموقع', qty:'مطابق للمخطط', warranty:'---'});
+  push('earth','التأريض (بئر أرضي)', t.earth, earthCost, earthCost, {
+    type:'-', qty:`#${earthQty}#`, warranty:'سنة واحدة'});
+  push('reactor','الريأكتور', t.reactor, reactorCost, reactorCost, {
+    type:`${reactorModel}A`, qty:'#1#', warranty:'سنة واحدة'});
 
   const installSell = t.installation ? (inp.structureType==='FIXED' ? 150*Math.round(calcKW) : 2000*Math.round(calcKW)) : 0;
   const installCostBasis = steelPanelCost + installCost + (t.supply?transportCost:0);
-  push('install','التوريد والنقل والتركيب والعمالة', t.installation, installSell, installCostBasis);
+  push('install','التوريد والنقل والتركيب والعمالة', t.installation, installSell, installCostBasis, {
+    type:'-', qty:`${calcKW.toFixed(1)} KW`, warranty:'عام واحد فقط من تاريخ التشغيل'});
 
   const factor = inp.discountFactor;
   let sellTotal=0, discountTotal=0;
@@ -446,6 +459,13 @@ function currentQuote(){
 }
 
 const fmt = n => Math.round(n).toLocaleString('en-US');
+function buildQLCode(q){
+  const d = new Date();
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const dateStr = String(d.getDate()).padStart(2,'0')+months[d.getMonth()]+d.getFullYear();
+  const panel = DB.panels[state.panelIdx];
+  return `QL-${dateStr}-P-${state.hp} HP-VEICHI ${q.invKW} KW-${panel.brand}${panel.power}-${state.structureType}-`;
+}
 const fmt1 = n => n.toLocaleString('en-US', {maximumFractionDigits:1});
 
 /* ---- lead capture (no backend: store locally + send via WhatsApp) ---- */
@@ -557,7 +577,7 @@ function renderCalc(){
           <div class="num" style="font-size:12px">${new Date().toLocaleDateString('en-GB')}</div>
         </div>
       </div>
-      <div class="card">
+      <div class="card no-print">
         <h3>المواصفات الفنية <span class="tag">محسوبة تلقائيًا</span></h3>
         <div class="stats">
           <div class="stat"><div class="v">${fmt1(q.calcKW)}</div><div class="l">القدرة الفعلية KW</div></div>
@@ -576,25 +596,33 @@ function renderCalc(){
       </div>
 
       <div class="card">
+        <div class="num" style="font-size:11px;color:var(--muted);margin-bottom:8px">${buildQLCode(q)}</div>
+        <h3 style="margin-bottom:2px">العرض المالي</h3>
+        <div style="font-size:13px;margin:8px 0 4px">تحية طيبة وبعد،</div>
+        <div style="font-size:13px;color:var(--ink);line-height:1.8">
+          نتشرف بتقديم عرض سعر منظومة توليد الكهرباء من خلال الطاقة الشمسية — كهرباء فقط للتشغيل — موتور/قدرة ${state.hp} حصان
+        </div>
+      </div>
+
+      <div class="card">
         <h3>تفصيل عرض السعر</h3>
         <table class="bom">
-          <thead><tr><th>البند</th><th class="num">السعر</th></tr></thead>
+          <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
           <tbody>
-            ${q.items.map(it=>`
+            ${q.items.map((it,i)=>`
               <tr class="${it.on?'':'off'}">
+                <td>${i+1}</td>
                 <td>${it.label}</td>
-                <td class="num">${it.on?fmt(it.sell):'—'}</td>
+                <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
+                <td style="font-size:11.5px">${it.qty}</td>
+                <td style="font-size:11.5px">${it.warranty}</td>
               </tr>`).join('')}
           </tbody>
         </table>
-        <div class="totalbar">
-          <div>
+        <div class="totalbar" style="justify-content:center">
+          <div style="text-align:center">
             <div class="lbl">السعر النهائي شامل الضريبة (15%)</div>
             <div class="big num">${fmt(q.finalTotal)} ﷼</div>
-          </div>
-          <div style="text-align:left">
-            <div class="lbl">السعر / كيلوواط</div>
-            <div class="num" style="font-size:18px">${fmt(q.sarPerKW)} ﷼/KW</div>
           </div>
         </div>
         ${state.toggles.installation ? `
@@ -606,6 +634,21 @@ function renderCalc(){
         <div class="pay3" style="grid-template-columns:1fr">
           <div><div class="p num">${fmt(q.finalTotal)} ﷼ (100%)</div><div class="l">العرض بدون توريد وتركيب — تُسدَّد كامل القيمة قبل التوريد</div></div>
         </div>`}
+
+        <div style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
+          يقع على عاتق العميل تجهيز الموقع (أعمال الحفر والصب اللازمة) قبل موعد التوريد.<br>
+          الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${new Date().toLocaleDateString('en-GB')}).
+        </div>
+        <div style="margin-top:8px;background:#EAF7F1;border:1px solid #BFE6D6;border-radius:9px;padding:9px 12px;font-size:11.5px;color:#146C4C">
+          نلتزم بتوفير الدعم الفني وقطع الغيار للمنظومة حتى 10 سنوات من تاريخ التشغيل.
+        </div>
+        <div style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
+          <b style="color:var(--ink)">للتواصل</b><br>
+          info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
+          Website - LinkedIn - Youtube - FB - Tiktok : HoloulEnergy<br>
+          <span class="num">966561274344+</span>
+        </div>
+
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" class="no-print">
           <button class="btn" onclick="handlePrint()">🖨️ طباعة / حفظ PDF</button>
           <button class="btn" style="background:#25D366;color:#fff" onclick="sendLeadWhatsapp()">💬 إرسال الطلب عبر واتساب</button>
