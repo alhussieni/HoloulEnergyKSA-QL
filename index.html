@@ -519,6 +519,30 @@ function normalizePhone(phone){
   return p;
 }
 
+// html2pdf.js clones the element AGAIN internally before rendering it
+// (a documented bug in the library). That second, detached clone can fail
+// to resolve CSS custom properties (var(--ink), var(--card), var(--line)...)
+// which this app uses everywhere for colors — the result is exactly what
+// you saw: borders/box shapes show up, but all text and fills come out
+// white/blank. The fix is to "flatten" every resolved color onto the
+// clone as a literal inline style (e.g. color:rgb(21,42,56)) BEFORE handing
+// it to html2pdf, so there is no var() left for any internal re-clone to
+// lose, on any device or browser.
+const FLATTEN_PROPS = [
+  'color','backgroundColor',
+  'borderTopColor','borderRightColor','borderBottomColor','borderLeftColor'
+];
+function flattenComputedColors(liveRoot, cloneRoot){
+  const liveEls = [liveRoot, ...liveRoot.querySelectorAll('*')];
+  const cloneEls = [cloneRoot, ...cloneRoot.querySelectorAll('*')];
+  liveEls.forEach((liveEl, i)=>{
+    const cloneEl = cloneEls[i];
+    if(!cloneEl) return;
+    const cs = getComputedStyle(liveEl);
+    FLATTEN_PROPS.forEach(prop=>{ cloneEl.style[prop] = cs[prop]; });
+  });
+}
+
 // Picks a safe html2canvas scale per device. Mobile/tablet browsers
 // (especially iOS Safari and in-app webviews like WhatsApp) silently
 // return a BLANK canvas when the rendered pixel area is too large, so we
@@ -537,10 +561,16 @@ async function downloadQuotePdf(filename){
   const src = document.getElementById('quotePrintArea');
   if(!src || typeof html2pdf==='undefined') return false;
   const clone = src.cloneNode(true);
+
+  // Flatten colors BEFORE removing .no-print nodes, so the live/clone
+  // element lists still line up 1:1 in the same order.
+  flattenComputedColors(src, clone);
   clone.querySelectorAll('.no-print').forEach(el=>el.remove());
+
   const CAPTURE_WIDTH = 760;
   clone.style.maxWidth = CAPTURE_WIDTH+'px';
   clone.style.width = CAPTURE_WIDTH+'px';
+  clone.style.backgroundColor = '#ffffff';
 
   // IMPORTANT: keep the clone inside the viewport's coordinate space
   // (top:0; left:0) instead of pushing it far off-screen (e.g. left:-9999px).
@@ -1236,6 +1266,6 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
 
 render();
 </script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.9.3/html2pdf.bundle.min.js"></script>
 </body>
 </html>
