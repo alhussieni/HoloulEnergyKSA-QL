@@ -216,6 +216,7 @@ const DEFAULT_DB = {
   panelsPerStringAdjust: -1,
   stringsAdjust: 0,
   inverterPowerIncrease: 15,
+  hpCapacityRatio: 1.1,
   steelPanelPerHP: +(899/55).toFixed(6),
   cablePerMeter: 4,
   mc4PerUnit: 5,
@@ -317,7 +318,7 @@ function computeQuote(inp){
   const D = DB, panel = inp.panel, hp = inp.hp;
 
   const panelsPerString = Math.floor(D.maxStringVoltage/panel.vimp) - (inp.panelsPerStringAdjust ?? D.panelsPerStringAdjust);
-  const arrays = Math.round(hp*1000*1.1/(panelsPerString*panel.power)) - (inp.stringsAdjust ?? D.stringsAdjust);
+  const arrays = Math.round(hp*1000*D.hpCapacityRatio/(panelsPerString*panel.power)) - (inp.stringsAdjust ?? D.stringsAdjust);
   const totalPanels = panelsPerString*arrays;
   const calcKW = panel.power*totalPanels/1000;
   const efficiencyRatio = calcKW/hp;
@@ -409,7 +410,7 @@ function computeQuote(inp){
   }
   discountTotal = Math.round(discountTotal/10)*10;
   const netAfterDiscount = sellTotal - discountTotal;
-  const manualDiscountAmt = netAfterDiscount*(inp.manualDiscountPct||0)/100;
+  const manualDiscountAmt = Math.min(netAfterDiscount, Math.max(0, inp.specialDiscountAmt||0));
   const netAfterManual = netAfterDiscount - manualDiscountAmt;
   const vat = netAfterManual*D.vat;
   const finalTotal = netAfterManual + vat;
@@ -479,6 +480,7 @@ const state = {
   stringsAdjust: DB.stringsAdjust,
   inverterPowerIncrease: DB.inverterPowerIncrease,
   discountOverrideIdx: null,
+  specialDiscountAmt: 0,
   toggles: {panel:true, inverter:true, ip65:true, combiner:true, cables:true, mc4:true,
             structure:true, concrete:true, earth:false, reactor:false, installation:true, supply:true},
   client: '',
@@ -501,7 +503,7 @@ function currentQuote(){
     panel: DB.panels[state.panelIdx],
     structureType: 'FIXED',
     discountFactor: DB.discountTiers[state.discountOverrideIdx ?? (DB.defaultDiscountIdx ?? 1)].factor,
-    manualDiscountPct: 0,
+    specialDiscountAmt: state.specialDiscountAmt,
     panelsPerStringAdjust: state.panelsPerStringAdjust,
     stringsAdjust: state.stringsAdjust,
     inverterPowerIncrease: state.inverterPowerIncrease,
@@ -753,12 +755,19 @@ function renderCalc(){
           <input type="number" id="in_str" value="${state.stringsAdjust}" step="1">
           <label>هامش زيادة قدرة الانفرتر (KW)</label>
           <input type="number" id="in_invinc" value="${state.inverterPowerIncrease}" step="1">
+          <button class="btn small" id="adv_confirm" type="button" style="margin-top:8px;width:100%">✔ تأكيد التعديلات</button>
 
           <label>🔒 فئة خصم العميل <span style="color:var(--muted);font-weight:400">(تعديلها يتطلب كلمة سر الأدمن)</span></label>
           <select id="in_discount" ${discountUnlocked?'':'disabled'}>
             ${DB.discountTiers.map((d,i)=>`<option value="${i}" ${i==(state.discountOverrideIdx ?? (DB.defaultDiscountIdx??1))?'selected':''}>${d.label}</option>`).join('')}
           </select>
           ${discountUnlocked ? '' : '<button class="btn ghost small" id="unlockDiscount" type="button" style="margin-top:6px">فك القفل</button>'}
+
+          <label>خصم خاص <span style="color:var(--muted);font-weight:400">(مبلغ صريح بالريال، يُخصم من إجمالي الفاتورة قبل الضريبة)</span></label>
+          <div style="display:flex;gap:8px">
+            <input type="number" id="in_specialdiscount" value="${state.specialDiscountAmt}" min="0" step="50" style="flex:1">
+            <button class="btn small" id="specialdiscount_confirm" type="button">تأكيد</button>
+          </div>
         </details>
       </div>
 
@@ -824,7 +833,7 @@ function renderCalc(){
         <h3 style="margin-bottom:2px">العرض المالي</h3>
         <div style="font-size:13px;margin:8px 0 4px">تحية طيبة وبعد،</div>
         <div style="font-size:13px;color:var(--ink);line-height:1.8">
-          نتشرف بتقديم عرض سعر منظومة توليد الكهرباء من خلال الطاقة الشمسية — كهرباء فقط للتشغيل — موتور/قدرة ${state.hp} حصان
+          نتشرف بتقديم عرض سعر منظومة توليد الكهرباء من خلال الطاقة الشمسية للتشغيل راس كهرباء /محرك غطاس ${state.hp} حصان
         </div>
       </div>
 
@@ -843,9 +852,16 @@ function renderCalc(){
               </tr>`).join('')}
           </tbody>
         </table>
+        ${((state.discountOverrideIdx !== null) || (q.manualDiscountAmt > 0)) ? `
+        <div class="note" style="margin-top:10px">
+          <div style="display:flex;justify-content:space-between;padding:3px 0"><span>السعر الأساسي</span><span class="num" style="color:var(--ink)">${fmt(q.sellTotal)} ﷼</span></div>
+          <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--bad)"><span>الخصم</span><span class="num">- ${fmt(q.discountTotal + q.manualDiscountAmt)} ﷼</span></div>
+          <div style="display:flex;justify-content:space-between;padding:3px 0;font-weight:600"><span>الصافي بعد الخصم (قبل الضريبة)</span><span class="num" style="color:var(--ink)">${fmt(q.netAfterManual)} ﷼</span></div>
+          <div style="display:flex;justify-content:space-between;padding:3px 0"><span>ضريبة القيمة المضافة (${(DB.vat*100).toFixed(0)}%)</span><span class="num" style="color:var(--ink)">${fmt(q.vat)} ﷼</span></div>
+        </div>` : ''}
         <div class="totalbar" style="justify-content:center">
           <div style="text-align:center">
-            <div class="lbl">السعر النهائي شامل الضريبة (15%)</div>
+            <div class="lbl">السعر النهائي شامل الضريبة</div>
             <div class="big num">${fmt(q.finalTotal)} ﷼</div>
           </div>
         </div>
@@ -905,6 +921,7 @@ function renderAdminFinancials(q){
       <div class="stat"><div class="v">${fmt(q.sellTotal)}</div><div class="l">إجمالي سعر البيع (قبل الخصم)</div></div>
       <div class="stat"><div class="v">${fmt(q.discountTotal)}</div><div class="l">إجمالي الخصم الممنوح</div></div>
       <div class="stat"><div class="v">${fmt(q.netAfterDiscount)}</div><div class="l">الصافي بعد الخصم (بدون ضريبة)</div></div>
+      <div class="stat"><div class="v">${fmt(q.manualDiscountAmt)}</div><div class="l">الخصم الخاص (مبلغ صريح)</div></div>
       <div class="stat"><div class="v">${fmt(q.vat)}</div><div class="l">قيمة ضريبة القيمة المضافة</div></div>
       <div class="stat"><div class="v">${fmt(profit)}</div><div class="l">صافي الربح المتوقع</div></div>
       <div class="stat"><div class="v">${profitPct.toFixed(1)}%</div><div class="l">نسبة هامش الربح</div></div>
@@ -1088,6 +1105,7 @@ function renderAdmin(){
   <div class="card">
     <h3>أسعار البنود الأخرى (وحدة)</h3>
     <div class="assump">
+      <div><label>نسبة السعة للحصان <span style="color:var(--muted)">(معامل تحجيم عدد السلاسل بالنسبة للحصان)</span></label><input type="number" id="a_hpratio" step="0.01" value="${DB.hpCapacityRatio}"></div>
       <div><label>خرسانة السلسلة (899/55 لكل حصان)</label><input type="number" id="a_steel" step="0.001" value="${DB.steelPanelPerHP}"></div>
       <div><label>الكابلات (﷼/متر)</label><input type="number" id="a_cable" value="${DB.cablePerMeter}"></div>
       <div><label>MC4 (﷼/وحدة)</label><input type="number" id="a_mc4" value="${DB.mc4PerUnit}"></div>
@@ -1210,11 +1228,24 @@ function wire(){
     document.getElementById('hp_confirm').onclick = confirmHp;
     document.getElementById('in_hp').onkeydown = e=>{ if(e.key==='Enter') confirmHp(); };
     document.getElementById('in_panel').onchange = e=>{state.panelIdx=+e.target.value; render();};
-    document.getElementById('in_pps').oninput = e=>{state.panelsPerStringAdjust=+e.target.value||0; render();};
-    document.getElementById('in_str').oninput = e=>{state.stringsAdjust=+e.target.value||0; render();};
-    document.getElementById('in_invinc').oninput = e=>{state.inverterPowerIncrease=+e.target.value||0; render();};
+    const confirmAdv = ()=>{
+      state.panelsPerStringAdjust = +document.getElementById('in_pps').value || 0;
+      state.stringsAdjust = +document.getElementById('in_str').value || 0;
+      state.inverterPowerIncrease = +document.getElementById('in_invinc').value || 0;
+      render();
+    };
+    document.getElementById('adv_confirm').onclick = confirmAdv;
+    ['in_pps','in_str','in_invinc'].forEach(id=>{
+      document.getElementById(id).onkeydown = e=>{ if(e.key==='Enter') confirmAdv(); };
+    });
     const discSel = document.getElementById('in_discount');
     if(discSel) discSel.onchange = e=>{ state.discountOverrideIdx=+e.target.value; render(); };
+    const confirmSpecialDiscount = ()=>{
+      state.specialDiscountAmt = Math.max(0, +document.getElementById('in_specialdiscount').value || 0);
+      render();
+    };
+    document.getElementById('specialdiscount_confirm').onclick = confirmSpecialDiscount;
+    document.getElementById('in_specialdiscount').onkeydown = e=>{ if(e.key==='Enter') confirmSpecialDiscount(); };
     const unlockBtn = document.getElementById('unlockDiscount');
     if(unlockBtn) unlockBtn.onclick = ()=>adminPasswordGate(()=>{ discountUnlocked=true; render(); });
     document.querySelectorAll('[data-tgl]').forEach(c=>c.onchange=()=>{state.toggles[c.dataset.tgl]=c.checked; render();});
@@ -1262,6 +1293,7 @@ function wire(){
         const i=+inp.dataset.d, f=inp.dataset.f;
         DB.discountTiers[i][f] = (f==='label') ? inp.value : +inp.value;
       });
+      DB.hpCapacityRatio=+document.getElementById('a_hpratio').value;
       DB.steelPanelPerHP=+document.getElementById('a_steel').value;
       DB.cablePerMeter=+document.getElementById('a_cable').value;
       DB.mc4PerUnit=+document.getElementById('a_mc4').value;
