@@ -98,10 +98,10 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .totalbar .big{font-family:'Cairo',sans-serif;font-weight:800;font-size:26px;color:var(--sun-2);}
 .totalbar .lbl{font-size:12px;color:#BFE3D6;}
 
-.pay3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;}
-.pay3 div{background:var(--sand);border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center;}
-.pay3 .p{font-family:'Cairo';font-weight:600;font-size:17px;color:var(--night);}
-.pay3 .l{font-size:11px;color:var(--muted);margin-top:3px;}
+.pay3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;}
+.pay3 div{text-align:center;padding:4px 6px;}
+.pay3 .p{font-weight:600;font-size:13px;color:var(--ink);}
+.pay3 .l{font-size:10px;color:var(--muted);margin-top:2px;}
 
 .btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--sun-2),var(--sun));color:var(--night);border:0;padding:11px 18px;border-radius:10px;font-family:'Cairo',sans-serif;font-weight:700;font-size:14px;cursor:pointer;box-shadow:0 2px 6px rgba(231,172,18,.3);transition:transform .1s,box-shadow .15s;}
 .btn:hover{box-shadow:0 3px 10px rgba(231,172,18,.4);transform:translateY(-1px);}
@@ -213,21 +213,27 @@ const LOGO_SRC = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAADwCAIAAACx
 const DEFAULT_DB = {
   vat: 0.15,
   maxStringVoltage: 720,
-  panelsPerStringAdjust: -1,
+  panelsPerStringAdjust: 0,
   stringsAdjust: 0,
-  inverterPowerIncrease: 15,
-  hpCapacityRatio: 1.1,
+  inverterPowerIncrease: 0,
+  hpCapacityRatio: 1.15,
   steelPanelPerHP: +(899/55).toFixed(6),
   cablePerMeter: 4,
+  cableHighMultiplier: 90,
+  cableLowMultiplier: 45,
+  cableMarkup: 1.25,
   mc4PerUnit: 5,
   structurePriceFixed: 1499,
   structurePriceRotational: 1499,
   concretePerUnit: 220,
   earthingPerUnit: 2500,
   flexTubePerUnit: 50,
-  installationPerKW: 75,
-  transportPerTrip: 500,
+  mechInstallPerPanel: 60,
+  elecInstallPerPanel: 25,
+  transportPerTrip: 200,
+  transportMinimum: 2000,
   combinerHeadroom: 1.1,
+  combinerMinSpareStrings: 2,
   leadsWebhookUrl: '',
 
   panels: [
@@ -308,8 +314,8 @@ let DB = loadDB();
    ======================================================================= */
 function pickLadder(ladder, value){ for(const v of ladder) if(value<=v) return v; return ladder[ladder.length-1]; }
 function pickInverter(kwNeeded, list){ for(const row of list) if(kwNeeded<=row[0]) return row; return list[list.length-1]; }
-function pickCombiner(minInputs, boxes, headroom){
-  const need = minInputs*headroom;
+function pickCombiner(minInputs, boxes, headroom, minSpare){
+  const need = Math.max(Math.ceil(minInputs*headroom), minInputs+(minSpare||0));
   for(const row of boxes) if(need<=row[0]) return row;
   return boxes[boxes.length-1];
 }
@@ -337,13 +343,13 @@ function computeQuote(inp){
   const reactorModel = pickLadder(D.reactorLadder, Iimp);
   const reactorPrice = D.reactorPrices[reactorModel];
   const cbSize = pickLadder(D.cbLadder, IscCalc);
-  const combiner = inp.combinerOverride || pickCombiner(arrays, D.combinerBoxes, D.combinerHeadroom);
+  const combiner = inp.combinerOverride || pickCombiner(arrays, D.combinerBoxes, D.combinerHeadroom, D.combinerMinSpareStrings);
 
   const panelCost = panel.priceW*calcKW*1000;
   const steelPanelCost = D.steelPanelPerHP*hp;
   const combinerCost = combiner[1];
 
-  const cableRaw = calcKW>=100 ? 70*arrays : 45*arrays;
+  const cableRaw = calcKW>=100 ? D.cableHighMultiplier*arrays : D.cableLowMultiplier*arrays;
   const roundedHundreds = Math.round(cableRaw/100)*100;
   const hundredsUnit = roundedHundreds/100;
   const evenUnit = (hundredsUnit%2===0) ? hundredsUnit : (hundredsUnit>0?hundredsUnit+1:hundredsUnit-1);
@@ -360,10 +366,12 @@ function computeQuote(inp){
   const reactorCost = reactorPrice;
   const flexQty = Math.round(cablesLen/40);
   const flexCost = flexQty*D.flexTubePerUnit;
-  const installQty = calcKW;
-  const installCost = installQty*D.installationPerKW;
+  const mechInstallQty = totalPanels;
+  const mechInstallCost = mechInstallQty*D.mechInstallPerPanel;
+  const elecInstallQty = totalPanels;
+  const elecInstallCost = elecInstallQty*D.elecInstallPerPanel;
   const transportQty = Math.ceil(calcKW/20);
-  const transportCost = transportQty*D.transportPerTrip;
+  const transportCost = Math.max(transportQty*D.transportPerTrip, D.transportMinimum);
 
   const t = inp.toggles;
   const items = [];
@@ -379,12 +387,12 @@ function computeQuote(inp){
     type:`خاصة بانفرتر ${invKW} KW`, qty:'#1#', warranty:'سنة واحدة'});
   push('combiner',`VEICHI Combiner box ${String(combiner[0]).padStart(3,'0')}`, t.combiner, combinerCost*1.3, combinerCost, {
     type:'-', qty:'#1#', warranty:'سنة واحدة'});
-  push('cables','الكابلات - DC', t.cables, cablesCost*1.5, cablesCost, {
+  push('cables','الكابلات - DC', t.cables, cablesCost*D.cableMarkup, cablesCost, {
     type:'VEICHI / LEADER / SUNTREE 6mm', qty:`${cablesLen} متر (تقريبي — يُحدد نهائيًا عند التوريد)`, warranty:'سنة واحدة'});
   push('mc4','وصلات MC4', t.mc4, mc4Cost*1.5, mc4Cost, {
     type:'Suntree / VEICHI / LEADER', qty:`#${arrays}#`, warranty:'---'});
   push('structure','الشاسيه/الحوامل ('+(inp.structureType==='ROTATIONAL'?'متحرك':'ثابت')+')', t.structure, structureCost*1.1, structureCost, {
-    type:'HDG - تصنيع محلي', qty:`#${arrays}#`, warranty:'عشر سنوات'});
+    type:'HDG مجلفن مستورد', qty:`#${arrays}#`, warranty:'عشر سنوات'});
   push('concrete','الخرسانة', t.concrete, concreteCost*1.1, concreteCost, {
     type:'مصبوبة في الموقع', qty:'مطابق للمخطط', warranty:'---'});
   push('earth','التأريض (بئر أرضي)', t.earth, earthCost, earthCost, {
@@ -392,10 +400,12 @@ function computeQuote(inp){
   push('reactor','الريأكتور', t.reactor, reactorCost, reactorCost, {
     type:`${reactorModel}A`, qty:'#1#', warranty:'سنة واحدة'});
 
-  const installSell = t.installation ? (inp.structureType==='FIXED' ? 150*Math.round(calcKW) : 2000*Math.round(calcKW)) : 0;
-  const installCostBasis = steelPanelCost + installCost + (t.supply?transportCost:0);
-  push('install','التوريد والنقل والتركيب والعمالة', t.installation, installSell, installCostBasis, {
-    type:'-', qty:`${calcKW.toFixed(1)} KW`, warranty:'عام واحد فقط من تاريخ التشغيل'});
+  push('install_mech','الأعمال الميدانية وتثبيت الألواح', t.civilworks, mechInstallCost, mechInstallCost, {
+    type:'-', qty:`#${mechInstallQty}#`, warranty:'عام واحد فقط من تاريخ التشغيل'});
+  push('install_elec','التركيبات والتوصيلات الكهربائية', t.elecworks, elecInstallCost, elecInstallCost, {
+    type:'-', qty:`#${elecInstallQty}#`, warranty:'عام واحد فقط من تاريخ التشغيل'});
+  push('transport','النقل', t.supply, transportCost, transportCost, {
+    type:'-', qty:`#${transportQty}#`, warranty:'---'});
 
   const factor = inp.discountFactor;
   let sellTotal=0, discountTotal=0;
@@ -482,7 +492,7 @@ const state = {
   discountOverrideIdx: null,
   specialDiscountAmt: 0,
   toggles: {panel:true, inverter:true, ip65:true, combiner:true, cables:true, mc4:true,
-            structure:true, concrete:true, earth:false, reactor:false, installation:true, supply:true},
+            structure:true, concrete:true, earth:false, reactor:false, civilworks:true, elecworks:true, supply:true},
   client: '',
   clientPhone: ''
 };
@@ -520,6 +530,7 @@ function buildQLCode(q){
   return `QL-${dateStr}-P-${state.hp} HP-VEICHI ${q.invKW} KW-${panel.brand}${panel.power}-${state.structureType}-`;
 }
 const fmt1 = n => n.toLocaleString('en-US', {maximumFractionDigits:1});
+const fmt2 = n => n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
 /* ---- lead capture: local cache + optional cloud sync (Google Sheet Web App) ---- */
 const LEADS_KEY = 'holoul_leads_v1';
@@ -720,7 +731,7 @@ function renderCalc(){
   const TOGGLE_DEFS = [
     ['panel','ألواح شمسية'],['inverter','انفرتر'],['ip65','حماية IP65'],['combiner','لوحة تجميع'],
     ['cables','كابلات DC'],['mc4','وصلات MC4'],['structure','شاسيه/حوامل'],['concrete','خرسانة'],
-    ['earth','تأريض'],['reactor','ريأكتور'],['installation','تركيب وعمالة'],['supply','نقل وتوريد']
+    ['earth','تأريض'],['reactor','ريأكتور'],['civilworks','أعمال مدنية'],['elecworks','أعمال الكهرباء'],['supply','نقل وتوريد']
   ];
 
   return `
@@ -729,7 +740,7 @@ function renderCalc(){
       <div class="card">
         <h3>بيانات العميل</h3>
         <label>اسم العميل *</label>
-        <input type="text" id="in_client" value="${state.client}" placeholder="مثال: أحمد الدواسري">
+        <input type="text" id="in_client" value="${state.client}" placeholder="اسم العميل">
         <label>رقم الهاتف / واتساب *</label>
         <input type="text" id="in_phone" value="${state.clientPhone}" placeholder="05xxxxxxxx">
       </div>
@@ -757,17 +768,18 @@ function renderCalc(){
           <input type="number" id="in_invinc" value="${state.inverterPowerIncrease}" step="1">
           <button class="btn small" id="adv_confirm" type="button" style="margin-top:8px;width:100%">✔ تأكيد التعديلات</button>
 
-          <label>🔒 فئة خصم العميل <span style="color:var(--muted);font-weight:400">(تعديلها يتطلب كلمة سر الأدمن)</span></label>
-          <select id="in_discount" ${discountUnlocked?'':'disabled'}>
+          ${discountUnlocked ? `
+          <label>فئة خصم العميل</label>
+          <select id="in_discount">
             ${DB.discountTiers.map((d,i)=>`<option value="${i}" ${i==(state.discountOverrideIdx ?? (DB.defaultDiscountIdx??1))?'selected':''}>${d.label}</option>`).join('')}
-          </select>
-          ${discountUnlocked ? '' : '<button class="btn ghost small" id="unlockDiscount" type="button" style="margin-top:6px">فك القفل</button>'}
+          </select>` : '<button class="btn ghost small" id="unlockDiscount" type="button" style="margin-top:6px">فك القفل</button>'}
 
+          ${discountUnlocked ? `
           <label>خصم خاص <span style="color:var(--muted);font-weight:400">(مبلغ صريح بالريال، يُخصم من إجمالي الفاتورة قبل الضريبة)</span></label>
           <div style="display:flex;gap:8px">
             <input type="number" id="in_specialdiscount" value="${state.specialDiscountAmt}" min="0" step="50" style="flex:1">
             <button class="btn small" id="specialdiscount_confirm" type="button">تأكيد</button>
-          </div>
+          </div>` : ''}
         </details>
       </div>
 
@@ -824,7 +836,7 @@ function renderCalc(){
           <div class="stat"><div class="v">${q.invKW} KW</div><div class="l">موديل الانفرتر</div></div>
           <div class="stat"><div class="v">${q.reactorModel}A</div><div class="l">الريأكتور</div></div>
           <div class="stat"><div class="v">${q.cbSize}A</div><div class="l">قاطع الحماية C.B</div></div>
-          <div class="stat"><div class="v">×${fmt1(q.efficiencyRatio)}</div><div class="l">نسبة السعة للحصان</div></div>
+          <div class="stat"><div class="v">×${fmt2(q.efficiencyRatio)}</div><div class="l">نسبة السعة للحصان</div></div>
         </div>
       </div>
 
@@ -865,15 +877,30 @@ function renderCalc(){
             <div class="big num">${fmt(q.finalTotal)} ﷼</div>
           </div>
         </div>
-        ${state.toggles.installation ? `
-        <div class="pay3">
-          <div><div class="p num">${fmt(q.finalTotal*0.4)} ﷼</div><div class="l">دفعة مقدمة 40%</div></div>
-          <div><div class="p num">${fmt(q.finalTotal*0.3)} ﷼</div><div class="l">بعد زيارة الموقع 30%</div></div>
-          <div><div class="p num">${fmt(q.finalTotal*0.3)} ﷼</div><div class="l">بعد الأعمال المدنية 30%</div></div>
-        </div>` : `
-        <div class="pay3" style="grid-template-columns:1fr">
-          <div><div class="p num">${fmt(q.finalTotal)} ﷼ (100%)</div><div class="l">العرض بدون توريد وتركيب — تُسدَّد كامل القيمة قبل التوريد</div></div>
-        </div>`}
+        ${(()=>{
+          const hasSupply = !!state.toggles.supply;
+          const hasInstall = !!(state.toggles.civilworks || state.toggles.elecworks);
+          if(hasSupply && hasInstall){
+            return `
+            <div class="pay3">
+              <div><div class="p num">${fmt(q.finalTotal*0.4)} ﷼</div><div class="l">دفعة مقدمة 40%</div></div>
+              <div><div class="p num">${fmt(q.finalTotal*0.3)} ﷼</div><div class="l">بعد زيارة الموقع وتحديد المساحات المطلوبة 30%</div></div>
+              <div><div class="p num">${fmt(q.finalTotal*0.3)} ﷼</div><div class="l">بعد الأعمال المدنية وقبل توريد باقي المكونات 30%</div></div>
+            </div>`;
+          } else if(hasInstall){
+            return `
+            <div class="pay3">
+              <div><div class="p num">${fmt(q.finalTotal*0.5)} ﷼</div><div class="l">عند الاتفاق 50%</div></div>
+              <div><div class="p num">${fmt(q.finalTotal*0.35)} ﷼</div><div class="l">مع الأعمال 35%</div></div>
+              <div><div class="p num">${fmt(q.finalTotal*0.15)} ﷼</div><div class="l">عند الانتهاء 15%</div></div>
+            </div>`;
+          } else {
+            return `
+            <div class="pay3" style="grid-template-columns:1fr">
+              <div><div class="p num">${fmt(q.finalTotal)} ﷼ (100%)</div><div class="l">${hasSupply?'تُسدَّد كامل القيمة عند التوريد':'تُسدَّد كامل القيمة قبل التوريد'}</div></div>
+            </div>`;
+          }
+        })()}
 
         <div style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
           يقع على عاتق العميل تجهيز الموقع (أعمال الحفر والصب اللازمة) قبل موعد التوريد.<br>
@@ -897,8 +924,8 @@ function renderCalc(){
       </div>
 
       <div class="card no-print">
-        <h3>معلومات إضافية <span class="tag">خاص بالإدارة</span></h3>
-        ${adminInfoUnlocked ? renderAdminFinancials(q) : `<button class="btn ghost small" id="unlockAdminInfo" type="button">🔒 عرض التفاصيل المالية (يتطلب كلمة سر الأدمن)</button>`}
+        <h3 id="adminInfoTrigger" style="cursor:default">معلومات إضافية</h3>
+        ${adminInfoUnlocked ? renderAdminFinancials(q) : ``}
       </div>
     </div>
   </div>`;
@@ -926,7 +953,7 @@ function renderAdminFinancials(q){
       <div class="stat"><div class="v">${fmt(profit)}</div><div class="l">صافي الربح المتوقع</div></div>
       <div class="stat"><div class="v">${profitPct.toFixed(1)}%</div><div class="l">نسبة هامش الربح</div></div>
     </div>
-    <button class="btn ghost small" id="lockAdminInfo" type="button" style="margin-top:10px">🔒 إخفاء</button>
+    <button class="btn ghost small" id="lockAdminInfo" type="button" style="margin-top:10px">إخفاء</button>
   `;
 }
 
@@ -1108,14 +1135,21 @@ function renderAdmin(){
       <div><label>نسبة السعة للحصان <span style="color:var(--muted)">(معامل تحجيم عدد السلاسل بالنسبة للحصان)</span></label><input type="number" id="a_hpratio" step="0.01" value="${DB.hpCapacityRatio}"></div>
       <div><label>خرسانة السلسلة (899/55 لكل حصان)</label><input type="number" id="a_steel" step="0.001" value="${DB.steelPanelPerHP}"></div>
       <div><label>الكابلات (﷼/متر)</label><input type="number" id="a_cable" value="${DB.cablePerMeter}"></div>
+      <div><label>معامل طول الكابل (قدرة ≥100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablehigh" value="${DB.cableHighMultiplier}"></div>
+      <div><label>معامل طول الكابل (قدرة أقل من 100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablelow" value="${DB.cableLowMultiplier}"></div>
+      <div><label>هامش بيع الكابلات (معامل ضرب)</label><input type="number" id="a_cablemarkup" step="0.01" value="${DB.cableMarkup}"></div>
+      <div><label>هامش أمان صندوق التجميع <span style="color:var(--muted)">(نسبة زيادة % فوق عدد المجموعات)</span></label><input type="number" id="a_combheadroom" step="0.01" value="${DB.combinerHeadroom}"></div>
+      <div><label>حد أدنى خطوط إضافية بصندوق التجميع</label><input type="number" id="a_combspare" step="1" value="${DB.combinerMinSpareStrings}"></div>
       <div><label>MC4 (﷼/وحدة)</label><input type="number" id="a_mc4" value="${DB.mc4PerUnit}"></div>
       <div><label>الشاسيه الثابت (﷼/سلسلة)</label><input type="number" id="a_stfix" value="${DB.structurePriceFixed}"></div>
       <div><label>الشاسيه المتحرك (﷼/سلسلة)</label><input type="number" id="a_strot" value="${DB.structurePriceRotational}"></div>
       <div><label>الخرسانة (﷼/وحدة)</label><input type="number" id="a_conc" value="${DB.concretePerUnit}"></div>
       <div><label>التأريض (﷼/وحدة)</label><input type="number" id="a_earth" value="${DB.earthingPerUnit}"></div>
       <div><label>الأنابيب المرنة (﷼/وحدة)</label><input type="number" id="a_flex" value="${DB.flexTubePerUnit}"></div>
-      <div><label>التركيب (﷼/KW)</label><input type="number" id="a_inst" value="${DB.installationPerKW}"></div>
+      <div><label>الأعمال الميدانية وتثبيت الألواح (﷼/لوح)</label><input type="number" id="a_mechinst" value="${DB.mechInstallPerPanel}"></div>
+      <div><label>التركيبات والتوصيلات الكهربائية (﷼/لوح)</label><input type="number" id="a_elecinst" value="${DB.elecInstallPerPanel}"></div>
       <div><label>النقل (﷼/رحلة)</label><input type="number" id="a_trans" value="${DB.transportPerTrip}"></div>
+      <div><label>الحد الأدنى لتكلفة النقل (﷼)</label><input type="number" id="a_transmin" value="${DB.transportMinimum}"></div>
       <div><label>ضريبة القيمة المضافة</label><input type="number" id="a_vat" step="0.01" value="${DB.vat}"></div>
     </div>
   </div>
@@ -1241,26 +1275,30 @@ function wire(){
     const discSel = document.getElementById('in_discount');
     if(discSel) discSel.onchange = e=>{ state.discountOverrideIdx=+e.target.value; render(); };
     const confirmSpecialDiscount = ()=>{
-      state.specialDiscountAmt = Math.max(0, +document.getElementById('in_specialdiscount').value || 0);
+      const el = document.getElementById('in_specialdiscount');
+      if(!el) return;
+      state.specialDiscountAmt = Math.max(0, +el.value || 0);
       render();
     };
-    document.getElementById('specialdiscount_confirm').onclick = confirmSpecialDiscount;
-    document.getElementById('in_specialdiscount').onkeydown = e=>{ if(e.key==='Enter') confirmSpecialDiscount(); };
+    const specBtn = document.getElementById('specialdiscount_confirm');
+    if(specBtn) specBtn.onclick = confirmSpecialDiscount;
+    const specInput = document.getElementById('in_specialdiscount');
+    if(specInput) specInput.onkeydown = e=>{ if(e.key==='Enter') confirmSpecialDiscount(); };
     const unlockBtn = document.getElementById('unlockDiscount');
     if(unlockBtn) unlockBtn.onclick = ()=>adminPasswordGate(()=>{ discountUnlocked=true; render(); });
     document.querySelectorAll('[data-tgl]').forEach(c=>c.onchange=()=>{state.toggles[c.dataset.tgl]=c.checked; render();});
     document.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>{
       if(b.dataset.preset==='materials'){
         state.toggles = {panel:true, inverter:true, ip65:false, combiner:true, cables:true, mc4:true,
-                          structure:false, concrete:false, earth:false, reactor:false, installation:false, supply:false};
+                          structure:false, concrete:false, earth:false, reactor:false, civilworks:false, elecworks:false, supply:false};
       } else {
         state.toggles = {panel:true, inverter:true, ip65:true, combiner:true, cables:true, mc4:true,
-                          structure:true, concrete:true, earth:false, reactor:false, installation:true, supply:true};
+                          structure:true, concrete:true, earth:false, reactor:false, civilworks:true, elecworks:true, supply:true};
       }
       render();
     });
-    const unlockInfoBtn = document.getElementById('unlockAdminInfo');
-    if(unlockInfoBtn) unlockInfoBtn.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked=true; render(); });
+    const unlockInfoBtn = document.getElementById('adminInfoTrigger');
+    if(unlockInfoBtn && !adminInfoUnlocked) unlockInfoBtn.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked=true; render(); });
     const lockInfoBtn = document.getElementById('lockAdminInfo');
     if(lockInfoBtn) lockInfoBtn.onclick = ()=>{ adminInfoUnlocked=false; render(); };
   }
@@ -1296,14 +1334,21 @@ function wire(){
       DB.hpCapacityRatio=+document.getElementById('a_hpratio').value;
       DB.steelPanelPerHP=+document.getElementById('a_steel').value;
       DB.cablePerMeter=+document.getElementById('a_cable').value;
+      DB.cableHighMultiplier=+document.getElementById('a_cablehigh').value;
+      DB.cableLowMultiplier=+document.getElementById('a_cablelow').value;
+      DB.cableMarkup=+document.getElementById('a_cablemarkup').value;
+      DB.combinerHeadroom=+document.getElementById('a_combheadroom').value;
+      DB.combinerMinSpareStrings=+document.getElementById('a_combspare').value;
       DB.mc4PerUnit=+document.getElementById('a_mc4').value;
       DB.structurePriceFixed=+document.getElementById('a_stfix').value;
       DB.structurePriceRotational=+document.getElementById('a_strot').value;
       DB.concretePerUnit=+document.getElementById('a_conc').value;
       DB.earthingPerUnit=+document.getElementById('a_earth').value;
       DB.flexTubePerUnit=+document.getElementById('a_flex').value;
-      DB.installationPerKW=+document.getElementById('a_inst').value;
+      DB.mechInstallPerPanel=+document.getElementById('a_mechinst').value;
+      DB.elecInstallPerPanel=+document.getElementById('a_elecinst').value;
       DB.transportPerTrip=+document.getElementById('a_trans').value;
+      DB.transportMinimum=+document.getElementById('a_transmin').value;
       DB.vat=+document.getElementById('a_vat').value;
       DB.defaultDiscountIdx=+document.getElementById('a_defdisc').value;
       DB.leadsWebhookUrl=document.getElementById('a_webhook').value.trim();
