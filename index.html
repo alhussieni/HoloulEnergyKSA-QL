@@ -124,65 +124,73 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 svg.chart{width:100%;height:260px;}
 footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
 
-@page{ size:A4; margin:11mm; }
+@page{ size:A4; margin:9mm; }
 @media print{
   header.top,.no-print,footer.foot{display:none!important;}
-  body{background:#fff;font-size:11.5px;}
+  body{background:#fff;font-size:11px!important;line-height:1.42!important;}
   main{padding:0!important;max-width:100%!important;}
-  .grid2{grid-template-columns:1fr!important;gap:6px!important;display:block!important;}
-  .card{border:1px solid #ddd!important;box-shadow:none!important;padding:9px 12px!important;margin-bottom:7px!important;border-radius:8px!important;}
+  .grid2{grid-template-columns:1fr!important;gap:8px!important;display:block!important;}
+  .card{border:1px solid #ddd!important;box-shadow:none!important;padding:7px 14px!important;margin-bottom:6px!important;border-radius:8px!important;}
   table.bom thead{display:table-header-group;}
   table.bom tr{page-break-inside:avoid;}
   .totalbar,.pay3{page-break-inside:avoid;}
-  .card h3{font-size:12.5px!important;margin:0 0 7px!important;}
+  .card h3{font-size:13px!important;margin:0 0 8px!important;}
+  .card h3::before{height:14px!important;}
   .card h3 .tag{display:none!important;}
-  .quote-banner{padding:8px 12px!important;}
-  #bannerName{font-size:13px!important;}
-  #bannerPhone{font-size:10.5px!important;}
-  .stats{grid-template-columns:repeat(6,1fr)!important;gap:5px!important;}
-  .stat{padding:5px 6px!important;background:#F7F8F7!important;}
-  .stat .v{font-size:12px!important;}
-  .stat .l{font-size:8px!important;}
-  table.bom{font-size:9.5px!important;}
-  table.bom th{font-size:8.5px!important;padding:3px 4px!important;}
-  table.bom td{padding:3px 4px!important;}
-  .totalbar{padding:8px 12px!important;margin-top:6px!important;border-radius:8px!important;}
-  .totalbar .big{font-size:17px!important;}
-  .totalbar .lbl{font-size:9.5px!important;}
-  .pay3{margin-top:6px!important;gap:5px!important;}
-  .pay3 div{padding:5px!important;}
-  .pay3 .p{font-size:10.5px!important;}
-  .pay3 .l{font-size:7.5px!important;}
-  .note{font-size:9px!important;padding:6px 8px!important;}
+  .quote-banner{padding:10px 14px!important;}
+  #bannerName{font-size:14px!important;}
+  #bannerPhone{font-size:11px!important;}
+  .stats{grid-template-columns:repeat(6,1fr)!important;gap:6px!important;}
+  .stat{padding:6px 7px!important;background:#F7F8F7!important;}
+  .stat .v{font-size:13px!important;}
+  .stat .l{font-size:9px!important;}
+  table.bom{font-size:11px!important;}
+  table.bom th{font-size:9.5px!important;padding:5px 6px!important;}
+  table.bom td{padding:6px 6px!important;}
+  .totalbar{padding:10px 16px!important;margin-top:8px!important;border-radius:10px!important;}
+  .totalbar .big{font-size:22px!important;}
+  .totalbar .lbl{font-size:11px!important;}
+  .pay3{margin-top:8px!important;gap:6px!important;}
+  .pay3 div{padding:8px!important;}
+  .pay3 .p{font-size:12px!important;}
+  .pay3 .l{font-size:9.5px!important;}
+  .note{font-size:10.5px!important;padding:8px 10px!important;}
+  .legal-note{font-size:10px!important;line-height:1.5!important;margin-top:9px!important;}
+  .support-note{font-size:10.5px!important;padding:6px 12px!important;margin-top:7px!important;}
+  .contact-note{font-size:10px!important;line-height:1.5!important;margin-top:9px!important;}
 }
 /* Mirrors the @media print block above exactly (same values), so the
    PDF generated for WhatsApp sharing (downloadQuotePdf) looks identical
    to what comes out of the browser's own Print/Save-as-PDF. Applied via
    JS by adding the "pdf-compact" class to the cloned print area before
    capture — kept in sync manually with @media print above. */
-.pdf-compact{font-size:11.5px;}
-.pdf-compact .grid2{grid-template-columns:1fr!important;gap:6px!important;display:block!important;}
-.pdf-compact .card{border:1px solid #ddd!important;box-shadow:none!important;padding:9px 12px!important;margin-bottom:7px!important;border-radius:8px!important;}
-.pdf-compact .card h3{font-size:12.5px!important;margin:0 0 7px!important;}
+.pdf-compact{font-size:11px;line-height:1.5;}
+.pdf-compact .grid2{grid-template-columns:1fr!important;gap:8px!important;display:block!important;}
+.pdf-compact .card{border:1px solid #ddd!important;box-shadow:none!important;padding:7px 14px!important;margin-bottom:6px!important;border-radius:8px!important;}
+.pdf-compact .card h3{font-size:13px!important;margin:0 0 8px!important;}
+.pdf-compact .card h3::before{height:14px!important;}
 .pdf-compact .card h3 .tag{display:none!important;}
-.pdf-compact .quote-banner{padding:8px 12px!important;}
-.pdf-compact #bannerName{font-size:13px!important;}
-.pdf-compact #bannerPhone{font-size:10.5px!important;}
-.pdf-compact .stats{grid-template-columns:repeat(6,1fr)!important;gap:5px!important;}
-.pdf-compact .stat{padding:5px 6px!important;background:#F7F8F7!important;}
-.pdf-compact .stat .v{font-size:12px!important;}
-.pdf-compact .stat .l{font-size:8px!important;}
-.pdf-compact table.bom{font-size:9.5px!important;}
-.pdf-compact table.bom th{font-size:8.5px!important;padding:3px 4px!important;}
-.pdf-compact table.bom td{padding:3px 4px!important;}
-.pdf-compact .totalbar{padding:8px 12px!important;margin-top:6px!important;border-radius:8px!important;}
-.pdf-compact .totalbar .big{font-size:17px!important;}
-.pdf-compact .totalbar .lbl{font-size:9.5px!important;}
-.pdf-compact .pay3{margin-top:6px!important;gap:5px!important;}
-.pdf-compact .pay3 div{padding:5px!important;}
-.pdf-compact .pay3 .p{font-size:10.5px!important;}
-.pdf-compact .pay3 .l{font-size:7.5px!important;}
-.pdf-compact .note{font-size:9px!important;padding:6px 8px!important;}
+.pdf-compact .quote-banner{padding:10px 14px!important;}
+.pdf-compact #bannerName{font-size:14px!important;}
+.pdf-compact #bannerPhone{font-size:11px!important;}
+.pdf-compact .stats{grid-template-columns:repeat(6,1fr)!important;gap:6px!important;}
+.pdf-compact .stat{padding:6px 7px!important;background:#F7F8F7!important;}
+.pdf-compact .stat .v{font-size:13px!important;}
+.pdf-compact .stat .l{font-size:9px!important;}
+.pdf-compact table.bom{font-size:11px!important;}
+.pdf-compact table.bom th{font-size:9.5px!important;padding:5px 6px!important;}
+.pdf-compact table.bom td{padding:6px 6px!important;}
+.pdf-compact .totalbar{padding:10px 16px!important;margin-top:8px!important;border-radius:10px!important;}
+.pdf-compact .totalbar .big{font-size:22px!important;}
+.pdf-compact .totalbar .lbl{font-size:11px!important;}
+.pdf-compact .pay3{margin-top:8px!important;gap:6px!important;}
+.pdf-compact .pay3 div{padding:8px!important;}
+.pdf-compact .pay3 .p{font-size:12px!important;}
+.pdf-compact .pay3 .l{font-size:9.5px!important;}
+.pdf-compact .note{font-size:10.5px!important;padding:8px 10px!important;}
+.pdf-compact .legal-note{font-size:10px!important;line-height:1.5!important;margin-top:9px!important;}
+.pdf-compact .support-note{font-size:10.5px!important;padding:6px 12px!important;margin-top:7px!important;}
+.pdf-compact .contact-note{font-size:10px!important;line-height:1.5!important;margin-top:9px!important;}
 </style>
 </head>
 <body>
@@ -389,16 +397,10 @@ function validateClient(){
   }
   return true;
 }
-async function handlePrint(){
+function handlePrint(){
   if(!validateClient()) return;
-  const q = currentQuote();
-  saveLead(q);
-  const filename = buildQLCode(q).replace(/[^A-Za-z0-9\-]/g,'') + '.pdf';
-  const ok = await downloadQuotePdf(filename);
-  if(!ok){
-    // fallback: browser print dialog, in case html2canvas/jsPDF failed to load
-    window.print();
-  }
+  saveLead(currentQuote());
+  window.print();
 }
 function sendLeadWhatsapp(){
   if(!validateClient()) return;
@@ -453,9 +455,9 @@ function getCaptureScale(){
   const isTablet = /iPad|Tablet/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
   const isMobile = /iPhone|iPod|Android/i.test(ua) && !isTablet;
   const dpr = window.devicePixelRatio || 1;
-  if(isMobile) return Math.max(1, Math.min(dpr, 2));
-  if(isTablet) return Math.max(1, Math.min(dpr, 2.5));
-  return Math.max(1, Math.min(dpr, 3)) || 3;
+  if(isMobile) return Math.max(1, Math.min(dpr, 1.5));
+  if(isTablet) return Math.max(1, Math.min(dpr, 1.75));
+  return Math.max(1, Math.min(dpr, 2)) || 2;
 }
 
 async function downloadQuotePdf(filename){
@@ -754,14 +756,14 @@ function renderCalc(){
           }
         })()}
 
-        <div style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
+        <div class="legal-note" style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
           يقع على عاتق العميل تجهيز الموقع (أعمال الحفر والصب اللازمة) قبل موعد التوريد.<br>
           الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${new Date().toLocaleDateString('en-GB')}).
         </div>
-        <div style="margin-top:8px;background:#EAF7F1;border:1px solid #BFE6D6;border-radius:9px;padding:9px 12px;font-size:11.5px;color:#146C4C">
+        <div class="support-note" style="margin-top:8px;background:#EAF7F1;border:1px solid #BFE6D6;border-radius:9px;padding:9px 12px;font-size:11.5px;color:#146C4C">
           نلتزم بتوفير الدعم الفني وقطع الغيار للمنظومة حتى 10 سنوات من تاريخ التشغيل.
         </div>
-        <div style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
+        <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
           <b style="color:var(--ink)">للتواصل</b><br>
           info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
           Website - LinkedIn - Youtube - FB - Tiktok : HoloulEnergy<br>
