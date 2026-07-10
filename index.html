@@ -389,10 +389,16 @@ function validateClient(){
   }
   return true;
 }
-function handlePrint(){
+async function handlePrint(){
   if(!validateClient()) return;
-  saveLead(currentQuote());
-  window.print();
+  const q = currentQuote();
+  saveLead(q);
+  const filename = buildQLCode(q).replace(/[^A-Za-z0-9\-]/g,'') + '.pdf';
+  const ok = await downloadQuotePdf(filename);
+  if(!ok){
+    // fallback: browser print dialog, in case html2canvas/jsPDF failed to load
+    window.print();
+  }
 }
 function sendLeadWhatsapp(){
   if(!validateClient()) return;
@@ -447,9 +453,9 @@ function getCaptureScale(){
   const isTablet = /iPad|Tablet/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
   const isMobile = /iPhone|iPod|Android/i.test(ua) && !isTablet;
   const dpr = window.devicePixelRatio || 1;
-  if(isMobile) return Math.max(1, Math.min(dpr, 1.5));
-  if(isTablet) return Math.max(1, Math.min(dpr, 1.75));
-  return Math.max(1, Math.min(dpr, 2)) || 2;
+  if(isMobile) return Math.max(1, Math.min(dpr, 2));
+  if(isTablet) return Math.max(1, Math.min(dpr, 2.5));
+  return Math.max(1, Math.min(dpr, 3)) || 3;
 }
 
 async function downloadQuotePdf(filename){
