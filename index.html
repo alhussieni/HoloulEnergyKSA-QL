@@ -122,6 +122,12 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .assump{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
 
 svg.chart{width:100%;height:260px;}
+.reload-badge{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:999;background:var(--night);color:#fff;padding:8px 16px;border-radius:20px;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(13,52,82,.25);animation:fadeIn .15s ease-out;}
+.reload-badge .spin{width:13px;height:13px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+@keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-6px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+.quote-loading{opacity:.55;pointer-events:none;transition:opacity .12s;}
+
 footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
 
 @page{ size:A4; margin:9mm; }
@@ -247,14 +253,17 @@ async function callEngine(action, payload){
 let cachedQuote = null;       // public quote (sell prices only)
 let cachedFeas = null;        // general feasibility-study assumptions (non-sensitive)
 let cachedPanelOptions = [];  // [{brand,power}] — never priceW
+let cachedInverterBrandOptions = []; // [{idx,brand}] — never list/cost/discount
 let adminFinancials = null;   // cost/margin breakdown — only after admin auth
 let adminConfig = null;       // full rates object — only after admin auth
 let adminPasswordMem = null;  // held in memory only; lost on page reload
 let engineError = null;
+let quoteLoading = false;
 
 function buildEngineInput(){
   return {
     panelIdx: state.panelIdx,
+    inverterBrandIdx: state.inverterBrandIdx,
     hp: state.hp,
     structureType: 'FIXED',
     discountTierIdx: discountUnlocked ? state.discountOverrideIdx : null,
@@ -268,16 +277,31 @@ function buildEngineInput(){
 
 async function refreshQuote(){
   engineError = null;
+  const input = buildEngineInput();
+  // Run the public quote and (if needed) the admin financials call in
+  // parallel instead of one-after-the-other — halves the wait when the
+  // admin panel is open, since both round-trips happen at the same time.
+  const quotePromise = callEngine('quote', { input });
+  const adminPromise = (adminInfoUnlocked && adminPasswordMem)
+    ? callEngine('admin-view', { adminPassword: adminPasswordMem, input }).catch(()=>{ adminInfoUnlocked = false; return null; })
+    : Promise.resolve(null);
   try{
-    const data = await callEngine('quote', { input: buildEngineInput() });
+    const [data, adminData] = await Promise.all([quotePromise, adminPromise]);
     cachedQuote = data.quote;
     cachedFeas = data.feas;
     cachedPanelOptions = data.panelOptions;
-    if(adminInfoUnlocked && adminPasswordMem){
-      try{
-        const adminData = await callEngine('admin-view', { adminPassword: adminPasswordMem, input: buildEngineInput() });
-        adminFinancials = adminData.quote;
-      }catch(e){ adminFinancials = null; adminInfoUnlocked = false; }
+    cachedInverterBrandOptions = data.inverterBrandOptions || [];
+    adminFinancials = adminData ? adminData.quote : null;
+    let needsRetry = false;
+    if(!cachedPanelOptions.some(p=>p.idx===state.panelIdx) && cachedPanelOptions.length){
+      state.panelIdx = cachedPanelOptions[0].idx; needsRetry = true;
+    }
+    if(!cachedInverterBrandOptions.some(b=>b.idx===state.inverterBrandIdx) && cachedInverterBrandOptions.length){
+      state.inverterBrandIdx = cachedInverterBrandOptions[0].idx; needsRetry = true;
+    }
+    if(needsRetry){
+      const retryData = await callEngine('quote', { input: buildEngineInput() });
+      cachedQuote = retryData.quote;
     }
   }catch(e){
     engineError = e.message || 'تعذر الاتصال بالخادم';
@@ -291,13 +315,20 @@ function logLead(lead){
 /* =======================================================================
    3) ADMIN AUTH — password is verified server-side, never in this file
    ======================================================================= */
+function normalizeAdminConfig(cfg){
+  if(!Array.isArray(cfg.inverterBrands) || !cfg.inverterBrands.length){
+    cfg.inverterBrands = [{ brand:'VEICHI', tiers: cfg.inverters || [] }];
+  }
+  return cfg;
+}
+
 function adminPasswordGate(cb){
   if(adminPasswordMem){ cb(); return; }
   const p = prompt('كلمة سر الأدمن:');
   if(p==null) return;
   callEngine('admin-config', { adminPassword: p }).then(data=>{
     adminPasswordMem = p;
-    adminConfig = data.config;
+    adminConfig = normalizeAdminConfig(data.config);
     cb();
   }).catch(()=>{ alert('كلمة السر غير صحيحة'); });
 }
@@ -352,6 +383,7 @@ function computeFeasibility(capex, calcKW, opt){
 const state = {
   hp: 500,
   panelIdx: 0,
+  inverterBrandIdx: 0,
   structureType: 'FIXED',
   panelsPerStringAdjust: 0,
   stringsAdjust: 0,
@@ -375,8 +407,8 @@ function buildQLCode(q){
   const d = new Date();
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const dateStr = String(d.getDate()).padStart(2,'0')+months[d.getMonth()]+d.getFullYear();
-  const panel = cachedPanelOptions[state.panelIdx] || {brand:'',power:''};
-  return `QL-${dateStr}-P-${state.hp} HP-VEICHI ${q.invKW} KW-${panel.brand}${panel.power}-${state.structureType}-`;
+  const panel = cachedPanelOptions.find(p=>p.idx===state.panelIdx) || {brand:'',power:''};
+  return `QL-${dateStr}-P-${state.hp} HP-${q.invBrandName||'VEICHI'} ${q.invKW} KW-${panel.brand}${panel.power}-${state.structureType}-`;
 }
 const fmt1 = n => n.toLocaleString('en-US', {maximumFractionDigits:1});
 const fmt2 = n => n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -582,6 +614,7 @@ function renderCalc(){
         : `<h3>جارِ التحميل...</h3><div class="note">جارِ حساب السعر من الخادم</div>`}
     </div>`;
   }
+  const loadingBadge = quoteLoading ? `<div class="reload-badge no-print"><span class="spin"></span> جارِ تحديث السعر...</div>` : '';
   const TOGGLE_DEFS = [
     ['panel','ألواح شمسية'],['inverter','انفرتر'],['ip65','حماية IP65'],['combiner','لوحة تجميع'],
     ['cables','كابلات DC'],['mc4','وصلات MC4'],['structure','شاسيه/حوامل'],['concrete','خرسانة'],
@@ -589,6 +622,7 @@ function renderCalc(){
   ];
 
   return `
+  ${loadingBadge}
   <div class="grid2">
     <div class="no-print">
       <div class="card">
@@ -609,8 +643,14 @@ function renderCalc(){
 
         <label>نوع اللوح الشمسي</label>
         <select id="in_panel">
-          ${cachedPanelOptions.map((p,i)=>`<option value="${i}" ${i==state.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
+          ${cachedPanelOptions.map(p=>`<option value="${p.idx}" ${p.idx==state.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
         </select>
+
+        ${cachedInverterBrandOptions.length>1 ? `
+        <label>نوع الانفرتر</label>
+        <select id="in_invbrand">
+          ${cachedInverterBrandOptions.map(b=>`<option value="${b.idx}" ${b.idx==state.inverterBrandIdx?'selected':''}>${b.brand}</option>`).join('')}
+        </select>` : ''}
 
         <details class="adv">
           <summary>إعدادات متقدمة</summary>
@@ -656,7 +696,7 @@ function renderCalc(){
       </div>
     </div>
 
-    <div id="quotePrintArea">
+    <div id="quotePrintArea" class="${quoteLoading?'quote-loading':''}">
       <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:center">
         <div style="display:flex;align-items:center;gap:8px">
           <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:38px;height:38px;object-fit:contain">
@@ -944,7 +984,7 @@ function renderAdmin(){
   <div class="card">
     <h3>الألواح الشمسية</h3>
     <table class="admtable">
-      <thead><tr><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W (بدون ضريبة)</th><th></th></tr></thead>
+      <thead><tr><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W (بدون ضريبة)</th><th>ظاهر للعميل</th><th></th></tr></thead>
       <tbody id="adm_panels">
         ${adminConfig.panels.map((p,i)=>`
           <tr>
@@ -955,32 +995,44 @@ function renderAdmin(){
             <td><input data-p="${i}" data-f="iimp" type="number" step="0.01" value="${p.iimp}"></td>
             <td><input data-p="${i}" data-f="isc" type="number" step="0.01" value="${p.isc}"></td>
             <td><input data-p="${i}" data-f="priceW" type="number" step="0.001" value="${p.priceW}"></td>
+            <td style="text-align:center"><input type="checkbox" data-pvis="${i}" ${p.visible!==false?'checked':''}></td>
             <td class="op"><button class="btn danger small" data-delpanel="${i}">✕</button></td>
           </tr>`).join('')}
       </tbody>
     </table>
     <button class="btn ghost small" id="addPanel">+ إضافة لوح</button>
+    <div class="note" style="margin-top:8px">اللوح يظهر للعميل فقط لو كان "ظاهر للعميل" مفعّل ومعاه سعر أكبر من صفر. عطّل التكة لإخفاء لوح مؤقتًا بدون حذفه.</div>
   </div>
 
   <div class="card">
-    <h3>الانفرتر (VEICHI) — حسب قدرة KW</h3>
-    <table class="admtable">
-      <thead><tr><th>KW</th><th>سعر البيع (Sell)</th><th>نسبة الخصم % (منها تُحسب التكلفة)</th><th>سعر التكلفة (محسوب تلقائيًا)</th></tr></thead>
-      <tbody id="adm_inv">
-        ${adminConfig.inverters.map((row,i)=>{
-          const [kw,cost,list]=row;
-          const disc = list>0 ? ((1-cost/list)*100) : 0;
-          return `
-          <tr>
-            <td><input data-i="${i}" data-f="kw" type="number" value="${kw}"></td>
-            <td><input data-i="${i}" data-f="list" type="number" value="${list}"></td>
-            <td><input data-i="${i}" data-f="disc" type="number" step="0.1" value="${disc.toFixed(1)}"></td>
-            <td class="num" style="color:var(--muted)">${fmt(cost)}</td>
-          </tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-    <div class="note">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي).</div>
+    <h3>أنواع الانفرتر</h3>
+    ${adminConfig.inverterBrands.map((brand,bi)=>`
+      <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+          <input data-brand="${bi}" style="max-width:220px;font-weight:600" value="${brand.brand}" placeholder="اسم النوع/البراند">
+          ${adminConfig.inverterBrands.length>1 ? `<button class="btn danger small" data-delbrand="${bi}">🗑 حذف هذا النوع</button>` : ''}
+        </div>
+        <table class="admtable">
+          <thead><tr><th>KW</th><th>سعر البيع (Sell)</th><th>نسبة الخصم % (منها تُحسب التكلفة)</th><th>سعر التكلفة (محسوب تلقائيًا)</th><th></th></tr></thead>
+          <tbody data-tierbody="${bi}">
+            ${brand.tiers.map((row,ti)=>{
+              const [kw,cost,list]=row;
+              const disc = list>0 ? ((1-cost/list)*100) : 0;
+              return `
+              <tr>
+                <td><input data-brand="${bi}" data-tier="${ti}" data-f="kw" type="number" value="${kw}"></td>
+                <td><input data-brand="${bi}" data-tier="${ti}" data-f="list" type="number" value="${list}"></td>
+                <td><input data-brand="${bi}" data-tier="${ti}" data-f="disc" type="number" step="0.1" value="${disc.toFixed(1)}"></td>
+                <td class="num" style="color:var(--muted)">${fmt(cost)}</td>
+                <td class="op"><button class="btn danger small" data-deltier="${bi}:${ti}">✕</button></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+        <button class="btn ghost small" data-addtier="${bi}" style="margin-top:6px">+ إضافة قدرة KW</button>
+      </div>`).join('')}
+    <button class="btn ghost small" id="addInverterBrand">+ إضافة نوع انفرتر جديد</button>
+    <div class="note" style="margin-top:8px">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي). لو فيه أكتر من نوع، هيظهر للعميل اختيار "نوع الانفرتر" في الحاسبة.</div>
   </div>
 
   <div class="card">
@@ -1088,7 +1140,7 @@ function wire(){
       const p=document.getElementById('adm_pass').value;
       try{
         const data = await callEngine('admin-config', { adminPassword: p });
-        adminPasswordMem = p; adminConfig = data.config; adminAuthed = true;
+        adminPasswordMem = p; adminConfig = normalizeAdminConfig(data.config); adminAuthed = true;
         render();
       }catch(e){ alert('كلمة المرور غير صحيحة'); }
     };
@@ -1106,6 +1158,8 @@ function wire(){
     document.getElementById('hp_confirm').onclick = confirmHp;
     document.getElementById('in_hp').onkeydown = e=>{ if(e.key==='Enter') confirmHp(); };
     document.getElementById('in_panel').onchange = e=>{state.panelIdx=+e.target.value; refresh();};
+    const invBrandSel = document.getElementById('in_invbrand');
+    if(invBrandSel) invBrandSel.onchange = e=>{state.inverterBrandIdx=+e.target.value; refresh();};
     const confirmAdv = ()=>{
       state.panelsPerStringAdjust = +document.getElementById('in_pps').value || 0;
       state.stringsAdjust = +document.getElementById('in_str').value || 0;
@@ -1160,17 +1214,27 @@ function wire(){
         const i=+inp.dataset.p, f=inp.dataset.f;
         adminConfig.panels[i][f] = (f==='brand') ? inp.value : +inp.value;
       });
-      const invRows = {};
-      document.querySelectorAll('[data-i]').forEach(inp=>{
-        const i=+inp.dataset.i, f=inp.dataset.f;
-        invRows[i] = invRows[i] || {};
-        invRows[i][f] = +inp.value;
+      document.querySelectorAll('[data-pvis]').forEach(inp=>{
+        adminConfig.panels[+inp.dataset.pvis].visible = inp.checked;
       });
-      Object.keys(invRows).forEach(i=>{
-        const r = invRows[i];
-        const cost = r.list * (1 - (r.disc||0)/100);
-        adminConfig.inverters[i] = [r.kw, +cost.toFixed(2), r.list];
+      document.querySelectorAll('[data-brand]:not([data-tier])').forEach(inp=>{
+        adminConfig.inverterBrands[+inp.dataset.brand].brand = inp.value;
       });
+      const tierRows = {};
+      document.querySelectorAll('[data-tier]').forEach(inp=>{
+        const bi=+inp.dataset.brand, ti=+inp.dataset.tier, f=inp.dataset.f;
+        tierRows[bi] = tierRows[bi] || {};
+        tierRows[bi][ti] = tierRows[bi][ti] || {};
+        tierRows[bi][ti][f] = +inp.value;
+      });
+      Object.keys(tierRows).forEach(bi=>{
+        Object.keys(tierRows[bi]).forEach(ti=>{
+          const r = tierRows[bi][ti];
+          const cost = r.list * (1 - (r.disc||0)/100);
+          adminConfig.inverterBrands[+bi].tiers[+ti] = [r.kw, +cost.toFixed(2), r.list];
+        });
+      });
+      delete adminConfig.inverters;
       document.querySelectorAll('[data-d]').forEach(inp=>{
         const i=+inp.dataset.d, f=inp.dataset.f;
         adminConfig.discountTiers[i][f] = (f==='label') ? inp.value : +inp.value;
@@ -1225,11 +1289,27 @@ function wire(){
       render();
     };
     document.getElementById('addPanel').onclick = ()=>{
-      adminConfig.panels.push({brand:'جديد',power:600,vimp:40,voc:48,iimp:15,isc:16,priceW:0.5});
+      adminConfig.panels.push({brand:'جديد',power:600,vimp:40,voc:48,iimp:15,isc:16,priceW:0.5,visible:true});
       render();
     };
     document.querySelectorAll('[data-delpanel]').forEach(b=>b.onclick=()=>{
       adminConfig.panels.splice(+b.dataset.delpanel,1); render();
+    });
+    document.getElementById('addInverterBrand').onclick = ()=>{
+      adminConfig.inverterBrands.push({brand:'نوع جديد', tiers:[[10,900,1000]]});
+      render();
+    };
+    document.querySelectorAll('[data-delbrand]').forEach(b=>b.onclick=()=>{
+      adminConfig.inverterBrands.splice(+b.dataset.delbrand,1); render();
+    });
+    document.querySelectorAll('[data-addtier]').forEach(b=>b.onclick=()=>{
+      adminConfig.inverterBrands[+b.dataset.addtier].tiers.push([10,900,1000]);
+      render();
+    });
+    document.querySelectorAll('[data-deltier]').forEach(b=>b.onclick=()=>{
+      const [bi,ti] = b.dataset.deltier.split(':').map(Number);
+      adminConfig.inverterBrands[bi].tiers.splice(ti,1);
+      render();
     });
     document.getElementById('admExport').onclick = ()=>{
       const blob = new Blob([JSON.stringify(adminConfig,null,2)],{type:'application/json'});
@@ -1240,7 +1320,7 @@ function wire(){
       const file=e.target.files[0]; if(!file) return;
       const reader=new FileReader();
       reader.onload = ()=>{
-        try{ adminConfig = JSON.parse(reader.result); render(); alert('تم الاستيراد — اضغط "حفظ التعديلات" لتثبيته على الخادم ✔'); }
+        try{ adminConfig = normalizeAdminConfig(JSON.parse(reader.result)); render(); alert('تم الاستيراد — اضغط "حفظ التعديلات" لتثبيته على الخادم ✔'); }
         catch(err){ alert('ملف غير صالح'); }
       };
       reader.readAsText(file);
@@ -1258,8 +1338,10 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
 });
 
 async function refresh(){
+  quoteLoading = true;
   render();
   await refreshQuote();
+  quoteLoading = false;
   render();
 }
 refresh();

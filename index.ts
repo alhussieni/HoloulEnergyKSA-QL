@@ -50,6 +50,14 @@ function pickInverter(kwNeeded: number, list: number[][]) {
   for (const row of list) if (kwNeeded <= row[0]) return row;
   return list[list.length - 1];
 }
+// Inverters used to be one flat ladder (implicitly "VEICHI"). They're now a
+// list of brands, each with its own ladder — but older deployments still
+// have D.inverters as a flat array, so we transparently wrap that as a
+// single "VEICHI" brand instead of requiring a manual data migration.
+function getInverterBrands(D: any) {
+  if (Array.isArray(D.inverterBrands) && D.inverterBrands.length) return D.inverterBrands;
+  return [{ brand: "VEICHI", tiers: D.inverters || [] }];
+}
 function pickCombiner(minInputs: number, boxes: number[][], headroom: number, minSpare: number) {
   const need = Math.max(Math.ceil(minInputs * headroom), minInputs + (minSpare || 0));
   for (const row of boxes) if (need <= row[0]) return row;
@@ -73,7 +81,8 @@ function computeQuote(D: any, inp: any) {
   const expectedVAC = Vimp * 0.88 / Math.SQRT2;
 
   const inverterCalcKW = Math.ceil(hp * 0.8) + (inp.inverterPowerIncrease ?? D.inverterPowerIncrease);
-  const inv = pickInverter(inverterCalcKW, D.inverters);
+  const invBrand = inp.invBrand;
+  const inv = pickInverter(inverterCalcKW, invBrand.tiers);
   const invKW = inv[0], invCost = inv[1], invList = inv[2];
 
   const reactorModel = pickLadder(D.reactorLadder, Iimp);
@@ -122,7 +131,7 @@ function computeQuote(D: any, inp: any) {
     warranty: "12 سنة ضد عيوب الصناعة / 30 سنة ضد التناقص الإنتاجي عن %80",
   });
   push("inverter", "الانفرتر", t.inverter, invList, invCost, {
-    type: `VEICHI أو ما يعادلها ${invKW} KW`, qty: "#1#", warranty: "سنة واحدة",
+    type: `${invBrand.brand} أو ما يعادلها ${invKW} KW`, qty: "#1#", warranty: "سنة واحدة",
   });
   push("ip65", "لوحة الحماية IP65", t.ip65, steelPanelCost * 1.25, steelPanelCost, {
     type: `خاصة بانفرتر ${invKW} KW`, qty: "#1#", warranty: "سنة واحدة",
@@ -179,6 +188,7 @@ function computeQuote(D: any, inp: any) {
   return {
     panelsPerString, arrays, totalPanels, calcKW, efficiencyRatio,
     Iimp, Vimp, Voc, Isc, IscCalc, expectedVAC,
+    invBrandName: invBrand.brand,
     inverterCalcKW, invKW, reactorModel, reactorPrice, cbSize, combiner,
     items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt,
     netAfterManual, vat, finalTotal, sarPerKW: finalTotal / calcKW,
@@ -204,14 +214,18 @@ function adminView(q: any) {
   return { ...q, totalCost, profit, profitPct };
 }
 
-// Resolve panel + discount factor server-side. The client sends indices only
-// (panelIdx, discountTierIdx) — it never needs to know priceW or any factor.
+// Resolve panel + inverter brand + discount factor server-side. The client
+// sends indices only (panelIdx, inverterBrandIdx, discountTierIdx) — it
+// never needs to know priceW, inverter list/cost, or any discount factor.
 function resolveInput(D: any, rawInput: any) {
   const panel = D.panels[rawInput.panelIdx];
   if (!panel) throw new Error("invalid panelIdx");
+  const brands = getInverterBrands(D);
+  const invBrand = brands[rawInput.inverterBrandIdx ?? 0] || brands[0];
+  if (!invBrand) throw new Error("invalid inverterBrandIdx");
   const tierIdx = (rawInput.discountTierIdx ?? D.defaultDiscountIdx ?? 1);
   const tier = D.discountTiers[tierIdx] || D.discountTiers[D.defaultDiscountIdx ?? 1];
-  return { ...rawInput, panel, discountFactor: tier.factor };
+  return { ...rawInput, panel, invBrand, discountFactor: tier.factor };
 }
 
 Deno.serve(async (req: Request) => {
@@ -300,6 +314,11 @@ Deno.serve(async (req: Request) => {
     quote: publicView(q),
     feas: D.feas,
     // panel options for the dropdown: brand/power only, never the per-watt cost
-    panelOptions: D.panels.map((p: any) => ({ brand: p.brand, power: p.power })),
+    panelOptions: D.panels
+      .map((p: any, idx: number) => ({ idx, brand: p.brand, power: p.power, visible: p.visible !== false, hasPrice: !!p.priceW }))
+      .filter((p: any) => p.visible && p.hasPrice)
+      .map((p: any) => ({ idx: p.idx, brand: p.brand, power: p.power })),
+    // inverter brand options for the dropdown: brand name only, never list/cost/discount
+    inverterBrandOptions: getInverterBrands(D).map((b: any, idx: number) => ({ idx, brand: b.brand })),
   });
 });
