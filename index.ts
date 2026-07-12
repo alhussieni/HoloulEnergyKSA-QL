@@ -309,32 +309,26 @@ Deno.serve(async (req: Request) => {
   if (body.action === "find-client") {
     const rep = await checkRep(body.username, body.password);
     if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
-    const name = (body.name || "").trim();
     const phone = (body.phone || "").replace(/\D/g, "");
-    if (name.length < 3 && phone.length < 5) return json({ matches: [] });
+    if (phone.length < 5) return json({ matches: [] });
 
     const cols = "rep_display_name, client_name, client_phone, hp, final_total, snapshot, created_at";
-    const results: any[] = [];
-    if (name.length >= 3) {
-      const { data } = await supabase.from("quotes").select(cols)
-        .ilike("client_name", name).order("created_at", { ascending: false }).limit(10);
-      if (data) results.push(...data);
-    }
-    if (phone.length >= 5) {
-      const { data } = await supabase.from("quotes").select(cols)
-        .eq("client_phone", phone).order("created_at", { ascending: false }).limit(10);
-      if (data) results.push(...data);
-    }
-    const seen = new Set<string>();
-    const matches = results
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .filter(r => {
-        const key = r.created_at + "|" + r.client_phone;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .slice(0, 10);
+    const { data, error } = await supabase.from("quotes").select(cols)
+      .eq("client_phone", phone).order("created_at", { ascending: false }).limit(20);
+    if (error) return json({ error: error.message }, 500);
+
+    const invBrands = getInverterBrands(D);
+    const matches = (data || []).map((m: any) => {
+      const s = m.snapshot || {};
+      const panel = D.panels[s.panelIdx];
+      const invBrand = invBrands[s.inverterBrandIdx ?? 0];
+      return {
+        ...m,
+        panelLabel: panel ? `${panel.brand} ${panel.power}W` : "-",
+        invBrandLabel: invBrand ? invBrand.brand : "-",
+        structureType: s.structureType === "ROTATIONAL" ? "متحرك" : "ثابت",
+      };
+    });
     return json({ matches });
   }
 

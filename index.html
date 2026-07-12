@@ -446,28 +446,47 @@ function saveLead(q){
 
 let prevLeadLookupSeq = 0;
 let prevLeadLookupTimer = null;
+let lastPrevMatches = [];
 async function updatePrevLeadBox(){
   const box = document.getElementById('prevLeadBox');
   if(!box) return;
-  const name = (state.client||'').trim();
   const phone = (state.clientPhone||'').replace(/\D/g,'');
-  if(name.length<3 && phone.length<5){ box.style.display='none'; box.innerHTML=''; return; }
+  if(phone.length<5){ box.style.display='none'; box.innerHTML=''; lastPrevMatches=[]; return; }
   if(!repUsername || !repPasswordMem) return;
   const mySeq = ++prevLeadLookupSeq;
   let data;
   try{
-    data = await callEngine('find-client', { username: repUsername, password: repPasswordMem, name, phone });
+    data = await callEngine('find-client', { username: repUsername, password: repPasswordMem, phone });
   }catch(e){ return; }
   if(mySeq !== prevLeadLookupSeq) return; // a newer keystroke already superseded this lookup
   const matches = (data.matches||[]).filter(m=>m.snapshot);
+  lastPrevMatches = matches;
   if(!matches.length){ box.style.display='none'; box.innerHTML=''; return; }
-  const lead = matches[0];
-  const d = new Date(lead.created_at);
+  const latest = matches[0];
+  const d = new Date(latest.created_at);
   box.style.display = 'block';
   box.style.cssText = 'display:block;margin-top:10px;background:#FFF8E8;border:1px solid #F0DDA6;border-radius:9px;padding:9px 11px;font-size:12px';
-  box.innerHTML = `🕓 عميل سابق: استلم عرض بتاريخ ${d.toLocaleDateString('en-GB')} من <b>${lead.rep_display_name||'—'}</b> — الإجمالي: ${fmt(lead.final_total)} ﷼<br>
-    <button class="btn small" id="loadPrevLeadBtn" type="button" style="margin-top:6px">استخدم نفس السعر</button>`;
-  document.getElementById('loadPrevLeadBtn').onclick = ()=>loadPrevLead(lead);
+  box.innerHTML = `🕓 هذا الرقم مسجّل عليه ${matches.length} عرض${matches.length>1?'وض':''} سابق${matches.length>1?'ة':''} — آخرها بتاريخ ${d.toLocaleDateString('en-GB')} من <b>${latest.rep_display_name||'—'}</b><br>
+    <button class="btn small" id="showPrevDetailsBtn" type="button" style="margin-top:6px">عرض التفاصيل الكاملة</button>
+    <div id="prevLeadDetails" style="margin-top:8px;display:none"></div>`;
+  document.getElementById('showPrevDetailsBtn').onclick = ()=>{
+    const detailsBox = document.getElementById('prevLeadDetails');
+    const showing = detailsBox.style.display==='block';
+    if(showing){ detailsBox.style.display='none'; return; }
+    detailsBox.style.display='block';
+    detailsBox.innerHTML = lastPrevMatches.map((m,i)=>{
+      const dd = new Date(m.created_at);
+      return `<div style="border-top:1px solid #F0DDA6;padding-top:8px;margin-top:8px">
+        <div><b>عرض بتاريخ ${dd.toLocaleDateString('en-GB')}</b> — المندوب: <b>${m.rep_display_name||'—'}</b></div>
+        <div style="margin-top:4px;color:var(--muted)">القدرة: ${m.hp} حصان &nbsp;|&nbsp; اللوح: ${m.panelLabel} &nbsp;|&nbsp; الانفرتر: ${m.invBrandLabel} &nbsp;|&nbsp; الشاسيه: ${m.structureType}</div>
+        <div style="margin-top:4px;font-weight:600">الإجمالي: ${fmt(m.final_total)} ﷼</div>
+        <button class="btn small" data-loadprev="${i}" type="button" style="margin-top:6px">استخدم هذا السعر</button>
+      </div>`;
+    }).join('');
+    detailsBox.querySelectorAll('[data-loadprev]').forEach(b=>{
+      b.onclick = ()=>loadPrevLead(lastPrevMatches[+b.dataset.loadprev]);
+    });
+  };
 }
 
 function debouncedUpdatePrevLeadBox(){
