@@ -340,11 +340,15 @@ Deno.serve(async (req: Request) => {
 
   // ---- save every finalized quote centrally, tagged with the rep who made it ----
   if (body.action === "save-quote") {
-    const rep = await checkRep(body.username, body.password);
-    if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
+    let repUsername: string | null = null, repDisplayName = "الحاسبة الآلية (تسعير مباشر من العميل)";
+    if (!body.guest) {
+      const rep = await checkRep(body.username, body.password);
+      if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
+      repUsername = rep.username; repDisplayName = rep.displayName;
+    }
     const { error } = await supabase.from("quotes").insert({
-      rep_username: rep.username,
-      rep_display_name: rep.displayName,
+      rep_username: repUsername,
+      rep_display_name: repDisplayName,
       client_name: body.clientName || "",
       client_phone: (body.clientPhone || "").replace(/\D/g, ""),
       hp: body.hp || null,

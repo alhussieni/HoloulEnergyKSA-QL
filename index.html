@@ -435,6 +435,12 @@ function saveLead(q){
       clientName: state.client, clientPhone: state.clientPhone,
       hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot
     }).catch(()=>{});
+  } else if(guestMode){
+    callEngine('save-quote', {
+      guest: true,
+      clientName: state.client, clientPhone: state.clientPhone,
+      hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot
+    }).catch(()=>{});
   }
 }
 
@@ -489,8 +495,12 @@ function validateClient(){
 }
 function handlePrint(){
   if(!validateClient()) return;
-  saveLead(currentQuote());
+  const q = currentQuote();
+  saveLead(q);
+  const originalTitle = document.title;
+  document.title = buildQLCode(q).replace(/[\/\\?%*:|"<>]/g,'-');
   window.print();
+  setTimeout(()=>{ document.title = originalTitle; }, 1000);
 }
 function sendLeadWhatsapp(){
   if(!validateClient()) return;
@@ -799,6 +809,9 @@ function renderCalc(){
         <div style="font-size:13px;margin:8px 0 4px">تحية طيبة وبعد،</div>
         <div style="font-size:13px;color:var(--ink);line-height:1.8">
           نتشرف بتقديم عرض سعر منظومة توليد الكهرباء من خلال الطاقة الشمسية للتشغيل راس كهرباء /محرك غطاس ${state.hp} حصان
+        </div>
+        <div class="note" style="margin-top:8px">
+          ${repAuthed && repDisplayName ? `📋 قدّم هذا العرض: <b>${repDisplayName}</b>` : `🖥️ تم إصدار هذا العرض مباشرة عبر الحاسبة الإلكترونية`}
         </div>
       </div>
 
@@ -1211,6 +1224,8 @@ try{
   }
 }catch(e){}
 
+let guestMode = false, guestRegistered = false;
+
 function renderRepLogin(){
   return `<div class="card" style="max-width:360px;margin:60px auto">
     <h3>تسجيل دخول المندوب</h3>
@@ -1220,6 +1235,21 @@ function renderRepLogin(){
     <input type="password" id="rep_pass" autocomplete="current-password">
     <button class="btn" id="rep_login_btn" style="margin-top:14px;width:100%">دخول</button>
     <div id="rep_login_err" class="note" style="margin-top:10px;color:#B0432C;display:none"></div>
+    <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
+      <button class="btn ghost small" id="guestModeBtn" type="button">أنا عميل — التسعير مباشرة بدون مندوب</button>
+    </div>
+  </div>`;
+}
+
+function renderGuestRegister(){
+  return `<div class="card" style="max-width:360px;margin:60px auto">
+    <h3>بيانات التواصل</h3>
+    <div class="note" style="margin-bottom:10px">من فضلك سجّل اسمك ورقم جوالك عشان نقدر نتواصل معك بخصوص العرض.</div>
+    <label>الاسم *</label>
+    <input type="text" id="guest_name">
+    <label>رقم الجوال / واتساب *</label>
+    <input type="text" id="guest_phone" placeholder="05xxxxxxxx">
+    <button class="btn" id="guest_register_btn" style="margin-top:14px;width:100%">متابعة للتسعير</button>
   </div>`;
 }
 
@@ -1236,7 +1266,8 @@ function renderAdminLogin(){
 }
 
 function render(){
-  if(!repAuthed && currentView!=='admin'){ app.innerHTML = renderRepLogin(); wire(); return; }
+  if(!repAuthed && !guestMode && currentView!=='admin'){ app.innerHTML = renderRepLogin(); wire(); return; }
+  if(guestMode && !guestRegistered && currentView!=='admin'){ app.innerHTML = renderGuestRegister(); wire(); return; }
   if(currentView==='calc') app.innerHTML = renderCalc();
   else if(currentView==='feas') app.innerHTML = renderFeas();
   else if(currentView==='admin' && !adminAuthed) app.innerHTML = renderAdminLogin();
@@ -1245,7 +1276,7 @@ function render(){
 }
 
 function wire(){
-  if(!repAuthed && currentView!=='admin'){
+  if(!repAuthed && !guestMode && currentView!=='admin'){
     document.getElementById('rep_login_btn').onclick = async ()=>{
       const username = document.getElementById('rep_user').value.trim();
       const password = document.getElementById('rep_pass').value;
@@ -1260,6 +1291,22 @@ function wire(){
         errBox.textContent = e.message || 'بيانات الدخول غير صحيحة';
         errBox.style.display = 'block';
       }
+    };
+    document.getElementById('guestModeBtn').onclick = ()=>{
+      guestMode = true;
+      render();
+    };
+    return;
+  }
+  if(guestMode && !guestRegistered && currentView!=='admin'){
+    document.getElementById('guest_register_btn').onclick = ()=>{
+      const name = document.getElementById('guest_name').value.trim();
+      const phone = document.getElementById('guest_phone').value.trim();
+      if(!name || !phone){ alert('من فضلك اكتب اسمك ورقم جوالك'); return; }
+      state.client = name; state.clientPhone = phone;
+      guestRegistered = true;
+      showRepBadge();
+      refresh();
     };
     return;
   }
@@ -1518,6 +1565,10 @@ function showRepBadge(){
     badge.textContent = '👤 ' + repDisplayName;
     badge.style.display = 'inline';
     logoutBtn.style.display = 'inline-block';
+  } else if(guestMode){
+    badge.textContent = '🖥️ تسعير مباشر (بدون مندوب)';
+    badge.style.display = 'inline';
+    logoutBtn.style.display = 'inline-block';
   } else {
     badge.style.display = 'none';
     logoutBtn.style.display = 'none';
@@ -1525,7 +1576,9 @@ function showRepBadge(){
 }
 document.getElementById('repLogoutBtn').onclick = ()=>{
   repAuthed = false; repUsername = null; repPasswordMem = null; repDisplayName = null;
+  guestMode = false; guestRegistered = false;
   sessionStorage.removeItem('holoul_rep_session');
+  state.client = ''; state.clientPhone = '';
   showRepBadge();
   render();
 };
