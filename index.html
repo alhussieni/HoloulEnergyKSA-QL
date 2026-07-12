@@ -217,6 +217,8 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
         <button data-view="feas">دراسة الجدوى</button>
         <button data-view="admin">لوحة التحكم</button>
       </nav>
+      <span id="repNameBadge" class="no-print" style="display:none;font-size:12.5px;color:var(--muted);font-weight:600"></span>
+      <button id="repLogoutBtn" class="btn ghost small no-print" style="display:none">خروج</button>
     </div>
   </div>
 </header>
@@ -256,6 +258,7 @@ let cachedPanelOptions = [];  // [{brand,power}] — never priceW
 let cachedInverterBrandOptions = []; // [{idx,brand}] — never list/cost/discount
 let adminFinancials = null;   // cost/margin breakdown — only after admin auth
 let adminConfig = null;       // full rates object — only after admin auth
+let adminReps = [];           // rep accounts — only after admin auth
 let adminPasswordMem = null;  // held in memory only; lost on page reload
 let engineError = null;
 let quoteLoading = false;
@@ -413,14 +416,69 @@ function buildQLCode(q){
 const fmt1 = n => n.toLocaleString('en-US', {maximumFractionDigits:1});
 const fmt2 = n => n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
-/* ---- lead capture: local cache + optional cloud sync (Google Sheet Web App) ---- */
-const LEADS_KEY = 'holoul_leads_v1';
+/* ---- lead capture: central log (any rep, any device) + optional Google Sheet export ---- */
+const LEADS_KEY = 'holoul_leads_v1'; // local convenience cache only, not the source of truth anymore
 function saveLead(q){
-  const lead = {name:state.client, phone:state.clientPhone, hp:state.hp, total:Math.round(q.finalTotal), date:new Date().toISOString()};
+  const snapshot = {
+    hp: state.hp, panelIdx: state.panelIdx, inverterBrandIdx: state.inverterBrandIdx,
+    structureType: state.structureType, toggles: {...state.toggles}, specialDiscountAmt: state.specialDiscountAmt,
+    discountOverrideIdx: state.discountOverrideIdx
+  };
+  const sheetLead = {name:state.client, phone:state.clientPhone, hp:state.hp, total:Math.round(q.finalTotal), date:new Date().toISOString()};
   const leads = JSON.parse(localStorage.getItem(LEADS_KEY)||'[]');
-  leads.unshift(lead);
+  leads.unshift({...sheetLead, snapshot});
   localStorage.setItem(LEADS_KEY, JSON.stringify(leads.slice(0,500)));
-  logLead(lead);
+  logLead(sheetLead);
+  if(repUsername && repPasswordMem){
+    callEngine('save-quote', {
+      username: repUsername, password: repPasswordMem,
+      clientName: state.client, clientPhone: state.clientPhone,
+      hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot
+    }).catch(()=>{});
+  }
+}
+
+let prevLeadLookupSeq = 0;
+let prevLeadLookupTimer = null;
+async function updatePrevLeadBox(){
+  const box = document.getElementById('prevLeadBox');
+  if(!box) return;
+  const name = (state.client||'').trim();
+  const phone = (state.clientPhone||'').replace(/\D/g,'');
+  if(name.length<3 && phone.length<5){ box.style.display='none'; box.innerHTML=''; return; }
+  if(!repUsername || !repPasswordMem) return;
+  const mySeq = ++prevLeadLookupSeq;
+  let data;
+  try{
+    data = await callEngine('find-client', { username: repUsername, password: repPasswordMem, name, phone });
+  }catch(e){ return; }
+  if(mySeq !== prevLeadLookupSeq) return; // a newer keystroke already superseded this lookup
+  const matches = (data.matches||[]).filter(m=>m.snapshot);
+  if(!matches.length){ box.style.display='none'; box.innerHTML=''; return; }
+  const lead = matches[0];
+  const d = new Date(lead.created_at);
+  box.style.display = 'block';
+  box.style.cssText = 'display:block;margin-top:10px;background:#FFF8E8;border:1px solid #F0DDA6;border-radius:9px;padding:9px 11px;font-size:12px';
+  box.innerHTML = `🕓 عميل سابق: استلم عرض بتاريخ ${d.toLocaleDateString('en-GB')} من <b>${lead.rep_display_name||'—'}</b> — الإجمالي: ${fmt(lead.final_total)} ﷼<br>
+    <button class="btn small" id="loadPrevLeadBtn" type="button" style="margin-top:6px">استخدم نفس السعر</button>`;
+  document.getElementById('loadPrevLeadBtn').onclick = ()=>loadPrevLead(lead);
+}
+
+function debouncedUpdatePrevLeadBox(){
+  clearTimeout(prevLeadLookupTimer);
+  prevLeadLookupTimer = setTimeout(updatePrevLeadBox, 450);
+}
+
+function loadPrevLead(lead){
+  const s = lead.snapshot;
+  state.hp = s.hp;
+  state.panelIdx = s.panelIdx;
+  state.inverterBrandIdx = s.inverterBrandIdx ?? 0;
+  state.structureType = s.structureType || 'FIXED';
+  state.toggles = {...s.toggles};
+  state.specialDiscountAmt = s.specialDiscountAmt || 0;
+  if(discountUnlocked) state.discountOverrideIdx = s.discountOverrideIdx ?? null;
+  refresh();
 }
 function validateClient(){
   if(!state.client.trim() || !state.clientPhone.trim()){
@@ -631,6 +689,7 @@ function renderCalc(){
         <input type="text" id="in_client" value="${state.client}" placeholder="اسم العميل">
         <label>رقم الهاتف / واتساب *</label>
         <input type="text" id="in_phone" value="${state.clientPhone}" placeholder="05xxxxxxxx">
+        <div id="prevLeadBox" style="display:none"></div>
       </div>
 
       <div class="card">
@@ -1090,6 +1149,32 @@ function renderAdmin(){
   </div>
 
   <div class="card no-print">
+    <h3>إدارة المناديب</h3>
+    <table class="admtable">
+      <thead><tr><th>اسم المستخدم</th><th>الاسم الظاهر</th><th>كلمة مرور جديدة</th><th>مفعّل</th><th></th></tr></thead>
+      <tbody>
+        ${adminReps.map(r=>`
+          <tr>
+            <td><input data-repid="${r.id}" data-rf="username" value="${r.username}"></td>
+            <td><input data-repid="${r.id}" data-rf="displayName" value="${r.display_name}"></td>
+            <td><input data-repid="${r.id}" data-rf="password" type="password" placeholder="اتركه فارغًا لعدم التغيير"></td>
+            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="active" ${r.active?'checked':''}></td>
+            <td class="op"><button class="btn danger small" data-delrep="${r.id}">✕</button></td>
+          </tr>`).join('')}
+        <tr>
+          <td><input id="newrep_username" placeholder="اسم مستخدم جديد"></td>
+          <td><input id="newrep_displayname" placeholder="اسم المندوب"></td>
+          <td><input id="newrep_password" type="password" placeholder="كلمة مرور"></td>
+          <td></td>
+          <td class="op"><button class="btn small" id="addRepBtn">+ إضافة</button></td>
+        </tr>
+      </tbody>
+    </table>
+    <button class="btn ghost small" id="saveRepsBtn" style="margin-top:8px">💾 حفظ تعديلات المناديب</button>
+    <div class="note" style="margin-top:8px">كل مندوب يسجّل دخوله بحسابه الخاص من شاشة الحاسبة الرئيسية. تعطيل "مفعّل" يمنعه من الدخول فورًا بدون حذف بياناته.</div>
+  </div>
+
+  <div class="card no-print">
     <h3>الحماية</h3>
     <label>كلمة مرور جديدة</label>
     <input type="password" id="adm_newpass" placeholder="6 خانات على الأقل">
@@ -1114,6 +1199,30 @@ function renderAdmin(){
 const app = document.getElementById('app');
 let currentView = 'calc';
 
+/* ---- rep login gate — every rep has their own username/password, verified
+   server-side. Session is kept in sessionStorage so a refresh doesn't force
+   a re-login, but it's gone once the tab is closed. ---- */
+let repAuthed = false, repUsername = null, repPasswordMem = null, repDisplayName = null;
+try{
+  const savedRep = JSON.parse(sessionStorage.getItem('holoul_rep_session')||'null');
+  if(savedRep && savedRep.username && savedRep.password){
+    repUsername = savedRep.username; repPasswordMem = savedRep.password; repDisplayName = savedRep.displayName;
+    repAuthed = true;
+  }
+}catch(e){}
+
+function renderRepLogin(){
+  return `<div class="card" style="max-width:360px;margin:60px auto">
+    <h3>تسجيل دخول المندوب</h3>
+    <label>اسم المستخدم</label>
+    <input type="text" id="rep_user" autocomplete="username">
+    <label>كلمة المرور</label>
+    <input type="password" id="rep_pass" autocomplete="current-password">
+    <button class="btn" id="rep_login_btn" style="margin-top:14px;width:100%">دخول</button>
+    <div id="rep_login_err" class="note" style="margin-top:10px;color:#B0432C;display:none"></div>
+  </div>`;
+}
+
 /* ---- admin login gate — password verified server-side (see adminPasswordGate) ---- */
 let adminAuthed = false;
 
@@ -1127,6 +1236,7 @@ function renderAdminLogin(){
 }
 
 function render(){
+  if(!repAuthed){ app.innerHTML = renderRepLogin(); wire(); return; }
   if(currentView==='calc') app.innerHTML = renderCalc();
   else if(currentView==='feas') app.innerHTML = renderFeas();
   else if(currentView==='admin' && !adminAuthed) app.innerHTML = renderAdminLogin();
@@ -1135,12 +1245,34 @@ function render(){
 }
 
 function wire(){
+  if(!repAuthed){
+    document.getElementById('rep_login_btn').onclick = async ()=>{
+      const username = document.getElementById('rep_user').value.trim();
+      const password = document.getElementById('rep_pass').value;
+      const errBox = document.getElementById('rep_login_err');
+      try{
+        const data = await callEngine('rep-login', { username, password });
+        repUsername = username; repPasswordMem = password; repDisplayName = data.displayName; repAuthed = true;
+        sessionStorage.setItem('holoul_rep_session', JSON.stringify({username, password, displayName:data.displayName}));
+        showRepBadge();
+        refresh();
+      }catch(e){
+        errBox.textContent = e.message || 'بيانات الدخول غير صحيحة';
+        errBox.style.display = 'block';
+      }
+    };
+    return;
+  }
   if(currentView==='admin' && !adminAuthed){
     document.getElementById('adm_login_btn').onclick = async ()=>{
       const p=document.getElementById('adm_pass').value;
       try{
         const data = await callEngine('admin-config', { adminPassword: p });
         adminPasswordMem = p; adminConfig = normalizeAdminConfig(data.config); adminAuthed = true;
+        try{
+          const repsData = await callEngine('admin-list-reps', { adminPassword: p });
+          adminReps = repsData.reps || [];
+        }catch(e){ adminReps = []; }
         render();
       }catch(e){ alert('كلمة المرور غير صحيحة'); }
     };
@@ -1152,8 +1284,9 @@ function wire(){
     return;
   }
   if(currentView==='calc'){
-    document.getElementById('in_client').oninput = e=>{state.client=e.target.value; document.getElementById('bannerName').textContent=state.client||'—';};
-    document.getElementById('in_phone').oninput = e=>{state.clientPhone=e.target.value; document.getElementById('bannerPhone').textContent=state.clientPhone||'—';};
+    document.getElementById('in_client').oninput = e=>{state.client=e.target.value; document.getElementById('bannerName').textContent=state.client||'—'; debouncedUpdatePrevLeadBox();};
+    document.getElementById('in_phone').oninput = e=>{state.clientPhone=e.target.value; document.getElementById('bannerPhone').textContent=state.clientPhone||'—'; debouncedUpdatePrevLeadBox();};
+    updatePrevLeadBox();
     const confirmHp = ()=>{ state.hp = +document.getElementById('in_hp').value || 1; refresh(); };
     document.getElementById('hp_confirm').onclick = confirmHp;
     document.getElementById('in_hp').onkeydown = e=>{ if(e.key==='Enter') confirmHp(); };
@@ -1209,6 +1342,47 @@ function wire(){
     });
   }
   if(currentView==='admin'){
+    document.getElementById('addRepBtn').onclick = async ()=>{
+      const username = document.getElementById('newrep_username').value.trim();
+      const displayName = document.getElementById('newrep_displayname').value.trim();
+      const password = document.getElementById('newrep_password').value;
+      if(!username || !displayName || !password){ alert('من فضلك أدخل اسم المستخدم والاسم الظاهر وكلمة المرور'); return; }
+      try{
+        await callEngine('admin-save-rep', { adminPassword: adminPasswordMem, username, displayName, password, active:true });
+        const repsData = await callEngine('admin-list-reps', { adminPassword: adminPasswordMem });
+        adminReps = repsData.reps || [];
+        render();
+      }catch(e){ alert('تعذرت الإضافة: '+e.message); }
+    };
+    document.getElementById('saveRepsBtn').onclick = async ()=>{
+      const rows = {};
+      document.querySelectorAll('[data-repid]').forEach(inp=>{
+        const id = inp.dataset.repid, f = inp.dataset.rf;
+        rows[id] = rows[id] || {};
+        rows[id][f] = f==='active' ? inp.checked : inp.value;
+      });
+      try{
+        for(const id of Object.keys(rows)){
+          const r = rows[id];
+          const payload = { adminPassword: adminPasswordMem, id:+id, username:r.username, displayName:r.displayName, active:r.active };
+          if(r.password) payload.password = r.password;
+          await callEngine('admin-save-rep', payload);
+        }
+        const repsData = await callEngine('admin-list-reps', { adminPassword: adminPasswordMem });
+        adminReps = repsData.reps || [];
+        alert('تم حفظ تعديلات المناديب ✔');
+        render();
+      }catch(e){ alert('تعذر الحفظ: '+e.message); }
+    };
+    document.querySelectorAll('[data-delrep]').forEach(b=>b.onclick=async ()=>{
+      if(!confirm('حذف هذا المندوب نهائيًا؟')) return;
+      try{
+        await callEngine('admin-delete-rep', { adminPassword: adminPasswordMem, id:+b.dataset.delrep });
+        const repsData = await callEngine('admin-list-reps', { adminPassword: adminPasswordMem });
+        adminReps = repsData.reps || [];
+        render();
+      }catch(e){ alert('تعذر الحذف: '+e.message); }
+    });
     document.getElementById('admSave').onclick = async ()=>{
       document.querySelectorAll('[data-p]').forEach(inp=>{
         const i=+inp.dataset.p, f=inp.dataset.f;
@@ -1336,6 +1510,26 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     render();
   };
 });
+
+function showRepBadge(){
+  const badge = document.getElementById('repNameBadge');
+  const logoutBtn = document.getElementById('repLogoutBtn');
+  if(repAuthed && repDisplayName){
+    badge.textContent = '👤 ' + repDisplayName;
+    badge.style.display = 'inline';
+    logoutBtn.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+    logoutBtn.style.display = 'none';
+  }
+}
+document.getElementById('repLogoutBtn').onclick = ()=>{
+  repAuthed = false; repUsername = null; repPasswordMem = null; repDisplayName = null;
+  sessionStorage.removeItem('holoul_rep_session');
+  showRepBadge();
+  render();
+};
+showRepBadge();
 
 async function refresh(){
   quoteLoading = true;

@@ -289,6 +289,102 @@ Deno.serve(async (req: Request) => {
     return json({ config: D, quote: adminView(q) });
   }
 
+  async function checkRep(username: string | undefined, password: string | undefined) {
+    if (!username || !password) return null;
+    const { data, error } = await supabase.from("reps")
+      .select("username, password_hash, display_name, active").eq("username", username).single();
+    if (error || !data || !data.active) return null;
+    if ((await sha256Hex(password)) !== data.password_hash) return null;
+    return { username: data.username, displayName: data.display_name };
+  }
+
+  // ---- rep login: every rep has their own username/password ----
+  if (body.action === "rep-login") {
+    const rep = await checkRep(body.username, body.password);
+    if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
+    return json({ ok: true, displayName: rep.displayName });
+  }
+
+  // ---- has this client already received a quote, from whom, at what price? ----
+  if (body.action === "find-client") {
+    const rep = await checkRep(body.username, body.password);
+    if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
+    const name = (body.name || "").trim();
+    const phone = (body.phone || "").replace(/\D/g, "");
+    if (name.length < 3 && phone.length < 5) return json({ matches: [] });
+
+    const cols = "rep_display_name, client_name, client_phone, hp, final_total, snapshot, created_at";
+    const results: any[] = [];
+    if (name.length >= 3) {
+      const { data } = await supabase.from("quotes").select(cols)
+        .ilike("client_name", name).order("created_at", { ascending: false }).limit(10);
+      if (data) results.push(...data);
+    }
+    if (phone.length >= 5) {
+      const { data } = await supabase.from("quotes").select(cols)
+        .eq("client_phone", phone).order("created_at", { ascending: false }).limit(10);
+      if (data) results.push(...data);
+    }
+    const seen = new Set<string>();
+    const matches = results
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .filter(r => {
+        const key = r.created_at + "|" + r.client_phone;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 10);
+    return json({ matches });
+  }
+
+  // ---- save every finalized quote centrally, tagged with the rep who made it ----
+  if (body.action === "save-quote") {
+    const rep = await checkRep(body.username, body.password);
+    if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
+    const { error } = await supabase.from("quotes").insert({
+      rep_username: rep.username,
+      rep_display_name: rep.displayName,
+      client_name: body.clientName || "",
+      client_phone: (body.clientPhone || "").replace(/\D/g, ""),
+      hp: body.hp || null,
+      final_total: body.finalTotal || null,
+      snapshot: body.snapshot || null,
+    });
+    if (error) return json({ error: error.message }, 500);
+    return json({ ok: true });
+  }
+
+  // ---- admin: manage rep accounts ----
+  if (body.action === "admin-list-reps") {
+    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    const { data, error } = await supabase.from("reps").select("id, username, display_name, active").order("id");
+    if (error) return json({ error: error.message }, 500);
+    return json({ reps: data || [] });
+  }
+
+  if (body.action === "admin-save-rep") {
+    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    const row: any = { username: body.username, display_name: body.displayName, active: body.active !== false };
+    if (body.password) row.password_hash = await sha256Hex(body.password);
+    if (body.id) {
+      const { error } = await supabase.from("reps").update(row).eq("id", body.id);
+      if (error) return json({ error: error.message }, 500);
+    } else {
+      if (!body.password) return json({ error: "password required for new rep" }, 400);
+      const { error } = await supabase.from("reps").insert(row);
+      if (error) return json({ error: error.message }, 500);
+    }
+    return json({ ok: true });
+  }
+
+  if (body.action === "admin-delete-rep") {
+    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    const { error } = await supabase.from("reps").delete().eq("id", body.id);
+    if (error) return json({ error: error.message }, 500);
+    return json({ ok: true });
+  }
+
   // ---- lead logging: relay to the sales team's Google Sheet webhook ----
   // Runs server-side so it works regardless of the caller's browser (no-cors
   // client-side fetches can silently fail); failures here never block the quote.
