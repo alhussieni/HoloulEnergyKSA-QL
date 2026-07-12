@@ -1236,7 +1236,7 @@ function renderAdminLogin(){
 }
 
 function render(){
-  if(!repAuthed){ app.innerHTML = renderRepLogin(); wire(); return; }
+  if(!repAuthed && currentView!=='admin'){ app.innerHTML = renderRepLogin(); wire(); return; }
   if(currentView==='calc') app.innerHTML = renderCalc();
   else if(currentView==='feas') app.innerHTML = renderFeas();
   else if(currentView==='admin' && !adminAuthed) app.innerHTML = renderAdminLogin();
@@ -1245,7 +1245,7 @@ function render(){
 }
 
 function wire(){
-  if(!repAuthed){
+  if(!repAuthed && currentView!=='admin'){
     document.getElementById('rep_login_btn').onclick = async ()=>{
       const username = document.getElementById('rep_user').value.trim();
       const password = document.getElementById('rep_pass').value;
