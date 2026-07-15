@@ -298,7 +298,12 @@ Deno.serve(async (req: Request) => {
     return { username: data.username, displayName: data.display_name };
   }
 
-  // ---- rep login: every rep has their own username/password ----
+  function phoneKey(raw: string) {
+  const digits = (raw || "").replace(/\D/g, "");
+  return digits.length > 9 ? digits.slice(-9) : digits;
+}
+
+// ---- rep login: every rep has their own username/password ----
   if (body.action === "rep-login") {
     const rep = await checkRep(body.username, body.password);
     if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
@@ -309,12 +314,14 @@ Deno.serve(async (req: Request) => {
   if (body.action === "find-client") {
     const rep = await checkRep(body.username, body.password);
     if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
-    const phone = (body.phone || "").replace(/\D/g, "");
+    const phone = phoneKey(body.phone);
     if (phone.length < 5) return json({ matches: [] });
 
     const cols = "rep_display_name, client_name, client_phone, hp, final_total, snapshot, created_at";
+    const rawDigits = (body.phone || "").replace(/\D/g, "");
     const { data, error } = await supabase.from("quotes").select(cols)
-      .eq("client_phone", phone).order("created_at", { ascending: false }).limit(20);
+      .or(`client_phone.eq.${phone},client_phone.eq.${rawDigits}`)
+      .order("created_at", { ascending: false }).limit(20);
     if (error) return json({ error: error.message }, 500);
 
     const invBrands = getInverterBrands(D);
@@ -344,7 +351,7 @@ Deno.serve(async (req: Request) => {
       rep_username: repUsername,
       rep_display_name: repDisplayName,
       client_name: body.clientName || "",
-      client_phone: (body.clientPhone || "").replace(/\D/g, ""),
+      client_phone: phoneKey(body.clientPhone),
       hp: body.hp || null,
       final_total: body.finalTotal || null,
       snapshot: body.snapshot || null,
@@ -386,6 +393,13 @@ Deno.serve(async (req: Request) => {
   // ---- lead logging: relay to the sales team's Google Sheet webhook ----
   // Runs server-side so it works regardless of the caller's browser (no-cors
   // client-side fetches can silently fail); failures here never block the quote.
+  // ---- product catalog: reference list prices for standalone sales (any rep can view) ----
+  if (body.action === "get-product-catalog") {
+    const rep = await checkRep(body.username, body.password);
+    if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
+    return json({ productCatalog: D.productCatalog || [] });
+  }
+
   if (body.action === "log-lead") {
     const url = D.leadsWebhookUrl;
     if (url) {

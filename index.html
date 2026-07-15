@@ -215,6 +215,7 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
       <nav class="tabs no-print">
         <button data-view="calc" class="active">الحاسبة</button>
         <button data-view="feas">دراسة الجدوى</button>
+        <button data-view="products" id="productsNavBtn">قائمة المنتجات</button>
         <button data-view="admin">لوحة التحكم</button>
       </nav>
       <span id="repNameBadge" class="no-print" style="display:none;font-size:12.5px;color:var(--muted);font-weight:600"></span>
@@ -256,6 +257,9 @@ let cachedQuote = null;       // public quote (sell prices only)
 let cachedFeas = null;        // general feasibility-study assumptions (non-sensitive)
 let cachedPanelOptions = [];  // [{brand,power}] — never priceW
 let cachedInverterBrandOptions = []; // [{idx,brand}] — never list/cost/discount
+let cachedProductCatalog = null; // fetched lazily when the products tab opens
+let productCatalogLoading = false;
+let productCatalogError = null;
 let adminFinancials = null;   // cost/margin breakdown — only after admin auth
 let adminConfig = null;       // full rates object — only after admin auth
 let adminReps = [];           // rep accounts — only after admin auth
@@ -322,6 +326,7 @@ function normalizeAdminConfig(cfg){
   if(!Array.isArray(cfg.inverterBrands) || !cfg.inverterBrands.length){
     cfg.inverterBrands = [{ brand:'VEICHI', tiers: cfg.inverters || [] }];
   }
+  if(!Array.isArray(cfg.productCatalog)) cfg.productCatalog = [];
   return cfg;
 }
 
@@ -1070,6 +1075,53 @@ async function loadCloudLeads(){
   }
 }
 
+function renderProducts(){
+  if(!cachedProductCatalog && !productCatalogLoading && !productCatalogError){
+    loadProductCatalog();
+  }
+  if(productCatalogLoading && !cachedProductCatalog){
+    return `<div class="card" style="max-width:420px;margin:60px auto;text-align:center"><h3>جارِ التحميل...</h3></div>`;
+  }
+  if(productCatalogError){
+    return `<div class="card" style="max-width:420px;margin:60px auto;text-align:center">
+      <h3 style="color:#B0432C">تعذر تحميل قائمة المنتجات</h3>
+      <div class="note">${productCatalogError}</div>
+      <button class="btn small" id="retryProductsBtn" style="margin-top:12px">إعادة المحاولة</button>
+    </div>`;
+  }
+  const catalog = cachedProductCatalog || [];
+  return `
+  <div class="card no-print">
+    <h3>قائمة المنتجات (أسعار بيع بدون خصم)</h3>
+    <input type="text" id="productSearch" placeholder="ابحث عن منتج بالاسم..." style="margin-bottom:4px">
+  </div>
+  ${catalog.map((cat,ci)=>`
+    <div class="card product-category" data-cat="${ci}">
+      <h3>${cat.category}</h3>
+      <table class="admtable">
+        <thead><tr>${cat.columns.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${cat.rows.map(row=>`<tr class="product-row" data-search="${row.join(' ').toLowerCase()}">${row.map((cell,i)=>`<td${i>=row.length-2?' class="num"':''}>${cell}</td>`).join('')}</tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`).join('')}
+  ${!catalog.length ? `<div class="card"><div class="note">لا توجد منتجات مسجّلة بعد.</div></div>` : ''}
+  `;
+}
+
+async function loadProductCatalog(){
+  productCatalogLoading = true;
+  productCatalogError = null;
+  try{
+    const data = await callEngine('get-product-catalog', { username: repUsername, password: repPasswordMem });
+    cachedProductCatalog = data.productCatalog || [];
+  }catch(e){
+    productCatalogError = e.message || 'تعذر الاتصال بالخادم';
+  }
+  productCatalogLoading = false;
+  render();
+}
+
 function renderAdmin(){
   return `
   <div class="card">
@@ -1124,6 +1176,35 @@ function renderAdmin(){
       </div>`).join('')}
     <button class="btn ghost small" id="addInverterBrand">+ إضافة نوع انفرتر جديد</button>
     <div class="note" style="margin-top:8px">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي). لو فيه أكتر من نوع، هيظهر للعميل اختيار "نوع الانفرتر" في الحاسبة.</div>
+  </div>
+
+  <div class="card no-print">
+    <h3>قائمة المنتجات (أسعار بيع بدون خصم)</h3>
+    ${(adminConfig.productCatalog||[]).map((cat,ci)=>`
+      <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+          <input data-pcat="${ci}" style="max-width:280px;font-weight:600" value="${cat.category}" placeholder="اسم الفئة">
+          <button class="btn danger small" data-delcat="${ci}">🗑 حذف هذه الفئة</button>
+        </div>
+        <table class="admtable">
+          <thead><tr>
+            ${cat.columns.map((col,coli)=>`<th><input data-pcol="${ci}:${coli}" value="${col}" style="font-weight:600"></th>`).join('')}
+            <th></th>
+          </tr></thead>
+          <tbody>
+            ${cat.rows.map((row,ri)=>`<tr>
+              ${row.map((cell,coli)=>`<td><input data-pcell="${ci}:${ri}:${coli}" value="${cell}"></td>`).join('')}
+              <td class="op"><button class="btn danger small" data-delrow="${ci}:${ri}">✕</button></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="btn ghost small" data-addrow="${ci}">+ إضافة صف</button>
+          <button class="btn ghost small" data-addcol="${ci}">+ إضافة عمود</button>
+        </div>
+      </div>`).join('')}
+    <button class="btn ghost small" id="addProductCategory">+ إضافة فئة منتجات جديدة</button>
+    <div class="note" style="margin-top:8px">دي أسعار بيع مرجعية بدون خصم (منفصلة تمامًا عن أسعار محرك التسعير الداخلي للمحطات). هتظهر للمناديب في تبويب "قائمة المنتجات".</div>
   </div>
 
   <div class="card">
@@ -1289,6 +1370,7 @@ function render(){
   if(guestMode && !guestRegistered && currentView!=='admin'){ app.innerHTML = renderGuestRegister(); wire(); return; }
   if(currentView==='calc') app.innerHTML = renderCalc();
   else if(currentView==='feas') app.innerHTML = renderFeas();
+  else if(currentView==='products') app.innerHTML = renderProducts();
   else if(currentView==='admin' && !adminAuthed) app.innerHTML = renderAdminLogin();
   else app.innerHTML = renderAdmin();
   wire();
@@ -1341,6 +1423,24 @@ function wire(){
         }catch(e){ adminReps = []; }
         render();
       }catch(e){ alert('كلمة المرور غير صحيحة'); }
+    };
+    return;
+  }
+  if(currentView==='products'){
+    const retryBtn = document.getElementById('retryProductsBtn');
+    if(retryBtn) retryBtn.onclick = ()=>{ productCatalogError=null; render(); };
+    const searchInput = document.getElementById('productSearch');
+    if(searchInput) searchInput.oninput = e=>{
+      const q = e.target.value.trim().toLowerCase();
+      document.querySelectorAll('.product-category').forEach(catEl=>{
+        let anyVisible = false;
+        catEl.querySelectorAll('.product-row').forEach(rowEl=>{
+          const match = !q || rowEl.dataset.search.includes(q);
+          rowEl.style.display = match ? '' : 'none';
+          if(match) anyVisible = true;
+        });
+        catEl.style.display = anyVisible ? '' : 'none';
+      });
     };
     return;
   }
@@ -1449,7 +1549,7 @@ function wire(){
         render();
       }catch(e){ alert('تعذر الحذف: '+e.message); }
     });
-    document.getElementById('admSave').onclick = async ()=>{
+    function harvestAdminInputs(){
       document.querySelectorAll('[data-p]').forEach(inp=>{
         const i=+inp.dataset.p, f=inp.dataset.f;
         adminConfig.panels[i][f] = (f==='brand') ? inp.value : +inp.value;
@@ -1475,31 +1575,49 @@ function wire(){
         });
       });
       delete adminConfig.inverters;
+      document.querySelectorAll('[data-pcat]').forEach(inp=>{
+        adminConfig.productCatalog[+inp.dataset.pcat].category = inp.value;
+      });
+      document.querySelectorAll('[data-pcol]').forEach(inp=>{
+        const [ci,coli] = inp.dataset.pcol.split(':').map(Number);
+        adminConfig.productCatalog[ci].columns[coli] = inp.value;
+      });
+      document.querySelectorAll('[data-pcell]').forEach(inp=>{
+        const [ci,ri,coli] = inp.dataset.pcell.split(':').map(Number);
+        adminConfig.productCatalog[ci].rows[ri][coli] = inp.value;
+      });
       document.querySelectorAll('[data-d]').forEach(inp=>{
         const i=+inp.dataset.d, f=inp.dataset.f;
         adminConfig.discountTiers[i][f] = (f==='label') ? inp.value : +inp.value;
       });
-      adminConfig.hpCapacityRatio=+document.getElementById('a_hpratio').value;
-      adminConfig.steelPanelPerHP=+document.getElementById('a_steel').value;
-      adminConfig.cablePerMeter=+document.getElementById('a_cable').value;
-      adminConfig.cableHighMultiplier=+document.getElementById('a_cablehigh').value;
-      adminConfig.cableLowMultiplier=+document.getElementById('a_cablelow').value;
-      adminConfig.cableMarkup=+document.getElementById('a_cablemarkup').value;
-      adminConfig.combinerHeadroom=+document.getElementById('a_combheadroom').value;
-      adminConfig.combinerMinSpareStrings=+document.getElementById('a_combspare').value;
-      adminConfig.mc4PerUnit=+document.getElementById('a_mc4').value;
-      adminConfig.structurePriceFixed=+document.getElementById('a_stfix').value;
-      adminConfig.structurePriceRotational=+document.getElementById('a_strot').value;
-      adminConfig.concretePerUnit=+document.getElementById('a_conc').value;
-      adminConfig.earthingPerUnit=+document.getElementById('a_earth').value;
-      adminConfig.flexTubePerUnit=+document.getElementById('a_flex').value;
-      adminConfig.mechInstallPerPanel=+document.getElementById('a_mechinst').value;
-      adminConfig.elecInstallPerPanel=+document.getElementById('a_elecinst').value;
-      adminConfig.transportPerTrip=+document.getElementById('a_trans').value;
-      adminConfig.transportMinimum=+document.getElementById('a_transmin').value;
-      adminConfig.vat=+document.getElementById('a_vat').value;
-      adminConfig.defaultDiscountIdx=+document.getElementById('a_defdisc').value;
-      adminConfig.leadsWebhookUrl=document.getElementById('a_webhook').value.trim();
+      const num = id => { const el=document.getElementById(id); return el ? +el.value : undefined; };
+      const setIfNum = (key,id) => { const v=num(id); if(v!==undefined && !isNaN(v)) adminConfig[key]=v; };
+      setIfNum('hpCapacityRatio','a_hpratio');
+      setIfNum('steelPanelPerHP','a_steel');
+      setIfNum('cablePerMeter','a_cable');
+      setIfNum('cableHighMultiplier','a_cablehigh');
+      setIfNum('cableLowMultiplier','a_cablelow');
+      setIfNum('cableMarkup','a_cablemarkup');
+      setIfNum('combinerHeadroom','a_combheadroom');
+      setIfNum('combinerMinSpareStrings','a_combspare');
+      setIfNum('mc4PerUnit','a_mc4');
+      setIfNum('structurePriceFixed','a_stfix');
+      setIfNum('structurePriceRotational','a_strot');
+      setIfNum('concretePerUnit','a_conc');
+      setIfNum('earthingPerUnit','a_earth');
+      setIfNum('flexTubePerUnit','a_flex');
+      setIfNum('mechInstallPerPanel','a_mechinst');
+      setIfNum('elecInstallPerPanel','a_elecinst');
+      setIfNum('transportPerTrip','a_trans');
+      setIfNum('transportMinimum','a_transmin');
+      setIfNum('vat','a_vat');
+      setIfNum('defaultDiscountIdx','a_defdisc');
+      const webhookEl = document.getElementById('a_webhook');
+      if(webhookEl) adminConfig.leadsWebhookUrl = webhookEl.value.trim();
+    }
+
+    document.getElementById('admSave').onclick = async ()=>{
+      harvestAdminInputs();
       try{
         await callEngine('update-config', { adminPassword: adminPasswordMem, config: adminConfig });
         alert('تم حفظ التعديلات ✔');
@@ -1529,26 +1647,60 @@ function wire(){
       render();
     };
     document.getElementById('addPanel').onclick = ()=>{
+      harvestAdminInputs();
       adminConfig.panels.push({brand:'جديد',power:600,vimp:40,voc:48,iimp:15,isc:16,priceW:0.5,visible:true});
       render();
     };
     document.querySelectorAll('[data-delpanel]').forEach(b=>b.onclick=()=>{
+      harvestAdminInputs();
       adminConfig.panels.splice(+b.dataset.delpanel,1); render();
     });
     document.getElementById('addInverterBrand').onclick = ()=>{
+      harvestAdminInputs();
       adminConfig.inverterBrands.push({brand:'نوع جديد', tiers:[[10,900,1000]]});
       render();
     };
     document.querySelectorAll('[data-delbrand]').forEach(b=>b.onclick=()=>{
+      harvestAdminInputs();
       adminConfig.inverterBrands.splice(+b.dataset.delbrand,1); render();
     });
     document.querySelectorAll('[data-addtier]').forEach(b=>b.onclick=()=>{
+      harvestAdminInputs();
       adminConfig.inverterBrands[+b.dataset.addtier].tiers.push([10,900,1000]);
       render();
     });
     document.querySelectorAll('[data-deltier]').forEach(b=>b.onclick=()=>{
+      harvestAdminInputs();
       const [bi,ti] = b.dataset.deltier.split(':').map(Number);
       adminConfig.inverterBrands[bi].tiers.splice(ti,1);
+      render();
+    });
+    document.getElementById('addProductCategory').onclick = ()=>{
+      harvestAdminInputs();
+      adminConfig.productCatalog.push({category:'فئة جديدة', columns:['الصنف','السعر'], rows:[]});
+      render();
+    };
+    document.querySelectorAll('[data-delcat]').forEach(b=>b.onclick=()=>{
+      harvestAdminInputs();
+      adminConfig.productCatalog.splice(+b.dataset.delcat,1); render();
+    });
+    document.querySelectorAll('[data-addrow]').forEach(b=>b.onclick=()=>{
+      harvestAdminInputs();
+      const cat = adminConfig.productCatalog[+b.dataset.addrow];
+      cat.rows.push(new Array(cat.columns.length).fill(''));
+      render();
+    });
+    document.querySelectorAll('[data-addcol]').forEach(b=>b.onclick=()=>{
+      harvestAdminInputs();
+      const cat = adminConfig.productCatalog[+b.dataset.addcol];
+      cat.columns.push('عمود جديد');
+      cat.rows.forEach(r=>r.push(''));
+      render();
+    });
+    document.querySelectorAll('[data-delrow]').forEach(b=>b.onclick=()=>{
+      harvestAdminInputs();
+      const [ci,ri] = b.dataset.delrow.split(':').map(Number);
+      adminConfig.productCatalog[ci].rows.splice(ri,1);
       render();
     });
     document.getElementById('admExport').onclick = ()=>{
@@ -1580,6 +1732,8 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
 function showRepBadge(){
   const badge = document.getElementById('repNameBadge');
   const logoutBtn = document.getElementById('repLogoutBtn');
+  const productsBtn = document.getElementById('productsNavBtn');
+  if(productsBtn) productsBtn.style.display = guestMode ? 'none' : '';
   if(repAuthed && repDisplayName){
     badge.textContent = '👤 ' + repDisplayName;
     badge.style.display = 'inline';
