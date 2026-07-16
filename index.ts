@@ -394,6 +394,25 @@ Deno.serve(async (req: Request) => {
   // Runs server-side so it works regardless of the caller's browser (no-cors
   // client-side fetches can silently fail); failures here never block the quote.
   // ---- product catalog: reference list prices for standalone sales (any rep can view) ----
+  // ---- admin: upload a product/category image to Supabase Storage ----
+  if (body.action === "upload-product-image") {
+    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    if (!body.imageBase64 || !body.filename) return json({ error: "imageBase64 and filename required" }, 400);
+    try {
+      const base64 = String(body.imageBase64).split(",").pop()!; // strip data:...;base64, prefix if present
+      const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+      const ext = (body.filename.split(".").pop() || "jpg").toLowerCase();
+      const safeName = `${crypto.randomUUID()}.${ext}`;
+      const contentType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+      const { error: upErr } = await supabase.storage.from("product-images").upload(safeName, bytes, { contentType, upsert: true });
+      if (upErr) return json({ error: upErr.message }, 500);
+      const { data: pub } = supabase.storage.from("product-images").getPublicUrl(safeName);
+      return json({ url: pub.publicUrl });
+    } catch (e) {
+      return json({ error: (e as Error).message }, 500);
+    }
+  }
+
   if (body.action === "get-product-catalog") {
     const rep = await checkRep(body.username, body.password);
     if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);

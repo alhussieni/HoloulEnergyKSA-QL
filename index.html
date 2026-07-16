@@ -1075,6 +1075,8 @@ async function loadCloudLeads(){
   }
 }
 
+let selectedProduct = null; // {catIdx, rowIdx} when viewing a single product's detail page
+
 function renderProducts(){
   if(!cachedProductCatalog && !productCatalogLoading && !productCatalogError){
     loadProductCatalog();
@@ -1090,6 +1092,39 @@ function renderProducts(){
     </div>`;
   }
   const catalog = cachedProductCatalog || [];
+
+  if(selectedProduct){
+    const cat = catalog[selectedProduct.catIdx];
+    const row = cat && cat.rows[selectedProduct.rowIdx];
+    if(!cat || !row){ selectedProduct = null; }
+    else {
+      const detail = (cat.productDetails && cat.productDetails[selectedProduct.rowIdx]) || {};
+      const img = detail.image || cat.categoryImage;
+      return `
+      <div class="card no-print">
+        <button class="btn ghost small" id="backToProductsBtn">→ رجوع لقائمة المنتجات</button>
+      </div>
+      <div class="card">
+        ${img ? `<img src="${img}" alt="${row[0]}" style="max-width:100%;border-radius:10px;margin-bottom:12px">` : ''}
+        <h3>${row[0]}</h3>
+        <table class="admtable" style="margin-top:8px">
+          <tbody>
+            ${cat.columns.map((c,i)=>`<tr><td style="font-weight:600;width:180px">${c}</td><td class="num">${row[i]}</td></tr>`).join('')}
+          </tbody>
+        </table>
+        ${detail.description ? `<div class="note" style="margin-top:12px;font-size:13px">${detail.description}</div>` : ''}
+        ${detail.specs && Object.keys(detail.specs).length ? `
+        <h3 style="margin-top:16px">مواصفات إضافية</h3>
+        <table class="admtable">
+          <tbody>
+            ${Object.entries(detail.specs).map(([k,v])=>`<tr><td style="font-weight:600;width:180px">${k}</td><td>${v}</td></tr>`).join('')}
+          </tbody>
+        </table>` : ''}
+        ${cat.categoryInfo ? `<div class="note" style="margin-top:12px">${cat.categoryInfo}</div>` : ''}
+      </div>`;
+    }
+  }
+
   return `
   <div class="card no-print">
     <h3>قائمة المنتجات (أسعار بيع بدون خصم)</h3>
@@ -1097,11 +1132,13 @@ function renderProducts(){
   </div>
   ${catalog.map((cat,ci)=>`
     <div class="card product-category" data-cat="${ci}">
+      ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}" style="max-width:100%;border-radius:10px;margin-bottom:10px">` : ''}
       <h3>${cat.category}</h3>
+      ${cat.categoryInfo ? `<div class="note" style="margin-bottom:10px">${cat.categoryInfo}</div>` : ''}
       <table class="admtable">
-        <thead><tr>${cat.columns.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+        <thead><tr>${cat.columns.map(c=>`<th>${c}</th>`).join('')}<th></th></tr></thead>
         <tbody>
-          ${cat.rows.map(row=>`<tr class="product-row" data-search="${row.join(' ').toLowerCase()}">${row.map((cell,i)=>`<td${i>=row.length-2?' class="num"':''}>${cell}</td>`).join('')}</tr>`).join('')}
+          ${cat.rows.map((row,ri)=>`<tr class="product-row" data-search="${row.join(' ').toLowerCase()}">${row.map((cell,i)=>`<td${i>=row.length-2?' class="num"':''}>${cell}</td>`).join('')}<td class="op"><button class="btn ghost small" data-viewproduct="${ci}:${ri}">التفاصيل</button></td></tr>`).join('')}
         </tbody>
       </table>
     </div>`).join('')}
@@ -1186,16 +1223,27 @@ function renderAdmin(){
           <input data-pcat="${ci}" style="max-width:280px;font-weight:600" value="${cat.category}" placeholder="اسم الفئة">
           <button class="btn danger small" data-delcat="${ci}">🗑 حذف هذه الفئة</button>
         </div>
-        <table class="admtable">
+        <label>معلومة عامة تخص كل منتجات الفئة دي (تظهر أعلى صفحة الفئة)</label>
+        <textarea data-pinfo="${ci}" rows="2" placeholder="مثال: عائلة انفرترات VEICHI الهجينة لأنظمة التخزين المنزلية...">${cat.categoryInfo||''}</textarea>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+          ${cat.categoryImage ? `<img src="${cat.categoryImage}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
+          <label class="btn ghost small" style="cursor:pointer">📷 ${cat.categoryImage?'تغيير صورة الفئة':'رفع صورة الفئة'}<input type="file" accept="image/*" data-catimg="${ci}" style="display:none"></label>
+        </div>
+        <table class="admtable" style="margin-top:10px">
           <thead><tr>
             ${cat.columns.map((col,coli)=>`<th><input data-pcol="${ci}:${coli}" value="${col}" style="font-weight:600"></th>`).join('')}
             <th></th>
           </tr></thead>
           <tbody>
-            ${cat.rows.map((row,ri)=>`<tr>
+            ${cat.rows.map((row,ri)=>{
+              const detail = (cat.productDetails && cat.productDetails[ri]) || {};
+              return `<tr>
               ${row.map((cell,coli)=>`<td><input data-pcell="${ci}:${ri}:${coli}" value="${cell}"></td>`).join('')}
-              <td class="op"><button class="btn danger small" data-delrow="${ci}:${ri}">✕</button></td>
-            </tr>`).join('')}
+              <td class="op" style="white-space:nowrap">
+                <button class="btn ghost small" data-editdetail="${ci}:${ri}">${detail.image||detail.description?'✏️ تعديل التفاصيل':'+ تفاصيل'}</button>
+                <button class="btn danger small" data-delrow="${ci}:${ri}">✕</button>
+              </td>
+            </tr>`;}).join('')}
           </tbody>
         </table>
         <div style="display:flex;gap:8px;margin-top:6px">
@@ -1205,6 +1253,24 @@ function renderAdmin(){
       </div>`).join('')}
     <button class="btn ghost small" id="addProductCategory">+ إضافة فئة منتجات جديدة</button>
     <div class="note" style="margin-top:8px">دي أسعار بيع مرجعية بدون خصم (منفصلة تمامًا عن أسعار محرك التسعير الداخلي للمحطات). هتظهر للمناديب في تبويب "قائمة المنتجات".</div>
+  </div>
+
+  <div class="card no-print" id="productDetailEditor" style="display:none">
+    <h3>تفاصيل المنتج</h3>
+    <input type="hidden" id="pde_target">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <img id="pde_imgpreview" src="" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:none">
+      <label class="btn ghost small" style="cursor:pointer">📷 رفع صورة المنتج<input type="file" accept="image/*" id="pde_imgfile" style="display:none"></label>
+    </div>
+    <label>وصف المنتج</label>
+    <textarea id="pde_description" rows="3"></textarea>
+    <label>مواصفات إضافية <span style="color:var(--muted);font-weight:400">(سطر لكل مواصفة، بصيغة: الاسم: القيمة)</span></label>
+    <textarea id="pde_specs" rows="4" placeholder="الكفاءة: 98.2%&#10;زمن التبديل: أقل من 10ms"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn small" id="pde_apply">تطبيق</button>
+      <button class="btn ghost small" id="pde_cancel">إلغاء</button>
+    </div>
+    <div class="note" style="margin-top:8px">التعديلات هنا بتتطبق فورًا على النموذج، وتتحفظ نهائيًا لما تدوس "💾 حفظ التعديلات" تحت.</div>
   </div>
 
   <div class="card">
@@ -1429,6 +1495,13 @@ function wire(){
   if(currentView==='products'){
     const retryBtn = document.getElementById('retryProductsBtn');
     if(retryBtn) retryBtn.onclick = ()=>{ productCatalogError=null; render(); };
+    const backBtn = document.getElementById('backToProductsBtn');
+    if(backBtn) backBtn.onclick = ()=>{ selectedProduct=null; render(); };
+    document.querySelectorAll('[data-viewproduct]').forEach(b=>b.onclick=()=>{
+      const [ci,ri] = b.dataset.viewproduct.split(':').map(Number);
+      selectedProduct = {catIdx:ci, rowIdx:ri};
+      render();
+    });
     const searchInput = document.getElementById('productSearch');
     if(searchInput) searchInput.oninput = e=>{
       const q = e.target.value.trim().toLowerCase();
@@ -1578,6 +1651,9 @@ function wire(){
       document.querySelectorAll('[data-pcat]').forEach(inp=>{
         adminConfig.productCatalog[+inp.dataset.pcat].category = inp.value;
       });
+      document.querySelectorAll('[data-pinfo]').forEach(inp=>{
+        adminConfig.productCatalog[+inp.dataset.pinfo].categoryInfo = inp.value;
+      });
       document.querySelectorAll('[data-pcol]').forEach(inp=>{
         const [ci,coli] = inp.dataset.pcol.split(':').map(Number);
         adminConfig.productCatalog[ci].columns[coli] = inp.value;
@@ -1703,6 +1779,75 @@ function wire(){
       adminConfig.productCatalog[ci].rows.splice(ri,1);
       render();
     });
+
+    function readFileAsBase64(file){
+      return new Promise((resolve,reject)=>{
+        const reader = new FileReader();
+        reader.onload = ()=>resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+    async function uploadImage(file){
+      const imageBase64 = await readFileAsBase64(file);
+      const data = await callEngine('upload-product-image', { adminPassword: adminPasswordMem, imageBase64, filename: file.name });
+      return data.url;
+    }
+    document.querySelectorAll('[data-catimg]').forEach(inp=>inp.onchange = async ()=>{
+      const file = inp.files[0]; if(!file) return;
+      harvestAdminInputs();
+      try{
+        const url = await uploadImage(file);
+        adminConfig.productCatalog[+inp.dataset.catimg].categoryImage = url;
+        render();
+      }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
+    });
+
+    document.querySelectorAll('[data-editdetail]').forEach(b=>b.onclick=()=>{
+      const [ci,ri] = b.dataset.editdetail.split(':').map(Number);
+      const cat = adminConfig.productCatalog[ci];
+      const detail = (cat.productDetails && cat.productDetails[ri]) || {};
+      document.getElementById('pde_target').value = `${ci}:${ri}`;
+      document.getElementById('pde_description').value = detail.description || '';
+      document.getElementById('pde_specs').value = Object.entries(detail.specs||{}).map(([k,v])=>`${k}: ${v}`).join('\n');
+      const preview = document.getElementById('pde_imgpreview');
+      delete preview.dataset.uploadedUrl;
+      if(detail.image){ preview.src = detail.image; preview.style.display='inline-block'; } else { preview.style.display='none'; preview.src=''; }
+      document.getElementById('productDetailEditor').style.display = 'block';
+      const editorEl = document.getElementById('productDetailEditor');
+      if(editorEl.scrollIntoView){ try{ editorEl.scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){} }
+    });
+    document.getElementById('pde_imgfile').onchange = async (e)=>{
+      const file = e.target.files[0]; if(!file) return;
+      try{
+        const url = await uploadImage(file);
+        const preview = document.getElementById('pde_imgpreview');
+        preview.src = url; preview.style.display='inline-block';
+        preview.dataset.uploadedUrl = url;
+      }catch(err){ alert('تعذر رفع الصورة: '+err.message); }
+    };
+    document.getElementById('pde_apply').onclick = ()=>{
+      harvestAdminInputs();
+      const [ci,ri] = document.getElementById('pde_target').value.split(':').map(Number);
+      const cat = adminConfig.productCatalog[ci];
+      cat.productDetails = cat.productDetails || {};
+      const specs = {};
+      document.getElementById('pde_specs').value.split('\n').forEach(line=>{
+        const idx = line.indexOf(':');
+        if(idx>0){ specs[line.slice(0,idx).trim()] = line.slice(idx+1).trim(); }
+      });
+      const preview = document.getElementById('pde_imgpreview');
+      cat.productDetails[ri] = {
+        image: preview.dataset.uploadedUrl || (preview.style.display!=='none' ? preview.src : (cat.productDetails[ri]||{}).image) || '',
+        description: document.getElementById('pde_description').value,
+        specs
+      };
+      document.getElementById('productDetailEditor').style.display = 'none';
+      render();
+    };
+    document.getElementById('pde_cancel').onclick = ()=>{
+      document.getElementById('productDetailEditor').style.display = 'none';
+    };
     document.getElementById('admExport').onclick = ()=>{
       const blob = new Blob([JSON.stringify(adminConfig,null,2)],{type:'application/json'});
       const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='holoul-pricing-data.json'; a.click();
@@ -1725,6 +1870,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     currentView = btn.dataset.view;
+    if(currentView==='products'){ cachedProductCatalog = null; productCatalogError = null; selectedProduct = null; }
     render();
   };
 });
