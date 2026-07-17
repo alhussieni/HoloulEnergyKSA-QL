@@ -126,6 +126,14 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 }
 .product-category table.admtable td.num{font-family:'Cairo';text-align:left;white-space:nowrap;}
 
+.products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;}
+.product-tile{cursor:pointer;text-align:center;transition:.15s;padding:16px 12px !important;}
+.product-tile:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(13,52,82,.1);}
+.product-tile img{width:100%;height:110px;object-fit:contain;border-radius:8px;margin-bottom:10px;background:var(--sand);}
+.product-tile-noimg{width:100%;height:110px;display:flex;align-items:center;justify-content:center;font-size:40px;border-radius:8px;margin-bottom:10px;background:var(--sand);}
+.product-tile h3{font-size:14px;margin:0 0 4px;}
+tr.unavailable-row{opacity:.55;}
+
 .assump{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
 
 svg.chart{width:100%;height:260px;}
@@ -1082,7 +1090,14 @@ async function loadCloudLeads(){
   }
 }
 
+let productsNav = 'categories'; // 'categories' | 'category' | 'detail'
+let selectedCategoryIdx = null;
 let selectedProduct = null; // {catIdx, rowIdx} when viewing a single product's detail page
+
+function isProductAvailable(cat, ri){
+  const detail = (cat.productDetails && cat.productDetails[ri]) || {};
+  return detail.available !== false;
+}
 
 function renderProducts(){
   if(!cachedProductCatalog && !productCatalogLoading && !productCatalogError){
@@ -1100,20 +1115,25 @@ function renderProducts(){
   }
   const catalog = cachedProductCatalog || [];
 
-  if(selectedProduct){
+  // ---- Level 3: single product detail page ----
+  if(productsNav==='detail' && selectedProduct){
     const cat = catalog[selectedProduct.catIdx];
     const row = cat && cat.rows[selectedProduct.rowIdx];
-    if(!cat || !row){ selectedProduct = null; }
+    if(!cat || !row){ productsNav='category'; selectedProduct=null; }
     else {
       const detail = (cat.productDetails && cat.productDetails[selectedProduct.rowIdx]) || {};
       const img = detail.image || cat.categoryImage;
+      const available = isProductAvailable(cat, selectedProduct.rowIdx);
       return `
       <div class="card no-print">
-        <button class="btn ghost small" id="backToProductsBtn">→ رجوع لقائمة المنتجات</button>
+        <button class="btn ghost small" id="backToCategoryBtn">→ رجوع لـ ${cat.category}</button>
       </div>
       <div class="card">
         ${img ? `<img src="${img}" alt="${row[0]}" style="max-width:100%;border-radius:10px;margin-bottom:12px">` : ''}
-        <h3>${row[0]}</h3>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <h3 style="margin:0">${row[0]}</h3>
+          ${!available ? `<span style="background:#FBEAEA;color:#B0432C;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px">غير متاح حاليًا</span>` : ''}
+        </div>
         <table class="admtable" style="margin-top:8px">
           <tbody>
             ${cat.columns.map((c,i)=>`<tr><td style="font-weight:600;width:180px">${c}</td><td class="num">${row[i]}</td></tr>`).join('')}
@@ -1132,23 +1152,50 @@ function renderProducts(){
     }
   }
 
+  // ---- Level 2: model list within one category ----
+  if(productsNav==='category' && selectedCategoryIdx!=null){
+    const cat = catalog[selectedCategoryIdx];
+    if(!cat){ productsNav='categories'; }
+    else {
+      return `
+      <div class="card no-print">
+        <button class="btn ghost small" id="backToCategoriesBtn">→ كل الفئات</button>
+        <input type="text" id="productSearch" placeholder="ابحث في ${cat.category}..." style="margin-top:8px">
+      </div>
+      <div class="card product-category" data-cat="${selectedCategoryIdx}">
+        ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}" style="max-width:100%;border-radius:10px;margin-bottom:10px">` : ''}
+        <h3>${cat.category}</h3>
+        ${cat.categoryInfo ? `<div class="note" style="margin-bottom:10px">${cat.categoryInfo}</div>` : ''}
+        <table class="admtable">
+          <thead><tr>${cat.columns.map(c=>`<th>${c}</th>`).join('')}<th></th></tr></thead>
+          <tbody>
+            ${cat.rows.map((row,ri)=>{
+              const available = isProductAvailable(cat, ri);
+              return `<tr class="product-row${available?'':' unavailable-row'}" data-search="${row.join(' ').toLowerCase()}">
+                ${row.map((cell,i)=>`<td${i>=row.length-2?' class="num"':''}>${cell}${(!available && i===0)?' <span style="color:#B0432C;font-size:10.5px">(غير متاح حاليًا)</span>':''}</td>`).join('')}
+                <td class="op"><button class="btn ghost small" data-viewproduct="${selectedCategoryIdx}:${ri}">التفاصيل</button></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    }
+  }
+
+  // ---- Level 1: main categories landing page ----
   return `
   <div class="card no-print">
     <h3>قائمة المنتجات (أسعار بيع بدون خصم)</h3>
-    <input type="text" id="productSearch" placeholder="ابحث عن منتج بالاسم..." style="margin-bottom:4px">
+    <div class="note">اختر نوع المنتج لعرض الموديلات المتاحة</div>
   </div>
-  ${catalog.map((cat,ci)=>`
-    <div class="card product-category" data-cat="${ci}">
-      ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}" style="max-width:100%;border-radius:10px;margin-bottom:10px">` : ''}
-      <h3>${cat.category}</h3>
-      ${cat.categoryInfo ? `<div class="note" style="margin-bottom:10px">${cat.categoryInfo}</div>` : ''}
-      <table class="admtable">
-        <thead><tr>${cat.columns.map(c=>`<th>${c}</th>`).join('')}<th></th></tr></thead>
-        <tbody>
-          ${cat.rows.map((row,ri)=>`<tr class="product-row" data-search="${row.join(' ').toLowerCase()}">${row.map((cell,i)=>`<td${i>=row.length-2?' class="num"':''}>${cell}</td>`).join('')}<td class="op"><button class="btn ghost small" data-viewproduct="${ci}:${ri}">التفاصيل</button></td></tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`).join('')}
+  <div class="products-grid">
+    ${catalog.map((cat,ci)=>`
+      <div class="card product-tile" data-opencat="${ci}">
+        ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}">` : `<div class="product-tile-noimg">📦</div>`}
+        <h3>${cat.category}</h3>
+        <div class="note">${cat.rows.length} موديل${cat.categoryInfo ? ' · '+cat.categoryInfo : ''}</div>
+      </div>`).join('')}
+  </div>
   ${!catalog.length ? `<div class="card"><div class="note">لا توجد منتجات مسجّلة بعد.</div></div>` : ''}
   `;
 }
@@ -1157,7 +1204,7 @@ async function loadProductCatalog(){
   productCatalogLoading = true;
   productCatalogError = null;
   try{
-    const data = await callEngine('get-product-catalog', { username: repUsername, password: repPasswordMem });
+    const data = await callEngine('get-product-catalog', {});
     cachedProductCatalog = data.productCatalog || [];
   }catch(e){
     productCatalogError = e.message || 'تعذر الاتصال بالخادم';
@@ -1267,6 +1314,10 @@ function renderAdmin(){
       <button class="btn ghost small" id="bulkPriceApply">تطبيق على كل المنتجات</button>
     </div>
     <div class="note" style="margin-top:6px">بيطبّق على أي عمود اسمه فيه "السعر" في كل الفئات. النتيجة بتتحدث في الجدول فورًا — راجعها واضغط "💾 حفظ التعديلات" تحت لتثبيتها.</div>
+    ${(adminConfig.productCatalog||[]).some(c=>c.category.includes('إكسسوارات')) ? `
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+      <button class="btn ghost small" id="splitAccessoriesBtn">🔀 تقسيم فئة "إكسسوارات VEICHI" لفئات منفصلة (ريأكتور / صناديق تجميع / كابلات ووصلات / قواطع وفيوزات)</button>
+    </div>` : ''}
   </div>
 
   <div class="card no-print" id="productDetailEditor" style="display:none">
@@ -1275,7 +1326,12 @@ function renderAdmin(){
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
       <img id="pde_imgpreview" src="" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:none">
       <label class="btn ghost small" style="cursor:pointer">📷 رفع صورة المنتج<input type="file" accept="image/*" id="pde_imgfile" style="display:none"></label>
+      <button class="btn ghost small" id="pde_useForOthers" type="button">استخدم نفس الصورة لموديلات تانية</button>
     </div>
+    <label style="display:flex;align-items:center;gap:8px;margin:8px 0">
+      <input type="checkbox" id="pde_available" checked style="width:auto">
+      <span>المنتج متاح حاليًا</span>
+    </label>
     <label>وصف المنتج</label>
     <textarea id="pde_description" rows="3"></textarea>
     <label>مواصفات إضافية <span style="color:var(--muted);font-weight:400">(سطر لكل مواصفة، بصيغة: الاسم: القيمة)</span></label>
@@ -1285,6 +1341,15 @@ function renderAdmin(){
       <button class="btn ghost small" id="pde_cancel">إلغاء</button>
     </div>
     <div class="note" style="margin-top:8px">التعديلات هنا بتتطبق فورًا على النموذج، وتتحفظ نهائيًا لما تدوس "💾 حفظ التعديلات" تحت.</div>
+  </div>
+
+  <div class="card no-print" id="sharedImagePicker" style="display:none">
+    <h3>اختر الموديلات اللي هتاخد نفس الصورة</h3>
+    <div id="sharedImagePickerList"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn small" id="sip_apply">تطبيق على المحدد</button>
+      <button class="btn ghost small" id="sip_cancel">إلغاء</button>
+    </div>
   </div>
 
   <div class="card">
@@ -1446,8 +1511,8 @@ function renderAdminLogin(){
 }
 
 function render(){
-  if(!repAuthed && !guestMode && currentView!=='admin'){ app.innerHTML = renderRepLogin(); wire(); return; }
-  if(guestMode && !guestRegistered && currentView!=='admin'){ app.innerHTML = renderGuestRegister(); wire(); return; }
+  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products'){ app.innerHTML = renderRepLogin(); wire(); return; }
+  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products'){ app.innerHTML = renderGuestRegister(); wire(); return; }
   if(currentView==='calc') app.innerHTML = renderCalc();
   else if(currentView==='feas') app.innerHTML = renderFeas();
   else if(currentView==='products') app.innerHTML = renderProducts();
@@ -1457,7 +1522,7 @@ function render(){
 }
 
 function wire(){
-  if(!repAuthed && !guestMode && currentView!=='admin'){
+  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products'){
     document.getElementById('rep_login_btn').onclick = async ()=>{
       const username = document.getElementById('rep_user').value.trim();
       const password = document.getElementById('rep_pass').value;
@@ -1479,7 +1544,7 @@ function wire(){
     };
     return;
   }
-  if(guestMode && !guestRegistered && currentView!=='admin'){
+  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products'){
     document.getElementById('guest_register_btn').onclick = ()=>{
       const name = document.getElementById('guest_name').value.trim();
       const phone = document.getElementById('guest_phone').value.trim();
@@ -1509,24 +1574,29 @@ function wire(){
   if(currentView==='products'){
     const retryBtn = document.getElementById('retryProductsBtn');
     if(retryBtn) retryBtn.onclick = ()=>{ productCatalogError=null; render(); };
-    const backBtn = document.getElementById('backToProductsBtn');
-    if(backBtn) backBtn.onclick = ()=>{ selectedProduct=null; render(); };
+    document.querySelectorAll('[data-opencat]').forEach(el=>el.onclick=()=>{
+      selectedCategoryIdx = +el.dataset.opencat;
+      productsNav = 'category';
+      render();
+    });
+    const backCatsBtn = document.getElementById('backToCategoriesBtn');
+    if(backCatsBtn) backCatsBtn.onclick = ()=>{ productsNav='categories'; selectedCategoryIdx=null; render(); };
+    const backCatBtn = document.getElementById('backToCategoryBtn');
+    if(backCatBtn) backCatBtn.onclick = ()=>{ productsNav='category'; selectedProduct=null; render(); };
     document.querySelectorAll('[data-viewproduct]').forEach(b=>b.onclick=()=>{
       const [ci,ri] = b.dataset.viewproduct.split(':').map(Number);
       selectedProduct = {catIdx:ci, rowIdx:ri};
+      productsNav = 'detail';
       render();
     });
     const searchInput = document.getElementById('productSearch');
     if(searchInput) searchInput.oninput = e=>{
       const q = e.target.value.trim().toLowerCase();
       document.querySelectorAll('.product-category').forEach(catEl=>{
-        let anyVisible = false;
         catEl.querySelectorAll('.product-row').forEach(rowEl=>{
           const match = !q || rowEl.dataset.search.includes(q);
           rowEl.style.display = match ? '' : 'none';
-          if(match) anyVisible = true;
         });
-        catEl.style.display = anyVisible ? '' : 'none';
       });
     };
     return;
@@ -1765,6 +1835,43 @@ function wire(){
       adminConfig.inverterBrands[bi].tiers.splice(ti,1);
       render();
     });
+    const splitBtn = document.getElementById('splitAccessoriesBtn');
+    if(splitBtn) splitBtn.onclick = ()=>{
+      harvestAdminInputs();
+      const idx = adminConfig.productCatalog.findIndex(c=>c.category.includes('إكسسوارات'));
+      if(idx<0) return;
+      const src = adminConfig.productCatalog[idx];
+      const groups = [
+        { name:'الريأكتور (Reactor)', test: n => /reactor/i.test(n) },
+        { name:'صناديق التجميع (Combiner Box)', test: n => /combiner/i.test(n) },
+        { name:'الكابلات والوصلات (MC4)', test: n => /mc4/i.test(n) },
+        { name:'قواطع وفيوزات DC', test: n => /mccb|fuse|holder/i.test(n) },
+      ];
+      const newCats = groups.map(g => ({ category: g.name, categoryInfo:'', categoryImage:'', columns:[...src.columns], rows:[], productDetails:{} }));
+      const leftoverRows = [];
+      src.rows.forEach((row,ri)=>{
+        const detail = (src.productDetails||{})[ri];
+        const gi = groups.findIndex(g=>g.test(row[0]));
+        if(gi>=0){
+          const target = newCats[gi];
+          target.rows.push(row);
+          if(detail) target.productDetails[target.rows.length-1] = detail;
+        } else {
+          leftoverRows.push({row, detail});
+        }
+      });
+      adminConfig.productCatalog.splice(idx, 1, ...newCats.filter(c=>c.rows.length));
+      if(leftoverRows.length){
+        const leftoverCat = { category: src.category, categoryInfo: src.categoryInfo||'', categoryImage: src.categoryImage||'', columns:[...src.columns], rows:[], productDetails:{} };
+        leftoverRows.forEach(({row,detail})=>{
+          leftoverCat.rows.push(row);
+          if(detail) leftoverCat.productDetails[leftoverCat.rows.length-1] = detail;
+        });
+        adminConfig.productCatalog.push(leftoverCat);
+      }
+      render();
+      alert('تم التقسيم — راجع الفئات الجديدة واضغط "حفظ التعديلات" لتثبيتها.');
+    };
     document.getElementById('addProductCategory').onclick = ()=>{
       harvestAdminInputs();
       adminConfig.productCatalog.push({category:'فئة جديدة', columns:['الصنف','السعر'], rows:[]});
@@ -1844,6 +1951,7 @@ function wire(){
       document.getElementById('pde_target').value = `${ci}:${ri}`;
       document.getElementById('pde_description').value = detail.description || '';
       document.getElementById('pde_specs').value = Object.entries(detail.specs||{}).map(([k,v])=>`${k}: ${v}`).join('\n');
+      document.getElementById('pde_available').checked = detail.available !== false;
       const preview = document.getElementById('pde_imgpreview');
       delete preview.dataset.uploadedUrl;
       if(detail.image){ preview.src = detail.image; preview.style.display='inline-block'; } else { preview.style.display='none'; preview.src=''; }
@@ -1874,6 +1982,7 @@ function wire(){
       cat.productDetails[ri] = {
         image: preview.dataset.uploadedUrl || (preview.style.display!=='none' ? preview.src : (cat.productDetails[ri]||{}).image) || '',
         description: document.getElementById('pde_description').value,
+        available: document.getElementById('pde_available').checked,
         specs
       };
       document.getElementById('productDetailEditor').style.display = 'none';
@@ -1881,6 +1990,46 @@ function wire(){
     };
     document.getElementById('pde_cancel').onclick = ()=>{
       document.getElementById('productDetailEditor').style.display = 'none';
+    };
+    document.getElementById('pde_useForOthers').onclick = ()=>{
+      const preview = document.getElementById('pde_imgpreview');
+      const imgUrl = preview.dataset.uploadedUrl || (preview.style.display!=='none' ? preview.src : '');
+      if(!imgUrl){ alert('ارفع صورة أولاً قبل ما تشاركها مع موديلات تانية'); return; }
+      const [ci,ri] = document.getElementById('pde_target').value.split(':').map(Number);
+      const cat = adminConfig.productCatalog[ci];
+      const list = document.getElementById('sharedImagePickerList');
+      list.innerHTML = cat.rows.map((row,i)=>i===ri?'':`
+        <label style="display:flex;align-items:center;gap:8px;padding:4px 0">
+          <input type="checkbox" data-sip-row="${i}" style="width:auto">
+          <span>${row[0]}</span>
+        </label>`).join('');
+      document.getElementById('sharedImagePicker').dataset.cat = ci;
+      document.getElementById('sharedImagePicker').dataset.img = imgUrl;
+      document.getElementById('sharedImagePicker').dataset.sourceRow = ri;
+      document.getElementById('sharedImagePicker').style.display = 'block';
+    };
+    document.getElementById('sip_apply').onclick = ()=>{
+      const picker = document.getElementById('sharedImagePicker');
+      const ci = +picker.dataset.cat;
+      const imgUrl = picker.dataset.img;
+      const sourceRow = +picker.dataset.sourceRow;
+      const cat = adminConfig.productCatalog[ci];
+      cat.productDetails = cat.productDetails || {};
+      // the model you started from always gets the image too
+      cat.productDetails[sourceRow] = { ...(cat.productDetails[sourceRow]||{}), image: imgUrl };
+      let count = 1;
+      picker.querySelectorAll('[data-sip-row]:checked').forEach(cb=>{
+        const ri = +cb.dataset.sipRow;
+        cat.productDetails[ri] = { ...(cat.productDetails[ri]||{}), image: imgUrl };
+        count++;
+      });
+      picker.style.display = 'none';
+      document.getElementById('productDetailEditor').style.display = 'none';
+      alert(`تم تطبيق الصورة على ${count} موديل. اضغط "حفظ التعديلات" لتثبيتها.`);
+      render();
+    };
+    document.getElementById('sip_cancel').onclick = ()=>{
+      document.getElementById('sharedImagePicker').style.display = 'none';
     };
     document.getElementById('admExport').onclick = ()=>{
       const blob = new Blob([JSON.stringify(adminConfig,null,2)],{type:'application/json'});
@@ -1904,7 +2053,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     currentView = btn.dataset.view;
-    if(currentView==='products'){ cachedProductCatalog = null; productCatalogError = null; selectedProduct = null; }
+    if(currentView==='products'){ cachedProductCatalog = null; productCatalogError = null; selectedProduct = null; productsNav = 'categories'; selectedCategoryIdx = null; }
     render();
   };
 });
@@ -1913,7 +2062,7 @@ function showRepBadge(){
   const badge = document.getElementById('repNameBadge');
   const logoutBtn = document.getElementById('repLogoutBtn');
   const productsBtn = document.getElementById('productsNavBtn');
-  if(productsBtn) productsBtn.style.display = guestMode ? 'none' : '';
+  // products tab is public — visible to everyone regardless of login state
   if(repAuthed && repDisplayName){
     badge.textContent = '👤 ' + repDisplayName;
     badge.style.display = 'inline';

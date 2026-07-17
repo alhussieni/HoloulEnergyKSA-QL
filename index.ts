@@ -414,8 +414,6 @@ Deno.serve(async (req: Request) => {
   }
 
   if (body.action === "get-product-catalog") {
-    const rep = await checkRep(body.username, body.password);
-    if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
     return json({ productCatalog: D.productCatalog || [] });
   }
 
