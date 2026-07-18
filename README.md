@@ -22,20 +22,58 @@ prices, never the underlying cost/margin data, and the admin password is
 checked on the server.
 
 ## 1) Deploy the database schema
-In the Supabase dashboard → SQL Editor, paste and run:
-`supabase/migrations/0001_init.sql`
+In the Supabase dashboard → SQL Editor, paste and run, in order:
+`0001_init.sql`, `0002_inverter_brands.sql`, `0003_reps_and_quotes.sql`,
+`0004_product_catalog.sql`, `0005_product_images_bucket.sql`,
+`0006_session_tokens.sql`, `0007_veichi_inverter_specs_phase1.sql`
 
 (or, if you use the Supabase CLI locally: `supabase db push`)
 
-This creates two tables, both fully locked down by Row Level Security with
+This creates all tables, fully locked down by Row Level Security with
 **no policies at all** — meaning the browser (anon key) cannot read or write
 them under any circumstance. Only the Edge Function, using the
 `service_role` key, can touch them.
 
 - `pricing_config` — every rate/margin the engine uses (mirrors the old
   `DEFAULT_DB` object in index.html). Edit anytime via Table Editor.
-- `admin_secret` — a SHA-256 hash of the admin password. Never store the
-  password itself.
+- `admin_secret` — a SHA-256 hash of the admin password, plus a
+  `session_version` counter used to invalidate old admin sessions the
+  moment the password is changed.
+- `reps` — one row per rep (username/password hash/display name/active
+  flag), plus its own `session_version` counter for the same reason.
+
+## 1.5) Set SESSION_SECRET (required for logins to work)
+Rep and admin logins now issue a **signed, short-lived session token**
+instead of the browser resending the plaintext password on every request
+(see "What changed" below). The Edge Function signs these tokens with a
+secret that only it knows:
+
+```bash
+supabase secrets set SESSION_SECRET="$(openssl rand -hex 32)"
+```
+
+Use a long random value — anyone who obtains it could forge admin/rep
+sessions. Never put it in `index.html` or anywhere client-side.
+
+## What changed: session tokens instead of resent passwords
+Previously the browser held the rep's/admin's **plaintext password** in
+memory (or, for reps, in `sessionStorage`) and sent it back to the server
+on every single request that needed authorization. Now:
+- `rep-login` / `admin-login` verify the password **once** and return a
+  signed token (rep tokens last 12h, admin tokens last 4h).
+- Every other action (`find-client`, `save-quote`, `admin-view`,
+  `update-config`, `admin-save-rep`, etc.) takes that `token` /
+  `adminToken` instead of a password field.
+- Changing the admin password, or resetting a rep's password, bumps a
+  `session_version` counter server-side, which instantly invalidates every
+  token issued before that change — no need to track/blacklist tokens.
+- Deactivating a rep (`active = false`) also instantly blocks their token,
+  since `checkRepToken` re-checks the `active` flag on every call.
+
+This does **not** eliminate brute-force risk on the login endpoints
+themselves (`rep-login` / `admin-login` still take a password each time) —
+adding rate-limiting on those two actions is a good next step if you want
+to close that gap too.
 
 ## 2) Set the real admin password
 The migration seeds `admin_secret` with an **empty** hash, so the admin
@@ -85,6 +123,14 @@ behaviour as today — the only difference is where the math happens.
 | action | auth | returns |
 |---|---|---|
 | `quote` | none (anon key only) | sell prices, quantities, totals — no cost/margin |
-| `admin-view` | `adminPassword` field | same quote + cost basis, total cost, profit, profit % |
-| `update-config` | `adminPassword` field | overwrites `pricing_config` with a new rates object |
-| `hash-password` | none | returns a SHA-256 hash to seed `admin_secret` |
+| `rep-login` | `username` + `password` | `{ displayName, token }` — use `token` below for 12h |
+| `admin-login` | `adminPassword` | `{ token }` — use `adminToken` below for 4h |
+| `find-client` | `token` | prior quotes tied to a phone number (rep name, specs, price) |
+| `save-quote` | `token` (or `guest:true`) | logs a finalized quote centrally |
+| `admin-view` | `adminToken` | same quote + cost basis, total cost, profit, profit % |
+| `update-config` | `adminToken` | overwrites `pricing_config` with a new rates object |
+| `change-admin-password` | `adminToken` | rotates the password + session; returns a fresh `token` |
+| `admin-list-reps` / `admin-save-rep` / `admin-delete-rep` | `adminToken` | manage rep accounts |
+| `upload-product-image` | `adminToken` | uploads to the `product-images` Storage bucket |
+| `get-product-catalog` | none | public reference list prices for any rep |
+| `hash-password` | none | convenience helper — not used by the frontend anymore |

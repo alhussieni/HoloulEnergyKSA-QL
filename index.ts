@@ -39,6 +39,59 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
+// Session tokens — signed with SESSION_SECRET (HMAC-SHA256), never the raw
+// password. The browser logs in once (rep-login / admin-login) with the
+// password, gets a short-lived token back, and uses that token for every
+// later call instead of resending the password on every request.
+//
+// Token shape: "<base64url(payload json)>.<base64url(hmac signature)>"
+// payload = { sub: "rep:<username>" | "admin", ver: <session_version>, exp: <unix seconds> }
+//
+// `ver` is compared against the row's live session_version column, so
+// changing a password (rep or admin) or deactivating a rep instantly
+// invalidates every token issued before that change — no blacklist needed.
+// ---------------------------------------------------------------------------
+function b64urlFromBytes(bytes: Uint8Array): string {
+  let bin = "";
+  bytes.forEach((b) => (bin += String.fromCharCode(b)));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlToString(s: string): string {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  return atob(s);
+}
+async function hmacSign(secret: string, data: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  return b64urlFromBytes(new Uint8Array(sig));
+}
+function sessionSecret(): string {
+  const s = Deno.env.get("SESSION_SECRET");
+  if (!s) throw new Error("SESSION_SECRET is not configured — set it with `supabase secrets set SESSION_SECRET=...`");
+  return s;
+}
+async function issueToken(sub: string, ver: number, ttlSeconds: number): Promise<string> {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const payloadB64 = b64urlFromBytes(new TextEncoder().encode(JSON.stringify({ sub, ver, exp })));
+  const sig = await hmacSign(sessionSecret(), payloadB64);
+  return `${payloadB64}.${sig}`;
+}
+async function readToken(token: string | undefined): Promise<{ sub: string; ver: number; exp: number } | null> {
+  if (!token || token.split(".").length !== 2) return null;
+  const [payloadB64, sig] = token.split(".");
+  const expected = await hmacSign(sessionSecret(), payloadB64);
+  if (expected !== sig) return null; // signature mismatch — tampered or forged
+  try {
+    const payload = JSON.parse(b64urlToString(payloadB64));
+    if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null; // expired
+    return payload;
+  } catch { return null; }
+}
+
+// ---------------------------------------------------------------------------
 // Pricing engine — ported 1:1 from the client-side engine that used to live
 // in index.html. Keep this in sync if the business rules change.
 // ---------------------------------------------------------------------------
@@ -252,20 +305,47 @@ Deno.serve(async (req: Request) => {
   if (cfgErr || !cfgRow) return json({ error: "pricing config not found" }, 500);
   const D = cfgRow.data;
 
+  async function getAdminSecretRow(): Promise<{ password_hash: string; session_version: number } | null> {
+    const { data, error } = await supabase.from("admin_secret").select("password_hash, session_version").eq("id", 1).single();
+    if (error || !data || !data.password_hash) return null;
+    return data;
+  }
+
+  // Verifies the admin PASSWORD directly. Only used by admin-login now — every
+  // other admin action verifies a short-lived TOKEN instead (see checkAdminToken).
   async function checkAdminPassword(pw: string | undefined): Promise<boolean> {
     if (!pw) return false;
-    const { data, error } = await supabase.from("admin_secret").select("password_hash").eq("id", 1).single();
-    if (error || !data || !data.password_hash) return false;
-    return (await sha256Hex(pw)) === data.password_hash;
+    const row = await getAdminSecretRow();
+    if (!row) return false;
+    return (await sha256Hex(pw)) === row.password_hash;
+  }
+
+  // Verifies an admin session token: signature, expiry, subject, AND that its
+  // embedded `ver` still matches admin_secret.session_version (so changing the
+  // admin password instantly kills every token issued before the change).
+  async function checkAdminToken(token: string | undefined): Promise<boolean> {
+    const payload = await readToken(token);
+    if (!payload || payload.sub !== "admin") return false;
+    const row = await getAdminSecretRow();
+    if (!row) return false;
+    return payload.ver === row.session_version;
+  }
+
+  // ---- admin login: verify the password ONCE, return a short-lived token ----
+  if (body.action === "admin-login") {
+    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    const row = await getAdminSecretRow();
+    const token = await issueToken("admin", row!.session_version, 4 * 3600); // 4h
+    return json({ ok: true, token });
   }
 
   if (body.action === "admin-config") {
-    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     return json({ config: D });
   }
 
   if (body.action === "update-config") {
-    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     const { error } = await supabase.from("pricing_config")
       .update({ data: body.config, updated_at: new Date().toISOString() }).eq("id", 1);
     if (error) return json({ error: error.message }, 500);
@@ -273,28 +353,48 @@ Deno.serve(async (req: Request) => {
   }
 
   if (body.action === "change-admin-password") {
-    if (!(await checkAdminPassword(body.currentPassword))) return json({ error: "wrong admin password" }, 401);
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     if (!body.newPassword || body.newPassword.length < 6) return json({ error: "new password too short" }, 400);
+    const row = await getAdminSecretRow();
+    const newVer = (row?.session_version || 1) + 1; // bump -> every other open admin session is logged out
     const { error } = await supabase.from("admin_secret")
-      .update({ password_hash: await sha256Hex(body.newPassword), updated_at: new Date().toISOString() }).eq("id", 1);
+      .update({ password_hash: await sha256Hex(body.newPassword), session_version: newVer, updated_at: new Date().toISOString() })
+      .eq("id", 1);
     if (error) return json({ error: error.message }, 500);
-    return json({ ok: true });
+    const token = await issueToken("admin", newVer, 4 * 3600); // keep the current tab logged in
+    return json({ ok: true, token });
   }
 
   if (body.action === "admin-view") {
-    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     let inp: any;
     try { inp = resolveInput(D, body.input); } catch (e) { return json({ error: (e as Error).message }, 400); }
     const q = computeQuote(D, inp);
     return json({ config: D, quote: adminView(q) });
   }
 
+  // Verifies a rep's PASSWORD directly. Only used by rep-login now — every
+  // other rep action verifies a short-lived TOKEN instead (see checkRepToken).
   async function checkRep(username: string | undefined, password: string | undefined) {
     if (!username || !password) return null;
     const { data, error } = await supabase.from("reps")
-      .select("username, password_hash, display_name, active").eq("username", username).single();
+      .select("username, password_hash, display_name, active, session_version").eq("username", username).single();
     if (error || !data || !data.active) return null;
     if ((await sha256Hex(password)) !== data.password_hash) return null;
+    return { username: data.username, displayName: data.display_name, sessionVersion: data.session_version };
+  }
+
+  // Verifies a rep session token: signature, expiry, subject, still-active
+  // flag, AND that its embedded `ver` matches reps.session_version (so a
+  // password reset or deactivation instantly kills tokens issued before it).
+  async function checkRepToken(token: string | undefined) {
+    const payload = await readToken(token);
+    if (!payload || !payload.sub.startsWith("rep:")) return null;
+    const username = payload.sub.slice(4);
+    const { data, error } = await supabase.from("reps")
+      .select("username, display_name, active, session_version").eq("username", username).single();
+    if (error || !data || !data.active) return null;
+    if (payload.ver !== data.session_version) return null;
     return { username: data.username, displayName: data.display_name };
   }
 
@@ -303,17 +403,18 @@ Deno.serve(async (req: Request) => {
   return digits.length > 9 ? digits.slice(-9) : digits;
 }
 
-// ---- rep login: every rep has their own username/password ----
+// ---- rep login: verify the password ONCE, return a short-lived token ----
   if (body.action === "rep-login") {
     const rep = await checkRep(body.username, body.password);
     if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
-    return json({ ok: true, displayName: rep.displayName });
+    const token = await issueToken(`rep:${rep.username}`, rep.sessionVersion, 12 * 3600); // 12h
+    return json({ ok: true, displayName: rep.displayName, token });
   }
 
   // ---- has this client already received a quote, from whom, at what price? ----
   if (body.action === "find-client") {
-    const rep = await checkRep(body.username, body.password);
-    if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
+    const rep = await checkRepToken(body.token);
+    if (!rep) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
     const phone = phoneKey(body.phone);
     if (phone.length < 5) return json({ matches: [] });
 
@@ -343,8 +444,8 @@ Deno.serve(async (req: Request) => {
   if (body.action === "save-quote") {
     let repUsername: string | null = null, repDisplayName = "الحاسبة الآلية (تسعير مباشر من العميل)";
     if (!body.guest) {
-      const rep = await checkRep(body.username, body.password);
-      if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
+      const rep = await checkRepToken(body.token);
+      if (!rep) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
       repUsername = rep.username; repDisplayName = rep.displayName;
     }
     const { error } = await supabase.from("quotes").insert({
@@ -362,16 +463,24 @@ Deno.serve(async (req: Request) => {
 
   // ---- admin: manage rep accounts ----
   if (body.action === "admin-list-reps") {
-    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     const { data, error } = await supabase.from("reps").select("id, username, display_name, active").order("id");
     if (error) return json({ error: error.message }, 500);
     return json({ reps: data || [] });
   }
 
   if (body.action === "admin-save-rep") {
-    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     const row: any = { username: body.username, display_name: body.displayName, active: body.active !== false };
-    if (body.password) row.password_hash = await sha256Hex(body.password);
+    if (body.password) {
+      row.password_hash = await sha256Hex(body.password);
+      // New password -> bump this rep's session_version so any of their
+      // existing tokens (e.g. on a phone they lost) stop working immediately.
+      if (body.id) {
+        const { data: existing } = await supabase.from("reps").select("session_version").eq("id", body.id).single();
+        row.session_version = (existing?.session_version || 1) + 1;
+      }
+    }
     if (body.id) {
       const { error } = await supabase.from("reps").update(row).eq("id", body.id);
       if (error) return json({ error: error.message }, 500);
@@ -384,7 +493,7 @@ Deno.serve(async (req: Request) => {
   }
 
   if (body.action === "admin-delete-rep") {
-    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     const { error } = await supabase.from("reps").delete().eq("id", body.id);
     if (error) return json({ error: error.message }, 500);
     return json({ ok: true });
@@ -396,7 +505,7 @@ Deno.serve(async (req: Request) => {
   // ---- product catalog: reference list prices for standalone sales (any rep can view) ----
   // ---- admin: upload a product/category image to Supabase Storage ----
   if (body.action === "upload-product-image") {
-    if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     if (!body.imageBase64 || !body.filename) return json({ error: "imageBase64 and filename required" }, 400);
     try {
       const base64 = String(body.imageBase64).split(",").pop()!; // strip data:...;base64, prefix if present
