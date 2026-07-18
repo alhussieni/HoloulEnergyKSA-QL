@@ -1250,40 +1250,60 @@ async function loadCloudLeads(){
 let productsNav = 'categories'; // 'categories' | 'category' | 'detail'
 let selectedCategoryIdx = null;
 let selectedProduct = null; // {catIdx, rowIdx} when viewing a single product's detail page
+let cachedPortfolio = null; // fetched lazily when the portfolio tab opens
+let portfolioLoading = false;
+let portfolioError = null;
+
+async function loadPortfolio(){
+  portfolioLoading = true;
+  portfolioError = null;
+  try{
+    const data = await callEngine('get-portfolio', {});
+    cachedPortfolio = data.portfolio || null;
+  }catch(e){
+    portfolioError = e.message || 'تعذر الاتصال بالخادم';
+  }
+  portfolioLoading = false;
+  render();
+}
+
 function renderPortfolio(){
-  const projects = [
-    {hp:'500 HP', img:'assets/portfolio/project-500hp.jpg', title:'منظومة ري زراعي بالطاقة الشمسية', place:'وادي الدواسر - 2026', desc:'مشروع عالي القدرة لتقليل تكلفة تشغيل مضخات الديزل وتحسين استقرار التشغيل.', tags:['استثمار 720,000 ريال','استرداد تقريبي 10 أشهر']},
-    {hp:'200 HP', img:'assets/portfolio/project-200hp.jpg', title:'منظومة ري زراعي بالطاقة الشمسية', place:'وادي الدواسر - 2026', desc:'تصميم وتنفيذ منظومة ضخ شمسي بقدرة متوسطة لخدمة احتياج ري يومي مستمر.', tags:['EPC','تشغيل زراعي']},
-    {hp:'125 HP', img:'assets/portfolio/project-125hp.jpg', title:'منظومة ري زراعي بالطاقة الشمسية', place:'وادي الدواسر - 2026', desc:'حل هندسي موجه للمزارع التي تحتاج تكلفة طاقة يمكن التنبؤ بها على المدى الطويل.', tags:['تصميم','توريد وتركيب']},
-    {hp:'60 HP', img:'assets/portfolio/project-60hp-a.jpg', title:'منظومة ري زراعي بالطاقة الشمسية', place:'وادي الدواسر - 2026', desc:'حالة أعمال حققت تخفيضًا ملموسًا في تكلفة الوقود الشهرية للمزرعة.', tags:['استثمار 85,000 ريال','استرداد تقريبي 9 أشهر']},
-    {hp:'60 HP', img:'assets/portfolio/project-60hp-b.jpg', title:'منظومة ري زراعي بالطاقة الشمسية', place:'وادي الدواسر - 2026', desc:'تنفيذ منظومة شمسية للري مع اختبار وتشغيل وتسليم فني للموقع.', tags:['اختبار وتشغيل','دعم فني']},
-  ];
-  const partners = [
-    ['SUNARABIA','assets/portfolio/partner-sunarabia.png'],
-    ['AFKARCO','assets/portfolio/partner-afkarco.png'],
-    ['VEICHI','assets/portfolio/partner-veichi.png'],
-    ['RISEN','assets/portfolio/partner-risen.png'],
-    ['JA Solar','assets/portfolio/partner-ja-solar.png'],
-    ['LEADER','assets/portfolio/partner-leader.png'],
-  ];
+  if(!cachedPortfolio && !portfolioLoading && !portfolioError){
+    loadPortfolio();
+  }
+  if(portfolioLoading && !cachedPortfolio){
+    return `<div class="card" style="max-width:420px;margin:60px auto;text-align:center"><h3>جارِ التحميل...</h3></div>`;
+  }
+  if(portfolioError){
+    return `<div class="card" style="max-width:420px;margin:60px auto;text-align:center">
+      <h3 style="color:#B0432C">تعذر تحميل البورتفوليو</h3>
+      <div class="note">${portfolioError}</div>
+      <button class="btn small" id="retryPortfolioBtn" style="margin-top:12px">إعادة المحاولة</button>
+    </div>`;
+  }
+  const pf = cachedPortfolio || {};
+  const hero = pf.hero || {};
+  const kpis = pf.kpis || [];
+  const timeline = pf.timeline || [];
+  const capabilitySteps = pf.capabilitySteps || [];
+  const projects = pf.projects || [];
+  const roiCases = pf.roiCases || [];
+  const partners = pf.partners || [];
   return `
   <section class="portfolio-view">
     <div class="portfolio-hero">
       <div class="visual">
-        <img src="assets/portfolio/solar-field.jpg" alt="Holoul Energy solar irrigation project" loading="eager">
+        <img src="${hero.image||''}" alt="Holoul Energy solar irrigation project" loading="eager">
         <div class="caption">
-          <h2>بورتفوليو حلول الطاقة</h2>
-          <p>حلول EPC متخصصة في أنظمة الري الزراعي بالطاقة الشمسية داخل المملكة، مبنية على خبرة هندسية في مصر ومشاريع منفذة في وادي الدواسر.</p>
+          <h2>${hero.title||''}</h2>
+          <p>${hero.description||''}</p>
         </div>
       </div>
       <div class="panel">
-        <h3>Engineering Value Beyond Solar</h3>
-        <div class="note">نقيس نجاح المشروع بالعائد الذي يحققه للعميل، وليس بعدد الألواح فقط. هدفنا تقليل تكلفة التشغيل، رفع الاعتمادية، وبناء أصل طويل الأجل للمزرعة.</div>
+        <h3>${pf.panelTitle||''}</h3>
+        <div class="note">${pf.panelNote||''}</div>
         <div class="portfolio-kpis">
-          <div class="portfolio-kpi"><div class="v">5</div><div class="l">مشاريع منفذة في السعودية</div></div>
-          <div class="portfolio-kpi"><div class="v">60-500 HP</div><div class="l">نطاق قدرات الري المنفذة</div></div>
-          <div class="portfolio-kpi"><div class="v">EPC</div><div class="l">هندسة، توريد، تنفيذ، تشغيل</div></div>
-          <div class="portfolio-kpi"><div class="v">2026</div><div class="l">تشغيل داخل المملكة</div></div>
+          ${kpis.map(k=>`<div class="portfolio-kpi"><div class="v">${k.v}</div><div class="l">${k.l}</div></div>`).join('')}
         </div>
       </div>
     </div>
@@ -1292,26 +1312,19 @@ function renderPortfolio(){
       <div class="card">
         <h3>رحلتنا الهندسية</h3>
         <div class="timeline">
-          <div class="timeline-item"><img class="timeline-thumb" src="assets/portfolio/foundation-egypt.jpg" alt="Alasl Solar - تأسيس مصر" loading="lazy"><div><b>Alasl Solar - Egypt</b><p>تنفيذ مشاريع ري شمسي، Off-grid، ومشاريع تجارية وصناعية.</p></div></div>
-          <div class="timeline-item"><strong>النمو</strong><div><b>تخصص زراعي</b><p>تركيز عميق على أنظمة الضخ والري من 30 HP إلى 500 HP.</p></div></div>
-          <div class="timeline-item"><strong>2026</strong><div><b>Holoul Energy KSA</b><p>تأسيس وتشغيل في المملكة مع مشاريع منفذة في وادي الدواسر.</p></div></div>
+          ${timeline.map(t=>`<div class="timeline-item">${t.image ? `<img class="timeline-thumb" src="${t.image}" alt="${t.title||''}" loading="lazy">` : `<strong>${t.label||''}</strong>`}<div><b>${t.title||''}</b><p>${t.desc||''}</p></div></div>`).join('')}
         </div>
       </div>
       <div class="card">
         <h3>قدرات التنفيذ</h3>
         <div class="stats">
-          <div class="stat"><div class="v">01</div><div class="l">Survey ودراسة الموقع</div></div>
-          <div class="stat"><div class="v">02</div><div class="l">تصميم هندسي وتحجيم النظام</div></div>
-          <div class="stat"><div class="v">03</div><div class="l">توريد من شركاء موثوقين</div></div>
-          <div class="stat"><div class="v">04</div><div class="l">تركيب واختبارات حماية</div></div>
-          <div class="stat"><div class="v">05</div><div class="l">Commissioning وتسليم</div></div>
-          <div class="stat"><div class="v">06</div><div class="l">دعم فني وتشغيل وصيانة</div></div>
+          ${capabilitySteps.map(s=>`<div class="stat"><div class="v">${s.v}</div><div class="l">${s.l}</div></div>`).join('')}
         </div>
       </div>
     </div>
 
     <div class="card">
-      <h3>مشاريع منفذة في المملكة <span class="tag">وادي الدواسر - 2026</span></h3>
+      <h3>${pf.projectsTitle||''} <span class="tag">${pf.projectsTag||''}</span></h3>
       <div class="portfolio-projects">
         ${projects.map(p=>`
           <article class="project-card">
@@ -1319,7 +1332,7 @@ function renderPortfolio(){
             <div class="body">
               <h3>${p.hp}</h3>
               <p><b>${p.title}</b><br>${p.place}<br>${p.desc}</p>
-              <div class="meta">${p.tags.map(t=>`<span>${t}</span>`).join('')}</div>
+              <div class="meta">${(p.tags||[]).map(t=>`<span>${t}</span>`).join('')}</div>
             </div>
           </article>
         `).join('')}
@@ -1330,14 +1343,13 @@ function renderPortfolio(){
       <div class="card">
         <h3>حالات عائد الاستثمار</h3>
         <div class="stats">
-          <div class="stat"><div class="v">60 HP</div><div class="l">تكلفة ديزل شهرية 10-12 ألف ريال، استرداد تقريبي 9 أشهر.</div></div>
-          <div class="stat"><div class="v">500 HP</div><div class="l">تكلفة ديزل شهرية تقارب 75 ألف ريال، استرداد تقريبي 10 أشهر.</div></div>
+          ${roiCases.map(r=>`<div class="stat"><div class="v">${r.v}</div><div class="l">${r.l}</div></div>`).join('')}
         </div>
       </div>
       <div class="card">
         <h3>شركاء وتقنيات</h3>
         <div class="partner-grid">
-          ${partners.map(([name,img])=>`<div class="partner-logo"><img src="${img}" alt="${name}" loading="lazy"></div>`).join('')}
+          ${partners.map(p=>`<div class="partner-logo"><img src="${p.img}" alt="${p.name}" loading="lazy"></div>`).join('')}
         </div>
       </div>
     </div>
@@ -1657,6 +1669,133 @@ function renderAdmin(){
     </div>
   </div>
 
+  <div class="card no-print">
+    <h3>البورتفوليو</h3>
+    <div class="note">المحتوى هنا بيظهر في تبويب "البورتفوليو" العام (بدون تسجيل دخول). عدّل زي ما تحب، وادّي "💾 حفظ التعديلات" تحت عشان ينزل على الموقع.</div>
+
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px">
+      <h4 style="margin:0 0 8px">الواجهة الرئيسية</h4>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        ${adminConfig.portfolio?.hero?.image ? `<img src="${adminConfig.portfolio.hero.image}" style="width:90px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
+        <label class="btn ghost small" style="cursor:pointer">📷 ${adminConfig.portfolio?.hero?.image?'تغيير صورة الواجهة':'رفع صورة الواجهة'}<input type="file" accept="image/*" id="pf_heroimg_file" style="display:none"></label>
+      </div>
+      <label>العنوان</label>
+      <input id="pf_hero_title" value="${adminConfig.portfolio?.hero?.title||''}">
+      <label>الوصف</label>
+      <textarea id="pf_hero_desc" rows="2">${adminConfig.portfolio?.hero?.description||''}</textarea>
+      <label>عنوان اللوحة الجانبية</label>
+      <input id="pf_panel_title" value="${adminConfig.portfolio?.panelTitle||''}">
+      <label>ملاحظة اللوحة الجانبية</label>
+      <textarea id="pf_panel_note" rows="2">${adminConfig.portfolio?.panelNote||''}</textarea>
+    </div>
+
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px">
+      <h4 style="margin:0 0 8px">الأرقام السريعة (KPIs)</h4>
+      <table class="admtable">
+        <thead><tr><th>القيمة</th><th>الوصف</th><th></th></tr></thead>
+        <tbody>
+          ${(adminConfig.portfolio?.kpis||[]).map((k,i)=>`<tr>
+            <td><input data-pfkpi="${i}" data-f="v" value="${k.v||''}"></td>
+            <td><input data-pfkpi="${i}" data-f="l" value="${k.l||''}"></td>
+            <td class="op"><button class="btn danger small" data-delpfkpi="${i}">✕</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <button class="btn ghost small" data-addpfkpi>+ إضافة رقم</button>
+    </div>
+
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px">
+      <h4 style="margin:0 0 8px">رحلتنا الهندسية</h4>
+      ${(adminConfig.portfolio?.timeline||[]).map((t,i)=>`
+        <div style="border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+            <input data-pftl="${i}" data-f="label" value="${t.label||''}" placeholder="تسمية قصيرة (تظهر لو مفيش صورة)" style="max-width:200px">
+            <button class="btn danger small" data-delpftl="${i}">🗑 حذف المرحلة</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            ${t.image?`<img src="${t.image}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`:''}
+            <label class="btn ghost small" style="cursor:pointer">📷 ${t.image?'تغيير الصورة':'رفع صورة (اختياري)'}<input type="file" accept="image/*" data-pftlimg="${i}" style="display:none"></label>
+            ${t.image?`<button class="btn ghost small" data-delpftlimg="${i}" type="button">✕ إزالة الصورة</button>`:''}
+          </div>
+          <input data-pftl="${i}" data-f="title" value="${t.title||''}" placeholder="العنوان" style="margin-bottom:6px">
+          <textarea data-pftl="${i}" data-f="desc" rows="2" placeholder="الوصف">${t.desc||''}</textarea>
+        </div>`).join('')}
+      <button class="btn ghost small" data-addpftl>+ إضافة مرحلة</button>
+    </div>
+
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px">
+      <h4 style="margin:0 0 8px">قدرات التنفيذ (خطوات)</h4>
+      <table class="admtable">
+        <thead><tr><th>الرقم</th><th>الوصف</th><th></th></tr></thead>
+        <tbody>
+          ${(adminConfig.portfolio?.capabilitySteps||[]).map((s,i)=>`<tr>
+            <td><input data-pfcap="${i}" data-f="v" value="${s.v||''}"></td>
+            <td><input data-pfcap="${i}" data-f="l" value="${s.l||''}"></td>
+            <td class="op"><button class="btn danger small" data-delpfcap="${i}">✕</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <button class="btn ghost small" data-addpfcap>+ إضافة خطوة</button>
+    </div>
+
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px">
+      <h4 style="margin:0 0 8px">المشاريع المنفذة</h4>
+      <label>عنوان القسم</label>
+      <input id="pf_proj_title" value="${adminConfig.portfolio?.projectsTitle||''}">
+      <label>وسم/تاريخ (يظهر جنب العنوان)</label>
+      <input id="pf_proj_tag" value="${adminConfig.portfolio?.projectsTag||''}">
+      ${(adminConfig.portfolio?.projects||[]).map((p,i)=>`
+        <div style="border:1px solid var(--line);border-radius:8px;padding:8px;margin:10px 0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <b>مشروع ${i+1}</b>
+            <button class="btn danger small" data-delpfproj="${i}">🗑 حذف المشروع</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            ${p.img?`<img src="${p.img}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`:''}
+            <label class="btn ghost small" style="cursor:pointer">📷 ${p.img?'تغيير الصورة':'رفع صورة المشروع'}<input type="file" accept="image/*" data-pfprojimg="${i}" style="display:none"></label>
+          </div>
+          <div class="row2">
+            <div><label>القدرة (مثال: 60 HP)</label><input data-pfproj="${i}" data-f="hp" value="${p.hp||''}"></div>
+            <div><label>المكان/التاريخ</label><input data-pfproj="${i}" data-f="place" value="${p.place||''}"></div>
+          </div>
+          <label>العنوان</label>
+          <input data-pfproj="${i}" data-f="title" value="${p.title||''}">
+          <label>الوصف</label>
+          <textarea data-pfproj="${i}" data-f="desc" rows="2">${p.desc||''}</textarea>
+          <label>وسوم (افصل بينها بفاصلة ,)</label>
+          <input data-pfproj="${i}" data-f="tags" value="${(p.tags||[]).join(', ')}">
+        </div>`).join('')}
+      <button class="btn ghost small" data-addpfproj>+ إضافة مشروع</button>
+    </div>
+
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px">
+      <h4 style="margin:0 0 8px">حالات عائد الاستثمار</h4>
+      <table class="admtable">
+        <thead><tr><th>القيمة</th><th>الوصف</th><th></th></tr></thead>
+        <tbody>
+          ${(adminConfig.portfolio?.roiCases||[]).map((r,i)=>`<tr>
+            <td><input data-pfroi="${i}" data-f="v" value="${r.v||''}"></td>
+            <td><input data-pfroi="${i}" data-f="l" value="${r.l||''}"></td>
+            <td class="op"><button class="btn danger small" data-delpfroi="${i}">✕</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <button class="btn ghost small" data-addpfroi>+ إضافة حالة</button>
+    </div>
+
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px">
+      <h4 style="margin:0 0 8px">شركاء وتقنيات</h4>
+      ${(adminConfig.portfolio?.partners||[]).map((p,i)=>`
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          ${p.img?`<img src="${p.img}" style="width:44px;height:44px;object-fit:contain;border-radius:8px;border:1px solid var(--line);background:#fff">`:''}
+          <label class="btn ghost small" style="cursor:pointer">📷<input type="file" accept="image/*" data-pfpartnerimg="${i}" style="display:none"></label>
+          <input data-pfpartner="${i}" data-f="name" value="${p.name||''}" placeholder="اسم الشريك" style="max-width:200px">
+          <button class="btn danger small" data-delpfpartner="${i}">✕</button>
+        </div>`).join('')}
+      <button class="btn ghost small" data-addpfpartner>+ إضافة شريك</button>
+    </div>
+  </div>
+
   <div class="card">
     <h3>أسعار البنود الأخرى (وحدة)</h3>
     <div class="assump">
@@ -1916,6 +2055,11 @@ function wire(){
     };
     return;
   }
+  if(currentView==='portfolio'){
+    const retryPfBtn = document.getElementById('retryPortfolioBtn');
+    if(retryPfBtn) retryPfBtn.onclick = ()=>{ portfolioError=null; render(); };
+    return;
+  }
   if(currentView==='calc' && !currentQuote()){
     const retryBtn = document.getElementById('retryLoad');
     if(retryBtn) retryBtn.onclick = ()=>refresh();
@@ -2065,6 +2209,38 @@ function wire(){
         const i=+inp.dataset.d, f=inp.dataset.f;
         adminConfig.discountTiers[i][f] = (f==='label') ? inp.value : +inp.value;
       });
+      if(adminConfig.portfolio){
+        const pf = adminConfig.portfolio;
+        const heroTitleEl = document.getElementById('pf_hero_title');
+        if(heroTitleEl){
+          pf.hero = pf.hero || {};
+          pf.hero.title = heroTitleEl.value;
+          pf.hero.description = document.getElementById('pf_hero_desc').value;
+          pf.panelTitle = document.getElementById('pf_panel_title').value;
+          pf.panelNote = document.getElementById('pf_panel_note').value;
+          pf.projectsTitle = document.getElementById('pf_proj_title').value;
+          pf.projectsTag = document.getElementById('pf_proj_tag').value;
+        }
+        document.querySelectorAll('[data-pfkpi]').forEach(inp=>{
+          const i=+inp.dataset.pfkpi; pf.kpis[i][inp.dataset.f] = inp.value;
+        });
+        document.querySelectorAll('[data-pftl]').forEach(inp=>{
+          const i=+inp.dataset.pftl; pf.timeline[i][inp.dataset.f] = inp.value;
+        });
+        document.querySelectorAll('[data-pfcap]').forEach(inp=>{
+          const i=+inp.dataset.pfcap; pf.capabilitySteps[i][inp.dataset.f] = inp.value;
+        });
+        document.querySelectorAll('[data-pfproj]').forEach(inp=>{
+          const i=+inp.dataset.pfproj, f=inp.dataset.f;
+          pf.projects[i][f] = (f==='tags') ? inp.value.split(',').map(s=>s.trim()).filter(Boolean) : inp.value;
+        });
+        document.querySelectorAll('[data-pfroi]').forEach(inp=>{
+          const i=+inp.dataset.pfroi; pf.roiCases[i][inp.dataset.f] = inp.value;
+        });
+        document.querySelectorAll('[data-pfpartner]').forEach(inp=>{
+          const i=+inp.dataset.pfpartner; pf.partners[i][inp.dataset.f] = inp.value;
+        });
+      }
       const num = id => { const el=document.getElementById(id); return el ? +el.value : undefined; };
       const setIfNum = (key,id) => { const v=num(id); if(v!==undefined && !isNaN(v)) adminConfig[key]=v; };
       setIfNum('hpCapacityRatio','a_hpratio');
@@ -2236,6 +2412,35 @@ function wire(){
       render();
     });
 
+    // ---- portfolio: add/delete rows for each editable list ----
+    if(adminConfig.portfolio){
+      const pf = adminConfig.portfolio;
+      const addPfBtn = document.querySelector('[data-addpfkpi]');
+      if(addPfBtn) addPfBtn.onclick = ()=>{ harvestAdminInputs(); pf.kpis.push({v:'',l:''}); render(); };
+      document.querySelectorAll('[data-delpfkpi]').forEach(b=>b.onclick=()=>{ harvestAdminInputs(); pf.kpis.splice(+b.dataset.delpfkpi,1); render(); });
+
+      const addTlBtn = document.querySelector('[data-addpftl]');
+      if(addTlBtn) addTlBtn.onclick = ()=>{ harvestAdminInputs(); pf.timeline.push({label:'',title:'',desc:'',image:null}); render(); };
+      document.querySelectorAll('[data-delpftl]').forEach(b=>b.onclick=()=>{ harvestAdminInputs(); pf.timeline.splice(+b.dataset.delpftl,1); render(); });
+      document.querySelectorAll('[data-delpftlimg]').forEach(b=>b.onclick=()=>{ harvestAdminInputs(); pf.timeline[+b.dataset.delpftlimg].image = null; render(); });
+
+      const addCapBtn = document.querySelector('[data-addpfcap]');
+      if(addCapBtn) addCapBtn.onclick = ()=>{ harvestAdminInputs(); pf.capabilitySteps.push({v:'',l:''}); render(); };
+      document.querySelectorAll('[data-delpfcap]').forEach(b=>b.onclick=()=>{ harvestAdminInputs(); pf.capabilitySteps.splice(+b.dataset.delpfcap,1); render(); });
+
+      const addProjBtn = document.querySelector('[data-addpfproj]');
+      if(addProjBtn) addProjBtn.onclick = ()=>{ harvestAdminInputs(); pf.projects.push({hp:'',img:'',title:'',place:'',desc:'',tags:[]}); render(); };
+      document.querySelectorAll('[data-delpfproj]').forEach(b=>b.onclick=()=>{ harvestAdminInputs(); pf.projects.splice(+b.dataset.delpfproj,1); render(); });
+
+      const addRoiBtn = document.querySelector('[data-addpfroi]');
+      if(addRoiBtn) addRoiBtn.onclick = ()=>{ harvestAdminInputs(); pf.roiCases.push({v:'',l:''}); render(); };
+      document.querySelectorAll('[data-delpfroi]').forEach(b=>b.onclick=()=>{ harvestAdminInputs(); pf.roiCases.splice(+b.dataset.delpfroi,1); render(); });
+
+      const addPartnerBtn = document.querySelector('[data-addpfpartner]');
+      if(addPartnerBtn) addPartnerBtn.onclick = ()=>{ harvestAdminInputs(); pf.partners.push({name:'',img:''}); render(); };
+      document.querySelectorAll('[data-delpfpartner]').forEach(b=>b.onclick=()=>{ harvestAdminInputs(); pf.partners.splice(+b.dataset.delpfpartner,1); render(); });
+    }
+
     function readFileAsBase64(file){
       return new Promise((resolve,reject)=>{
         const reader = new FileReader();
@@ -2255,6 +2460,46 @@ function wire(){
       try{
         const url = await uploadImage(file);
         adminConfig.productCatalog[+inp.dataset.catimg].categoryImage = url;
+        render();
+      }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
+    });
+
+    // ---- portfolio image uploads (hero / timeline / project / partner logo) ----
+    const pfHeroImgInp = document.getElementById('pf_heroimg_file');
+    if(pfHeroImgInp) pfHeroImgInp.onchange = async ()=>{
+      const file = pfHeroImgInp.files[0]; if(!file) return;
+      harvestAdminInputs();
+      try{
+        const url = await uploadImage(file);
+        adminConfig.portfolio.hero = adminConfig.portfolio.hero || {};
+        adminConfig.portfolio.hero.image = url;
+        render();
+      }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
+    };
+    document.querySelectorAll('[data-pftlimg]').forEach(inp=>inp.onchange = async ()=>{
+      const file = inp.files[0]; if(!file) return;
+      harvestAdminInputs();
+      try{
+        const url = await uploadImage(file);
+        adminConfig.portfolio.timeline[+inp.dataset.pftlimg].image = url;
+        render();
+      }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
+    });
+    document.querySelectorAll('[data-pfprojimg]').forEach(inp=>inp.onchange = async ()=>{
+      const file = inp.files[0]; if(!file) return;
+      harvestAdminInputs();
+      try{
+        const url = await uploadImage(file);
+        adminConfig.portfolio.projects[+inp.dataset.pfprojimg].img = url;
+        render();
+      }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
+    });
+    document.querySelectorAll('[data-pfpartnerimg]').forEach(inp=>inp.onchange = async ()=>{
+      const file = inp.files[0]; if(!file) return;
+      harvestAdminInputs();
+      try{
+        const url = await uploadImage(file);
+        adminConfig.portfolio.partners[+inp.dataset.pfpartnerimg].img = url;
         render();
       }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
     });
@@ -2369,6 +2614,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     btn.classList.add('active');
     currentView = btn.dataset.view;
     if(currentView==='products'){ cachedProductCatalog = null; productCatalogError = null; selectedProduct = null; productsNav = 'categories'; selectedCategoryIdx = null; }
+    if(currentView==='portfolio'){ cachedPortfolio = null; portfolioError = null; }
     render();
   };
 });

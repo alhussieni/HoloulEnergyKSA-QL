@@ -526,6 +526,10 @@ Deno.serve(async (req: Request) => {
     return json({ productCatalog: D.productCatalog || [] });
   }
 
+  if (body.action === "get-portfolio") {
+    return json({ portfolio: D.portfolio || null });
+  }
+
   if (body.action === "log-lead") {
     const url = D.leadsWebhookUrl;
     if (url) {

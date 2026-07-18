@@ -27,7 +27,8 @@ In the Supabase dashboard → SQL Editor, paste and run, in order:
 `0004_product_catalog.sql`, `0005_product_images_bucket.sql`,
 `0006_session_tokens.sql`, `0007_veichi_inverter_specs_phase1.sql`,
 `0008_veichi_inverter_specs_phase234.sql`, `0009_veichi_pump_inverter_specs.sql`,
-`0010_veichi_battery_specs.sql`, `0011_veichi_accessories_specs.sql`
+`0010_veichi_battery_specs.sql`, `0011_veichi_accessories_specs.sql`,
+`0012_portfolio_content.sql`
 
 (or, if you use the Supabase CLI locally: `supabase db push`)
 
@@ -135,4 +136,5 @@ behaviour as today — the only difference is where the math happens.
 | `admin-list-reps` / `admin-save-rep` / `admin-delete-rep` | `adminToken` | manage rep accounts |
 | `upload-product-image` | `adminToken` | uploads to the `product-images` Storage bucket |
 | `get-product-catalog` | none | public reference list prices for any rep |
+| `get-portfolio` | none | public portfolio content (hero, projects, partners, timeline) |
 | `hash-password` | none | convenience helper — not used by the frontend anymore |
