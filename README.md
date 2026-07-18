@@ -25,7 +25,8 @@ checked on the server.
 In the Supabase dashboard → SQL Editor, paste and run, in order:
 `0001_init.sql`, `0002_inverter_brands.sql`, `0003_reps_and_quotes.sql`,
 `0004_product_catalog.sql`, `0005_product_images_bucket.sql`,
-`0006_session_tokens.sql`, `0007_veichi_inverter_specs_phase1.sql`
+`0006_session_tokens.sql`, `0007_veichi_inverter_specs_phase1.sql`,
+`0008_veichi_inverter_specs_phase234.sql`, `0009_veichi_pump_inverter_specs.sql`
 
 (or, if you use the Supabase CLI locally: `supabase db push`)
 
