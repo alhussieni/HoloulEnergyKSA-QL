@@ -215,6 +215,8 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .model-card .price small{display:block;font-weight:600;font-size:9px;color:var(--muted);}
 .model-card .price-sub{font-size:10px;color:var(--muted);white-space:nowrap;margin-top:-4px;}
 .unavail-chip{background:#FBEAEA;color:var(--bad);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;}
+.chip{background:var(--panel-2,#F0F4F8);color:var(--ink);padding:3px 9px;border-radius:20px;white-space:nowrap;border:1px solid var(--line);}
+.chip-muted{opacity:.6;}
 
 /* Level 3 — product detail: golden split, photo ≈61.8% / spec panel ≈38.2% */
 .detail-split{display:grid;grid-template-columns:1.618fr 1fr;gap:var(--sp-3);align-items:start;}
@@ -418,6 +420,7 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
       <nav class="tabs no-print">
         <button data-view="calc" class="active">الحاسبة</button>
         <button data-view="feas">دراسة الجدوى</button>
+        <button data-view="ready" id="readyNavBtn">منظومات جاهزة</button>
         <button data-view="products" id="productsNavBtn">قائمة المنتجات</button>
         <button data-view="portfolio">البورتفوليو</button>
         <button data-view="admin">لوحة التحكم</button>
@@ -472,6 +475,10 @@ let cachedInverterBrandOptions = []; // [{idx,brand}] — never list/cost/discou
 let cachedProductCatalog = null; // fetched lazily when the products tab opens
 let productCatalogLoading = false;
 let productCatalogError = null;
+
+let cachedReadySystems = null; // fetched lazily when the ready-systems tab opens
+let readySystemsLoading = false;
+let readySystemsError = null;
 let adminFinancials = null;   // cost/margin breakdown — only after admin auth
 let adminConfig = null;       // full rates object — only after admin auth
 let adminReps = [];           // rep accounts — only after admin auth
@@ -481,6 +488,7 @@ let quoteLoading = false;
 
 // Off-grid / on-grid calculators — same cache pattern as the irrigation quote above
 let cachedOffgridQuote = null, offgridEngineError = null, offgridLoading = false, adminFinancialsOffgrid = null;
+let offgridAppliancesSeeded = false; // replaces the 1-item hardcoded default with D.offgrid.applianceDefaults on first successful load
 let cachedOngridQuote = null, ongridEngineError = null, ongridLoading = false, adminFinancialsOngrid = null;
 
 function buildEngineInput(){
@@ -553,6 +561,13 @@ async function refreshOffgridQuote(){
       : Promise.resolve(null);
     const [data, adminData] = await Promise.all([quotePromise, adminPromise]);
     cachedOffgridQuote = data.quote;
+    if(!offgridAppliancesSeeded && Array.isArray(data.applianceDefaults) && data.applianceDefaults.length){
+      offgridAppliancesSeeded = true;
+      // Only replace the placeholder single-item list, never something the rep already edited.
+      if(state.offgrid.appliances.length===1 && state.offgrid.appliances[0].name==='ثلاجة' && state.offgrid.appliances[0].watts===150){
+        state.offgrid.appliances = data.applianceDefaults.map(a=>({...a}));
+      }
+    }
     if(data.panelOptions && data.panelOptions.length && !data.panelOptions.some(p=>p.idx===state.offgrid.panelIdx)){
       state.offgrid.panelIdx = data.panelOptions[0].idx;
     }
@@ -607,6 +622,12 @@ function normalizeAdminConfig(cfg){
     cfg.inverterBrands = [{ brand:'VEICHI', tiers: cfg.inverters || [] }];
   }
   if(!Array.isArray(cfg.productCatalog)) cfg.productCatalog = [];
+  // Defensive fallback only — the real defaults live in
+  // 0013_offgrid_ongrid_ready_systems.sql. This just stops the admin panel
+  // from throwing if that migration hasn't been run yet on this DB.
+  if(!cfg.offgrid) cfg.offgrid = { sunHours:5.5, systemEfficiency:0.80, batteryDoD:0.90, defaultAutonomyDays:1, peakLoadDivisor:6, batteryMarkupPct:30, inverterMarkupPct:30, structurePerPanelCost:250, structurePerPanelSell:350, cablingFixedCost:800, cablingFixedSell:1200, installPerKwCost:150, installPerKwSell:250 };
+  if(!cfg.ongrid) cfg.ongrid = { sunHours:5.5, performanceRatio:0.80, tariffRate:0.18, inverterMarkupPct:30, structurePerPanelCost:250, structurePerPanelSell:350, cablingFixedCost:800, cablingFixedSell:1200, netMeteringFeeCost:0, netMeteringFeeSell:0, installPerKwCost:150, installPerKwSell:250 };
+  if(!Array.isArray(cfg.readyOffgridSystems)) cfg.readyOffgridSystems = [];
   return cfg;
 }
 
@@ -1939,6 +1960,86 @@ async function loadProductCatalog(){
   render();
 }
 
+// ---------------------------------------------------------------------------
+// Ready-made off-grid packages — display-only browsing (no sizing calculation).
+// A rep/client picks one of these fixed named systems instead of running the
+// dynamic off-grid calculator. Data comes straight from D.readyOffgridSystems.
+// ---------------------------------------------------------------------------
+async function loadReadySystems(){
+  readySystemsLoading = true;
+  readySystemsError = null;
+  try{
+    const data = await callEngine('get-ready-offgrid-systems', {});
+    cachedReadySystems = data.systems || [];
+  }catch(e){
+    readySystemsError = e.message || 'تعذر الاتصال بالخادم';
+  }
+  readySystemsLoading = false;
+  render();
+}
+
+function readySystemCoolingLine(s){
+  if(s.acType === 'لا يوجد' || (!s.acCountDay && !s.acCountNight)) return `<span class="chip chip-muted">❄️ بدون تبريد</span>`;
+  const parts = [];
+  if(s.acCountDay) parts.push(`${s.acCountDay}× ${s.acPowerDayW}W نهارًا ${s.acHoursDay}س`);
+  if(s.acCountNight) parts.push(`${s.acCountNight}× ${s.acPowerNightW}W ليلاً ${s.acHoursNight}س`);
+  return `<span class="chip">❄️ ${s.acType} — ${parts.join(' + ')}</span>`;
+}
+
+function renderReadySystems(){
+  if(!cachedReadySystems && !readySystemsLoading && !readySystemsError){
+    loadReadySystems();
+  }
+  if(readySystemsLoading && !cachedReadySystems){
+    return `<div class="card" style="max-width:420px;margin:60px auto;text-align:center"><h3>جارِ التحميل...</h3></div>`;
+  }
+  if(readySystemsError){
+    return `<div class="card" style="max-width:420px;margin:60px auto;text-align:center">
+      <h3 style="color:#B0432C">تعذر تحميل المنظومات الجاهزة</h3>
+      <div class="note">${readySystemsError}</div>
+      <button class="btn small" id="retryReadyBtn" style="margin-top:12px">إعادة المحاولة</button>
+    </div>`;
+  }
+  const systems = cachedReadySystems || [];
+  return `
+  <div class="card no-print">
+    <h3>منظومات أوف-جريد جاهزة</h3>
+    <div class="note">منظومات ثابتة بالاسم والسعر — اختر الأنسب لاحتياج العميل مباشرة بدون حساب. أرقام التبريد والإضاءة توضح فعليًا إيه اللي بتشغّله كل منظومة.</div>
+  </div>
+  <div class="ready-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+    ${systems.map(s=>`
+      <div class="card" style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <h3 style="margin:0">${s.name}</h3>
+          <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
+        </div>
+        <div class="big num" style="font-size:20px">${fmt(s.priceSar)} ﷼</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11.5px">
+          ${readySystemCoolingLine(s)}
+          ${s.fridgeCount ? `<span class="chip">🧊 ثلاجة ${s.fridgeHours}س</span>` : `<span class="chip chip-muted">🧊 بدون ثلاجة</span>`}
+          ${s.lampCount ? `<span class="chip">💡 ${s.lampCount}× ${s.lampPowerW}W — ${s.lampHours}س</span>` : ''}
+          ${s.otherDevices ? `<span class="chip">${s.otherDevices}</span>` : ''}
+        </div>
+        <table class="admtable" style="margin-top:4px">
+          <tbody>
+            <tr><td style="font-weight:600">الإنفرتر</td><td class="num">${s.inverterBrand} ${s.inverterPowerW?fmt(s.inverterPowerW)+'W':''}</td></tr>
+            <tr><td style="font-weight:600">البطاريات</td><td class="num">${s.batteryType} — ${s.batteryCount}× ${s.batteryUnitCapacity}${s.batteryCapacityUnit}</td></tr>
+            <tr><td style="font-weight:600">الألواح</td><td class="num">${s.panelCount}× ${s.panelPowerW}W</td></tr>
+          </tbody>
+        </table>
+        ${s.notes ? `<div class="note" style="font-size:11px">${s.notes}</div>` : ''}
+        <button class="btn ghost small" style="margin-top:4px" onclick="sendReadySystemWhatsapp('${s.name.replace(/'/g,"\\'")}', ${s.priceSar})">📤 إرسال للعميل (واتساب)</button>
+      </div>`).join('')}
+  </div>
+  ${!systems.length ? `<div class="card"><div class="note">لا توجد منظومات جاهزة مسجّلة بعد.</div></div>` : ''}
+  `;
+}
+
+function sendReadySystemWhatsapp(name, priceSar){
+  const msg = `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nمنظومة أوف-جريد جاهزة: ${name}\nالسعر: ${fmt(priceSar)} ﷼\n\nللتواصل: 966561274344+`;
+  window.open('https://wa.me/?text='+encodeURIComponent(msg), '_blank');
+}
+
 function renderAdmin(){
   return `
   <div class="card">
@@ -2267,6 +2368,28 @@ function renderAdmin(){
   </div>
 
   <div class="card">
+    <h3>منظومات أوف-جريد جاهزة <span class="tag">تعديل الاسم والسعر والحالة فقط</span></h3>
+    <div class="note">هذه المنظومات ثابتة ومعروضة للتصفح المباشر (تبويب "منظومات جاهزة") — بدون أي حساب. الأجهزة والقدرات والمكونات بيانات مرجعية فقط، تعديلها من هنا غير مدعوم؛ لتغييرها استخدم "تصدير/استيراد JSON" بالأسفل.</div>
+    <table class="admtable" style="margin-top:10px">
+      <thead><tr><th>الاسم</th><th>السعر (﷼)</th><th>الحالة</th></tr></thead>
+      <tbody>
+        ${adminConfig.readyOffgridSystems.map((s,i)=>`
+          <tr>
+            <td><input data-readysys="${i}" data-rf="name" value="${s.name}" style="width:100%"></td>
+            <td><input data-readysys="${i}" data-rf="priceSar" type="number" value="${s.priceSar}" style="width:110px"></td>
+            <td>
+              <select data-readysys="${i}" data-rf="status">
+                <option value="متوفر" ${s.status==='متوفر'?'selected':''}>متوفر</option>
+                <option value="نفدت الكمية" ${s.status==='نفدت الكمية'?'selected':''}>نفدت الكمية</option>
+              </select>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="note" style="margin-top:8px">التعديلات هنا بتتحفظ مع باقي إعدادات الأدمن — لازم تضغط "💾 حفظ التعديلات" بالأسفل عشان تتفعّل فعليًا.</div>
+  </div>
+
+  <div class="card">
     <h3>فئات الخصم</h3>
     <table class="admtable">
       <thead><tr><th>الاسم</th><th>نسبة من الهامش</th></tr></thead>
@@ -2400,10 +2523,11 @@ function renderAdminLogin(){
 }
 
 function render(){
-  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio'){ app.innerHTML = renderRepLogin(); wire(); return; }
-  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio'){ app.innerHTML = renderGuestRegister(); wire(); return; }
+  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready'){ app.innerHTML = renderRepLogin(); wire(); return; }
+  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready'){ app.innerHTML = renderGuestRegister(); wire(); return; }
   if(currentView==='calc') app.innerHTML = renderCalc();
   else if(currentView==='feas') app.innerHTML = renderFeas();
+  else if(currentView==='ready') app.innerHTML = renderReadySystems();
   else if(currentView==='products') app.innerHTML = renderProducts();
   else if(currentView==='portfolio') app.innerHTML = renderPortfolio();
   else if(currentView==='admin' && !adminAuthed) app.innerHTML = renderAdminLogin();
@@ -2412,7 +2536,7 @@ function render(){
 }
 
 function wire(){
-  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio'){
+  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready'){
     document.getElementById('rep_login_btn').onclick = async ()=>{
       const username = document.getElementById('rep_user').value.trim();
       const password = document.getElementById('rep_pass').value;
@@ -2434,7 +2558,7 @@ function wire(){
     };
     return;
   }
-  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio'){
+  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready'){
     document.getElementById('guest_register_btn').onclick = ()=>{
       const name = document.getElementById('guest_name').value.trim();
       const phone = document.getElementById('guest_phone').value.trim();
@@ -2461,6 +2585,11 @@ function wire(){
         render();
       }catch(e){ adminTokenMem = null; alert('كلمة المرور غير صحيحة'); }
     };
+    return;
+  }
+  if(currentView==='ready'){
+    const retryBtn = document.getElementById('retryReadyBtn');
+    if(retryBtn) retryBtn.onclick = ()=>{ readySystemsError=null; render(); };
     return;
   }
   if(currentView==='products'){
@@ -2738,6 +2867,12 @@ function wire(){
       setNG('cablingFixedCost','a_ng_cabcost'); setNG('cablingFixedSell','a_ng_cabsell');
       setNG('netMeteringFeeCost','a_ng_netcost'); setNG('netMeteringFeeSell','a_ng_netsell');
       setNG('installPerKwCost','a_ng_instcost'); setNG('installPerKwSell','a_ng_instsell');
+      document.querySelectorAll('[data-readysys]').forEach(inp=>{
+        const i=+inp.dataset.readysys, f=inp.dataset.rf;
+        const sys = adminConfig.readyOffgridSystems[i];
+        if(!sys) return;
+        sys[f] = (f==='priceSar') ? (+inp.value || 0) : inp.value;
+      });
       const webhookEl = document.getElementById('a_webhook');
       if(webhookEl) adminConfig.leadsWebhookUrl = webhookEl.value.trim();
     }
@@ -3140,6 +3275,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
     currentView = btn.dataset.view;
+    if(currentView==='ready'){ cachedReadySystems = null; readySystemsError = null; }
     if(currentView==='products'){ cachedProductCatalog = null; productCatalogError = null; selectedProduct = null; productsNav = 'categories'; selectedCategoryIdx = null; }
     if(currentView==='portfolio'){ cachedPortfolio = null; portfolioError = null; }
     render();

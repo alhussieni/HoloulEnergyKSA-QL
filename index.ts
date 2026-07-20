@@ -281,6 +281,224 @@ function resolveInput(D: any, rawInput: any) {
   return { ...rawInput, panel, invBrand, discountFactor: tier.factor };
 }
 
+// ---------------------------------------------------------------------------
+// Off-grid / on-grid engines — pull inverter & battery pricing straight from
+// D.productCatalog (the same reference list reps use for ad-hoc "how much
+// does X cost" questions), instead of a separate hard-coded ladder. That
+// catalog's own migration comment says it exists "to quote off-grid
+// components" — this is what actually wires that up.
+//
+// All *MarkupPct / sunHours / systemEfficiency / batteryDoD / tariffRate /
+// peakLoadDivisor / install-and-structure-cost fields come from
+// D.offgrid / D.ongrid (seeded with STARTING-POINT placeholder values in
+// 0013_offgrid_ongrid_ready_systems.sql) and are editable from the admin
+// panel. Review them before trusting a real quote.
+// ---------------------------------------------------------------------------
+function findCatalogCategory(D: any, nameIncludes: string) {
+  const cat = (D.productCatalog || []).find((c: any) => (c.category || "").includes(nameIncludes));
+  if (!cat) throw new Error(`productCatalog category "${nameIncludes}" not found — check admin > قائمة المنتجات`);
+  return cat;
+}
+// Hybrid MPPT inverter/charger rows look like "SISV 8KW (TWIN) MPPT" — pull
+// the kW rating out of the model name since there's no dedicated numeric
+// column for it in the catalog table.
+function parseKwFromModel(model: string): number {
+  const m = String(model).match(/([\d.]+)\s*KW/i);
+  return m ? parseFloat(m[1]) : 0;
+}
+function pickCatalogInverter(D: any, kwNeeded: number) {
+  const cat = findCatalogCategory(D, "انفرتر");
+  const priceIdx = cat.columns.length - 2; // second-to-last column = excl-VAT price, by table convention
+  const rows = cat.rows
+    .map((r: any) => ({ model: r[0], kw: parseKwFromModel(r[0]), costBasis: parseFloat(r[priceIdx]) }))
+    .filter((r: any) => r.kw > 0)
+    .sort((a: any, b: any) => a.kw - b.kw);
+  if (!rows.length) throw new Error('لا يوجد أي موديل انفرتر بقدرة (KW) واضحة في اسم الموديل داخل كتالوج "شواحن/انفرترات هجين MPPT"');
+  return rows.find((r: any) => r.kw >= kwNeeded) || rows[rows.length - 1];
+}
+// Battery rows: [model, current(A), voltage(V), priceExclTax, priceInclTax].
+// Only the 51.2V line is stackable DC-bus battery banks matched to these
+// hybrid inverters — 12.8V/25.6V rows are for smaller separate 12V/24V setups.
+function pickCatalogBattery(D: any, nameplateKwhNeeded: number) {
+  const cat = findCatalogCategory(D, "بطاريات ليثيوم");
+  const rows = cat.rows
+    .map((r: any) => ({
+      model: r[0],
+      voltage: parseFloat(r[2]),
+      current: parseFloat(r[1]),
+      costBasis: parseFloat(r[3]),
+    }))
+    .filter((r: any) => Math.abs(r.voltage - 51.2) < 0.5)
+    .map((r: any) => ({ ...r, kwh: (r.current * r.voltage) / 1000 }))
+    .sort((a: any, b: any) => a.kwh - b.kwh);
+  if (!rows.length) throw new Error('لا يوجد أي موديل بطارية 51.2V داخل كتالوج "بطاريات ليثيوم"');
+  const unit = rows[rows.length - 1]; // largest module, to minimise part count
+  const count = Math.max(1, Math.ceil(nameplateKwhNeeded / unit.kwh));
+  return { unit, count, totalKwh: unit.kwh * count };
+}
+
+function buildGenericItems(pushImpl: any, opts: {
+  panel: any; totalPanels: number; calcKW: number;
+  inverterLabel: string; inverterType: string; inverterCostBasis: number; inverterSell: number;
+  structureCost: number; structureSell: number;
+  cablingCost: number; cablingSell: number;
+  installCost: number; installSell: number;
+  battery?: { unit: any; count: number; totalKwh: number; markupPct: number };
+}) {
+  const panelCost = opts.panel.priceW * opts.calcKW * 1000;
+  pushImpl("panel", "ألواح الطاقة الشمسية", panelCost, panelCost, {
+    type: `${opts.panel.brand} ${opts.panel.power}W أو ما يعادلها`, qty: `#${opts.totalPanels}#`,
+    warranty: "12 سنة ضد عيوب الصناعة / 30 سنة ضد التناقص الإنتاجي عن %80",
+  });
+  pushImpl("inverter", opts.inverterLabel, opts.inverterSell, opts.inverterCostBasis, {
+    type: opts.inverterType, qty: "#1#", warranty: "سنة واحدة",
+  });
+  if (opts.battery) {
+    const sell = opts.battery.unit.costBasis * opts.battery.count * (1 + opts.battery.markupPct / 100);
+    pushImpl("battery", "بنك البطاريات (ليثيوم)", sell, opts.battery.unit.costBasis * opts.battery.count, {
+      type: `${opts.battery.unit.model} أو ما يعادلها`, qty: `#${opts.battery.count}#`, warranty: "5 سنوات",
+    });
+  }
+  pushImpl("structure", "الشاسيه/الحوامل", opts.structureSell, opts.structureCost, {
+    type: "-", qty: `#${opts.totalPanels}#`, warranty: "عشر سنوات",
+  });
+  pushImpl("cabling", "الكابلات ولوحة الحماية", opts.cablingSell, opts.cablingCost, {
+    type: "-", qty: "#1#", warranty: "سنة واحدة",
+  });
+  pushImpl("install", "التركيب والتشغيل", opts.installSell, opts.installCost, {
+    type: "-", qty: "-", warranty: "عام واحد فقط من تاريخ التشغيل",
+  });
+}
+
+function finalizeQuote(items: any[], discountFactor: number, D: any, manualDiscountAmt: number) {
+  let sellTotal = 0, discountTotal = 0;
+  for (const it of items) {
+    const margin = it.sell - it.costBasis;
+    const discount = it.key === "panel" ? 0 : margin * discountFactor;
+    it.discount = discount;
+    it.net = it.sell - discount;
+    sellTotal += it.sell;
+    discountTotal += discount;
+  }
+  discountTotal = Math.round(discountTotal / 10) * 10;
+  const netAfterDiscount = sellTotal - discountTotal;
+  const manualDiscount = Math.min(netAfterDiscount, Math.max(0, manualDiscountAmt || 0));
+  const netAfterManual = netAfterDiscount - manualDiscount;
+  const vat = netAfterManual * D.vat;
+  const finalTotal = netAfterManual + vat;
+  return { sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt: manualDiscount, netAfterManual, vat, finalTotal };
+}
+
+function computeOffgridQuote(D: any, inp: any) {
+  const og = D.offgrid;
+  const panel = inp.panel;
+
+  // 1) Daily energy need, in kWh.
+  const dailyKwh = inp.method === "appliances"
+    ? (inp.appliances || []).reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.hours || 0) * (+a.qty || 1)) / 1000, 0)
+    : (+inp.dailyKwh || 0);
+  if (dailyKwh <= 0) throw new Error("الاستهلاك اليومي يجب أن يكون أكبر من صفر");
+
+  // 2) Peak load, in kW — used to size the inverter/charger.
+  //    "appliances" method: worst case, everything listed running at once.
+  //    "consumption" method: no per-device data, so this ESTIMATES peak as
+  //    dailyKwh spread over `peakLoadDivisor` peak-equivalent hours (default
+  //    6h, tune in admin panel) — a genuine assumption, not a measurement.
+  const peakKw = inp.method === "appliances"
+    ? (inp.appliances || []).reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.qty || 1)) / 1000, 0)
+    : dailyKwh / (og.peakLoadDivisor || 6);
+
+  // 3) PV array sized to cover daily energy within the given sun hours.
+  const requiredArrayKw = dailyKwh / (og.sunHours * og.systemEfficiency);
+  const totalPanels = Math.max(1, Math.ceil((requiredArrayKw * 1000) / panel.power));
+  const calcKW = (totalPanels * panel.power) / 1000;
+
+  // 4) Battery bank sized for the requested autonomy, grossed up for DoD.
+  const autonomyDays = Math.max(1, +inp.autonomyDays || og.defaultAutonomyDays || 1);
+  const nameplateBatteryKwh = (dailyKwh * autonomyDays) / og.batteryDoD;
+  const battery = pickCatalogBattery(D, nameplateBatteryKwh);
+
+  // 5) Hybrid inverter/charger sized to the peak load.
+  const inv = pickCatalogInverter(D, peakKw);
+  const invSell = inv.costBasis * (1 + og.inverterMarkupPct / 100);
+
+  const items: any[] = [];
+  const push = (key: string, label: string, sell: number, costBasis: number, meta: any = {}) =>
+    items.push({ key, label, on: true, sell, costBasis, type: meta.type || "-", qty: meta.qty || "-", warranty: meta.warranty || "-" });
+
+  buildGenericItems(push, {
+    panel, totalPanels, calcKW,
+    inverterLabel: "شاحن/انفرتر هجين MPPT", inverterType: `${inv.model} أو ما يعادله`,
+    inverterCostBasis: inv.costBasis, inverterSell: invSell,
+    structureCost: totalPanels * og.structurePerPanelCost, structureSell: totalPanels * og.structurePerPanelSell,
+    cablingCost: og.cablingFixedCost, cablingSell: og.cablingFixedSell,
+    installCost: calcKW * og.installPerKwCost, installSell: calcKW * og.installPerKwSell,
+    battery: { ...battery, markupPct: og.batteryMarkupPct },
+  });
+
+  const totals = finalizeQuote(items, inp.discountFactor, D, inp.specialDiscountAmt);
+  return {
+    dailyKwh, peakKw, actualKw: calcKW, totalPanels, invKw: inv.kw,
+    nameplateBatteryKwh: battery.totalKwh, autonomyDays,
+    items, ...totals, sarPerKW: totals.finalTotal / calcKW,
+  };
+}
+
+function computeOngridQuote(D: any, inp: any) {
+  const ng = D.ongrid;
+  const panel = inp.panel;
+
+  // 1) Target system size, in kW.
+  let systemKw: number;
+  if (inp.method === "kw") {
+    systemKw = +inp.systemKw || 0;
+  } else {
+    const monthlyKwh = inp.method === "bill" ? (+inp.billSar || 0) / ng.tariffRate : (+inp.monthlyKwh || 0);
+    const annualKwh = monthlyKwh * 12;
+    systemKw = annualKwh / (ng.sunHours * 365 * ng.performanceRatio);
+  }
+  if (systemKw <= 0) throw new Error("قدرة المنظومة المحسوبة يجب أن تكون أكبر من صفر — راجع المدخلات");
+
+  const totalPanels = Math.max(1, Math.ceil((systemKw * 1000) / panel.power));
+  const calcKW = (totalPanels * panel.power) / 1000;
+
+  // Reuses the same hybrid-inverter catalog as off-grid (many hybrid units
+  // also run grid-tied). If a dedicated pure grid-tie inverter list gets
+  // added to productCatalog later, point this at that category instead.
+  const inv = pickCatalogInverter(D, calcKW);
+  const invSell = inv.costBasis * (1 + ng.inverterMarkupPct / 100);
+
+  const items: any[] = [];
+  const push = (key: string, label: string, sell: number, costBasis: number, meta: any = {}) =>
+    items.push({ key, label, on: true, sell, costBasis, type: meta.type || "-", qty: meta.qty || "-", warranty: meta.warranty || "-" });
+
+  buildGenericItems(push, {
+    panel, totalPanels, calcKW,
+    inverterLabel: "الانفرتر", inverterType: `${inv.model} أو ما يعادله`,
+    inverterCostBasis: inv.costBasis, inverterSell: invSell,
+    structureCost: totalPanels * ng.structurePerPanelCost, structureSell: totalPanels * ng.structurePerPanelSell,
+    cablingCost: ng.cablingFixedCost, cablingSell: ng.cablingFixedSell,
+    installCost: calcKW * ng.installPerKwCost, installSell: calcKW * ng.installPerKwSell,
+  });
+  if (ng.netMeteringFeeCost || ng.netMeteringFeeSell) {
+    push("netmetering", "رسوم صافي القياس", ng.netMeteringFeeSell, ng.netMeteringFeeCost, { type: "-", qty: "#1#", warranty: "-" });
+  }
+
+  const totals = finalizeQuote(items, inp.discountFactor, D, inp.specialDiscountAmt);
+  return {
+    actualKw: calcKW, totalPanels, invKw: inv.kw,
+    items, ...totals, sarPerKW: totals.finalTotal / calcKW,
+  };
+}
+
+function resolveOffgridOngridInput(D: any, rawInput: any) {
+  const panel = D.panels[rawInput.panelIdx];
+  if (!panel) throw new Error("invalid panelIdx");
+  const tierIdx = (rawInput.discountTierIdx ?? D.defaultDiscountIdx ?? 1);
+  const tier = D.discountTiers[tierIdx] || D.discountTiers[D.defaultDiscountIdx ?? 1];
+  return { ...rawInput, panel, discountFactor: tier.factor };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -370,6 +588,24 @@ Deno.serve(async (req: Request) => {
     let inp: any;
     try { inp = resolveInput(D, body.input); } catch (e) { return json({ error: (e as Error).message }, 400); }
     const q = computeQuote(D, inp);
+    return json({ config: D, quote: adminView(q) });
+  }
+
+  if (body.action === "offgrid-admin-view") {
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
+    let inp: any;
+    try { inp = resolveOffgridOngridInput(D, body.input); } catch (e) { return json({ error: (e as Error).message }, 400); }
+    let q: any;
+    try { q = computeOffgridQuote(D, inp); } catch (e) { return json({ error: (e as Error).message }, 400); }
+    return json({ config: D, quote: adminView(q) });
+  }
+
+  if (body.action === "ongrid-admin-view") {
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
+    let inp: any;
+    try { inp = resolveOffgridOngridInput(D, body.input); } catch (e) { return json({ error: (e as Error).message }, 400); }
+    let q: any;
+    try { q = computeOngridQuote(D, inp); } catch (e) { return json({ error: (e as Error).message }, 400); }
     return json({ config: D, quote: adminView(q) });
   }
 
@@ -528,6 +764,39 @@ Deno.serve(async (req: Request) => {
 
   if (body.action === "get-portfolio") {
     return json({ portfolio: D.portfolio || null });
+  }
+
+  if (body.action === "get-ready-offgrid-systems") {
+    return json({ systems: D.readyOffgridSystems || [] });
+  }
+
+  if (body.action === "offgrid-quote") {
+    let inp: any;
+    try { inp = resolveOffgridOngridInput(D, body.input); } catch (e) { return json({ error: (e as Error).message }, 400); }
+    let q: any;
+    try { q = computeOffgridQuote(D, inp); } catch (e) { return json({ error: (e as Error).message }, 400); }
+    return json({
+      quote: publicView(q),
+      panelOptions: D.panels
+        .map((p: any, idx: number) => ({ idx, brand: p.brand, power: p.power, visible: p.visible !== false, hasPrice: !!p.priceW }))
+        .filter((p: any) => p.visible && p.hasPrice)
+        .map((p: any) => ({ idx: p.idx, brand: p.brand, power: p.power })),
+      applianceDefaults: D.offgrid.applianceDefaults || [],
+    });
+  }
+
+  if (body.action === "ongrid-quote") {
+    let inp: any;
+    try { inp = resolveOffgridOngridInput(D, body.input); } catch (e) { return json({ error: (e as Error).message }, 400); }
+    let q: any;
+    try { q = computeOngridQuote(D, inp); } catch (e) { return json({ error: (e as Error).message }, 400); }
+    return json({
+      quote: publicView(q),
+      panelOptions: D.panels
+        .map((p: any, idx: number) => ({ idx, brand: p.brand, power: p.power, visible: p.visible !== false, hasPrice: !!p.priceW }))
+        .filter((p: any) => p.visible && p.hasPrice)
+        .map((p: any) => ({ idx: p.idx, brand: p.brand, power: p.power })),
+    });
   }
 
   if (body.action === "log-lead") {
