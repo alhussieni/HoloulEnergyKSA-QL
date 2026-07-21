@@ -217,6 +217,12 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .unavail-chip{background:#FBEAEA;color:var(--bad);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;}
 .chip{background:var(--panel-2,#F0F4F8);color:var(--ink);padding:3px 9px;border-radius:20px;white-space:nowrap;border:1px solid var(--line);}
 .chip-muted{opacity:.6;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;}
+.modal-box{background:var(--bg,#fff);border-radius:14px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
+.modal-box h3{margin-top:0}
+.modal-field{margin-bottom:12px}
+.modal-field label{display:block;font-size:12.5px;font-weight:600;margin-bottom:4px;color:var(--muted)}
+.modal-field .modal-error{color:#B0432C;font-size:11.5px;margin-top:3px;display:none}
 
 /* Level 3 — product detail: golden split, photo ≈61.8% / spec panel ≈38.2% */
 .detail-split{display:grid;grid-template-columns:1.618fr 1fr;gap:var(--sp-3);align-items:start;}
@@ -1978,6 +1984,23 @@ async function loadReadySystems(){
   render();
 }
 
+function openAddProductModal(catIdx){
+  const cat = adminConfig.productCatalog[catIdx];
+  document.getElementById('apm_categoryName').textContent = `الفئة: ${cat.category}`;
+  const fieldsEl = document.getElementById('apm_fields');
+  fieldsEl.innerHTML = cat.columns.map((col,i)=>{
+    const isPrice = /سعر/.test(col);
+    return `<div class="modal-field">
+      <label>${col}${isPrice?' (رقم)':''}</label>
+      <input data-apmfield="${i}" type="${isPrice?'number':'text'}" placeholder="${col}">
+      <div class="modal-error" data-apmerr="${i}"></div>
+    </div>`;
+  }).join('');
+  document.getElementById('apm_error').style.display = 'none';
+  document.getElementById('addProductModalOverlay').dataset.cat = catIdx;
+  document.getElementById('addProductModalOverlay').style.display = 'flex';
+}
+
 function getReadyInverterModelOptions(cfg){
   const cat = (cfg.productCatalog||[]).find(c=>(c.category||'').includes('انفرتر'));
   if(!cat) return [];
@@ -2011,15 +2034,15 @@ function renderReadySystems(){
       <button class="btn small" id="retryReadyBtn" style="margin-top:12px">إعادة المحاولة</button>
     </div>`;
   }
-  const systems = cachedReadySystems || [];
+  const systems = (cachedReadySystems || []).filter(s=>s.status !== 'اخفاء من العروض');
   return `
   <div class="card no-print">
     <h3>منظومات أوف-جريد جاهزة</h3>
-    <div class="note">منظومات ثابتة بالاسم والسعر — اختر الأنسب لاحتياج العميل مباشرة بدون حساب. أرقام التبريد والإضاءة توضح فعليًا إيه اللي بتشغّله كل منظومة.</div>
+    <div class="note">اضغط على أي منظومة لمعرفة تفاصيل ومواصفات المكونات المستخدمة فيها.</div>
   </div>
   <div class="ready-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
     ${systems.map(s=>`
-      <div class="card" style="display:flex;flex-direction:column;gap:8px">
+      <div class="card" style="display:flex;flex-direction:column;gap:8px;cursor:pointer" onclick="openReadySystemDetail(${s.id})">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <h3 style="margin:0">${s.name}</h3>
           <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
@@ -2033,22 +2056,78 @@ function renderReadySystems(){
         </div>
         <table class="admtable" style="margin-top:4px">
           <tbody>
-            <tr><td style="font-weight:600">الإنفرتر</td><td class="num">${s.inverterBrand} ${s.inverterPowerW?fmt(s.inverterPowerW)+'W':''}</td></tr>
+            <tr><td style="font-weight:600">الإنفرتر</td><td class="num">${s.inverterBrand}${s.inverterPowerW?' '+fmt(s.inverterPowerW)+'W':''}</td></tr>
             <tr><td style="font-weight:600">البطاريات</td><td class="num">${s.batteryType} — ${s.batteryCount}× ${s.batteryUnitCapacity}${s.batteryCapacityUnit}</td></tr>
             <tr><td style="font-weight:600">الألواح</td><td class="num">${s.panelCount}× ${s.panelPowerW}W</td></tr>
           </tbody>
         </table>
-        ${s.notes ? `<div class="note" style="font-size:11px">${s.notes}</div>` : ''}
-        <button class="btn ghost small" style="margin-top:4px" onclick="sendReadySystemWhatsapp('${s.name.replace(/'/g,"\\'")}', ${s.priceSar})">📤 إرسال للعميل (واتساب)</button>
       </div>`).join('')}
   </div>
-  ${!systems.length ? `<div class="card"><div class="note">لا توجد منظومات جاهزة مسجّلة بعد.</div></div>` : ''}
+  ${!systems.length ? `<div class="card"><div class="note">لا توجد منظومات جاهزة متاحة حاليًا.</div></div>` : ''}
   `;
 }
 
-function sendReadySystemWhatsapp(name, priceSar){
-  const msg = `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nمنظومة أوف-جريد جاهزة: ${name}\nالسعر: ${fmt(priceSar)} ﷼\n\nللتواصل: 966561274344+`;
-  window.open('https://wa.me/?text='+encodeURIComponent(msg), '_blank');
+function openReadySystemDetail(id){
+  const url = new URL(window.location.href);
+  url.search = '?readysystem=' + id;
+  window.open(url.toString(), '_blank');
+}
+
+function findCatalogEntryByModel(catalog, categoryNameIncludes, model){
+  if(!model) return null;
+  const catIdx = (catalog||[]).findIndex(c=>(c.category||'').includes(categoryNameIncludes));
+  if(catIdx===-1) return null;
+  const cat = catalog[catIdx];
+  const rowIdx = cat.rows.findIndex(r=>r[0]===model);
+  if(rowIdx===-1) return null;
+  const details = (cat.productDetails && cat.productDetails[String(rowIdx)]) || {};
+  return { catIdx, rowIdx, row: cat.rows[rowIdx], columns: cat.columns, image: details.image || cat.categoryImage, specs: details.specs || {}, description: details.description || '' };
+}
+
+function renderComponentDetailCard(title, entry, fallbackLabel){
+  if(!entry){
+    return `<div class="card"><h3>${title}</h3><div class="note">${fallbackLabel}</div></div>`;
+  }
+  const specsRows = Object.entries(entry.specs||{}).map(([k,v])=>`<tr><td style="font-weight:600">${k}</td><td class="num">${v}</td></tr>`).join('');
+  return `
+  <div class="card">
+    <h3>${title} — ${entry.row[0]}</h3>
+    ${entry.image ? `<img src="${entry.image}" alt="${entry.row[0]}" style="max-width:100%;border-radius:10px;margin:8px 0">` : ''}
+    ${entry.description ? `<div class="note">${entry.description}</div>` : ''}
+    ${specsRows ? `<table class="admtable" style="margin-top:10px"><tbody>${specsRows}</tbody></table>` : ''}
+  </div>`;
+}
+
+function renderReadySystemDetail(id){
+  if((!cachedReadySystems || !cachedProductCatalog) && !readySystemsLoading && !readySystemsError && !productCatalogLoading && !productCatalogError){
+    if(!cachedReadySystems) loadReadySystems();
+    if(!cachedProductCatalog) loadProductCatalog();
+  }
+  if((readySystemsLoading || productCatalogLoading) && (!cachedReadySystems || !cachedProductCatalog)){
+    return `<div class="card" style="max-width:420px;margin:60px auto;text-align:center"><h3>جارِ التحميل...</h3></div>`;
+  }
+  if(readySystemsError || productCatalogError){
+    return `<div class="card" style="max-width:420px;margin:60px auto;text-align:center">
+      <h3 style="color:#B0432C">تعذر التحميل</h3>
+      <div class="note">${readySystemsError || productCatalogError}</div>
+    </div>`;
+  }
+  const s = (cachedReadySystems||[]).find(sys=>sys.id===id);
+  if(!s){
+    return `<div class="card" style="max-width:420px;margin:60px auto;text-align:center"><h3>المنظومة غير موجودة</h3></div>`;
+  }
+  const invEntry = findCatalogEntryByModel(cachedProductCatalog, 'انفرتر', s.inverterModel);
+  const batEntry = findCatalogEntryByModel(cachedProductCatalog, 'بطاريات ليثيوم', s.batteryModel);
+  return `
+  <div class="card">
+    <h3 style="margin:0">${s.name}</h3>
+    <div class="big num" style="font-size:24px;margin-top:6px">${fmt(s.priceSar)} ﷼</div>
+    <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
+  </div>
+  ${renderComponentDetailCard('الألواح الشمسية', null, `${s.panelCount}× ${s.panelBrand||''} ${s.panelPowerW}W`)}
+  ${s.inverterModel ? renderComponentDetailCard('الإنفرتر', invEntry, `${s.inverterBrand} ${s.inverterModel}`) : `<div class="card"><h3>الإنفرتر</h3><div class="note">لا يوجد إنفرتر — منظم شحن فقط</div></div>`}
+  ${renderComponentDetailCard(`البطارية (${s.batteryCount}×)`, batEntry, `${s.batteryType} ${s.batteryModel||''}`)}
+  `;
 }
 
 function renderAdmin(){
@@ -2156,6 +2235,19 @@ function renderAdmin(){
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
       <button class="btn ghost small" id="splitAccessoriesBtn">🔀 تقسيم فئة "إكسسوارات VEICHI" لفئات منفصلة (ريأكتور / صناديق تجميع / كابلات ووصلات / قواطع وفيوزات)</button>
     </div>` : ''}
+  </div>
+
+  <div id="addProductModalOverlay" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <h3>إضافة منتج جديد</h3>
+      <div class="note" id="apm_categoryName" style="margin-bottom:10px"></div>
+      <div id="apm_fields"></div>
+      <div class="note" id="apm_error" style="color:#B0432C;display:none;margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button class="btn ghost small" id="apm_cancel">إلغاء</button>
+        <button class="btn small" id="apm_save">حفظ المنتج</button>
+      </div>
+    </div>
   </div>
 
   <div class="card no-print" id="productDetailEditor" style="display:none">
@@ -2395,7 +2487,8 @@ function renderAdmin(){
           <div><label>الحالة</label>
             <select data-readysys="${i}" data-rf="status">
               <option value="متوفر" ${s.status==='متوفر'?'selected':''}>متوفر</option>
-              <option value="نفدت الكمية" ${s.status==='نفدت الكمية'?'selected':''}>نفدت الكمية</option>
+              <option value="غير متوفر" ${s.status==='غير متوفر'?'selected':''}>غير متوفر</option>
+              <option value="اخفاء من العروض" ${s.status==='اخفاء من العروض'?'selected':''}>اخفاء من العروض</option>
             </select>
           </div>
           <div><label>عدد الألواح (${s.panelPowerW||'-'}W ${s.panelBrand||''})</label><input data-readysys="${i}" data-rf="panelCount" type="number" value="${s.panelCount}"></div>
@@ -2512,6 +2605,11 @@ function renderAdmin(){
    ======================================================================= */
 const app = document.getElementById('app');
 let currentView = 'calc';
+let deepLinkReadySystemId = null;
+{
+  const p = new URLSearchParams(window.location.search).get('readysystem');
+  if(p && /^\d+$/.test(p)){ deepLinkReadySystemId = +p; currentView = 'ready-detail'; }
+}
 
 /* ---- rep login gate — every rep has their own username/password, verified
    server-side. Session is kept in sessionStorage so a refresh doesn't force
@@ -2567,11 +2665,12 @@ function renderAdminLogin(){
 }
 
 function render(){
-  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready'){ app.innerHTML = renderRepLogin(); wire(); return; }
-  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready'){ app.innerHTML = renderGuestRegister(); wire(); return; }
+  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail'){ app.innerHTML = renderRepLogin(); wire(); return; }
+  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail'){ app.innerHTML = renderGuestRegister(); wire(); return; }
   if(currentView==='calc') app.innerHTML = renderCalc();
   else if(currentView==='feas') app.innerHTML = renderFeas();
   else if(currentView==='ready') app.innerHTML = renderReadySystems();
+  else if(currentView==='ready-detail') app.innerHTML = renderReadySystemDetail(deepLinkReadySystemId);
   else if(currentView==='products') app.innerHTML = renderProducts();
   else if(currentView==='portfolio') app.innerHTML = renderPortfolio();
   else if(currentView==='admin' && !adminAuthed) app.innerHTML = renderAdminLogin();
@@ -2580,7 +2679,7 @@ function render(){
 }
 
 function wire(){
-  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready'){
+  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail'){
     document.getElementById('rep_login_btn').onclick = async ()=>{
       const username = document.getElementById('rep_user').value.trim();
       const password = document.getElementById('rep_pass').value;
@@ -2602,7 +2701,7 @@ function wire(){
     };
     return;
   }
-  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready'){
+  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail'){
     document.getElementById('guest_register_btn').onclick = ()=>{
       const name = document.getElementById('guest_name').value.trim();
       const phone = document.getElementById('guest_phone').value.trim();
@@ -3074,9 +3173,7 @@ function wire(){
     });
     document.querySelectorAll('[data-addrow]').forEach(b=>b.onclick=()=>{
       harvestAdminInputs();
-      const cat = adminConfig.productCatalog[+b.dataset.addrow];
-      cat.rows.push(new Array(cat.columns.length).fill(''));
-      render();
+      openAddProductModal(+b.dataset.addrow);
     });
     document.querySelectorAll('[data-addcol]').forEach(b=>b.onclick=()=>{
       harvestAdminInputs();
@@ -3231,6 +3328,33 @@ function wire(){
     document.getElementById('pde_cancel').onclick = ()=>{
       document.getElementById('productDetailEditor').style.display = 'none';
     };
+
+    const apmOverlay = document.getElementById('addProductModalOverlay');
+    if(apmOverlay){
+      document.getElementById('apm_cancel').onclick = ()=>{ apmOverlay.style.display='none'; };
+      document.getElementById('apm_save').onclick = ()=>{
+        const catIdx = +apmOverlay.dataset.cat;
+        const cat = adminConfig.productCatalog[catIdx];
+        let hasError = false;
+        const values = cat.columns.map((col,i)=>{
+          const input = document.querySelector(`[data-apmfield="${i}"]`);
+          const errEl = document.querySelector(`[data-apmerr="${i}"]`);
+          errEl.style.display = 'none';
+          const val = input.value.trim();
+          if(i===0 && !val){ errEl.textContent = 'هذا الحقل مطلوب'; errEl.style.display = 'block'; hasError = true; }
+          if(/سعر/.test(col) && val && isNaN(+val)){ errEl.textContent = 'لازم يكون رقم'; errEl.style.display = 'block'; hasError = true; }
+          return val;
+        });
+        if(hasError){
+          document.getElementById('apm_error').textContent = 'راجع الحقول المظلّلة بالأحمر';
+          document.getElementById('apm_error').style.display = 'block';
+          return;
+        }
+        cat.rows.push(values);
+        apmOverlay.style.display = 'none';
+        render();
+      };
+    }
     document.getElementById('pde_useForOthers').onclick = ()=>{
       const preview = document.getElementById('pde_imgpreview');
       const imgUrl = preview.dataset.uploadedUrl || (preview.style.display!=='none' ? preview.src : '');
