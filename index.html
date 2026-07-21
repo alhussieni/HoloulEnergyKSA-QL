@@ -1978,6 +1978,17 @@ async function loadReadySystems(){
   render();
 }
 
+function getReadyInverterModelOptions(cfg){
+  const cat = (cfg.productCatalog||[]).find(c=>(c.category||'').includes('انفرتر'));
+  if(!cat) return [];
+  return cat.rows.map(r=>r[0]).filter(m=>/(\d+(\.\d+)?)\s*KW/i.test(m) && !/^VLT|^VHT|Rack/i.test(m));
+}
+function getReadyBatteryModelOptions(cfg){
+  const cat = (cfg.productCatalog||[]).find(c=>(c.category||'').includes('بطاريات ليثيوم'));
+  if(!cat) return [];
+  return cat.rows.map(r=>r[0]);
+}
+
 function readySystemCoolingLine(s){
   if(s.acType === 'لا يوجد' || (!s.acCountDay && !s.acCountNight)) return `<span class="chip chip-muted">❄️ بدون تبريد</span>`;
   const parts = [];
@@ -2368,24 +2379,57 @@ function renderAdmin(){
   </div>
 
   <div class="card">
-    <h3>منظومات أوف-جريد جاهزة <span class="tag">تعديل الاسم والسعر والحالة فقط</span></h3>
-    <div class="note">هذه المنظومات ثابتة ومعروضة للتصفح المباشر (تبويب "منظومات جاهزة") — بدون أي حساب. الأجهزة والقدرات والمكونات بيانات مرجعية فقط، تعديلها من هنا غير مدعوم؛ لتغييرها استخدم "تصدير/استيراد JSON" بالأسفل.</div>
-    <table class="admtable" style="margin-top:10px">
-      <thead><tr><th>الاسم</th><th>السعر (﷼)</th><th>الحالة</th></tr></thead>
-      <tbody>
-        ${adminConfig.readyOffgridSystems.map((s,i)=>`
-          <tr>
-            <td><input data-readysys="${i}" data-rf="name" value="${s.name}" style="width:100%"></td>
-            <td><input data-readysys="${i}" data-rf="priceSar" type="number" value="${s.priceSar}" style="width:110px"></td>
-            <td>
-              <select data-readysys="${i}" data-rf="status">
-                <option value="متوفر" ${s.status==='متوفر'?'selected':''}>متوفر</option>
-                <option value="نفدت الكمية" ${s.status==='نفدت الكمية'?'selected':''}>نفدت الكمية</option>
-              </select>
-            </td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
+    <h3>منظومات أوف-جريد جاهزة <span class="tag">مراجعة كاملة + تغيير المعدات من قائمة المنتجات</span></h3>
+    <div class="note">لكل منظومة: عدّل الاسم/السعر/الحالة، وغيّر موديل الإنفرتر أو البطارية من نفس قائمة المنتجات الحقيقية، واضغط "🔄 إعادة حساب السعر" لتحديث السعر بناءً على أسعار الكتالوج الحالية وهوامش الربح في إعدادات الأوف-جريد بالأعلى. السعر المحسوب هو توريد خامات فقط (بدون تركيب أو شاسيه).</div>
+    ${adminConfig.readyOffgridSystems.map((s,i)=>{
+      const invOptions = getReadyInverterModelOptions(adminConfig);
+      const batOptions = getReadyBatteryModelOptions(adminConfig);
+      return `
+      <details style="margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px 14px">
+        <summary style="cursor:pointer;font-weight:700;display:flex;justify-content:space-between;align-items:center">
+          <span>${s.name} — <span class="num">${fmt(s.priceSar)} ﷼</span></span>
+          <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
+        </summary>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px">
+          <div><label>الاسم</label><input data-readysys="${i}" data-rf="name" value="${s.name}"></div>
+          <div><label>الحالة</label>
+            <select data-readysys="${i}" data-rf="status">
+              <option value="متوفر" ${s.status==='متوفر'?'selected':''}>متوفر</option>
+              <option value="نفدت الكمية" ${s.status==='نفدت الكمية'?'selected':''}>نفدت الكمية</option>
+            </select>
+          </div>
+          <div><label>عدد الألواح (${s.panelPowerW||'-'}W ${s.panelBrand||''})</label><input data-readysys="${i}" data-rf="panelCount" type="number" value="${s.panelCount}"></div>
+          <div><label>موديل الإنفرتر</label>
+            <select data-readysys="${i}" data-rf="inverterModel">
+              <option value="" ${!s.inverterModel?'selected':''}>بدون إنفرتر (منظم شحن فقط)</option>
+              ${invOptions.map(m=>`<option value="${m}" ${s.inverterModel===m?'selected':''}>${m}</option>`).join('')}
+            </select>
+          </div>
+          <div><label>موديل البطارية</label>
+            <select data-readysys="${i}" data-rf="batteryModel">
+              ${batOptions.map(m=>`<option value="${m}" ${s.batteryModel===m?'selected':''}>${m}</option>`).join('')}
+            </select>
+          </div>
+          <div><label>عدد البطاريات</label><input data-readysys="${i}" data-rf="batteryCount" type="number" min="1" value="${s.batteryCount}"></div>
+          <div><label>السعر (﷼)</label><input data-readysys="${i}" data-rf="priceSar" type="number" value="${s.priceSar}"></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+          <button class="btn ghost small" data-recompute-readysys="${i}">🔄 إعادة حساب السعر من الكتالوج</button>
+          <span class="note" id="readysys-recompute-note-${i}"></span>
+        </div>
+        <div style="margin-top:10px">
+          <label>الأجهزة اللي بتشغّلها (مرجعي، للعرض فقط)</label>
+          <div class="note">
+            ${s.acType && s.acType!=='لا يوجد' ? `تبريد: ${s.acType} — نهارًا ${s.acCountDay||0}×${s.acPowerDayW||0}W/${s.acHoursDay||0}س، ليلاً ${s.acCountNight||0}×${s.acPowerNightW||0}W/${s.acHoursNight||0}س<br>` : 'بدون تبريد<br>'}
+            ${s.fridgeCount ? `ثلاجة ${s.fridgeHours||0}س<br>` : ''}
+            ${s.lampCount ? `إضاءة ${s.lampCount}×${s.lampPowerW||0}W لمدة ${s.lampHours||0}س<br>` : ''}
+            ${s.otherDevices ? `${s.otherDevices}<br>` : ''}
+            كابلات: ${s.cables || '-'}
+          </div>
+        </div>
+        ${s.notes ? `<div class="note" style="margin-top:6px">${s.notes}</div>` : ''}
+      </details>`;
+    }).join('')}
     <div class="note" style="margin-top:8px">التعديلات هنا بتتحفظ مع باقي إعدادات الأدمن — لازم تضغط "💾 حفظ التعديلات" بالأسفل عشان تتفعّل فعليًا.</div>
   </div>
 
@@ -2871,11 +2915,37 @@ function wire(){
         const i=+inp.dataset.readysys, f=inp.dataset.rf;
         const sys = adminConfig.readyOffgridSystems[i];
         if(!sys) return;
-        sys[f] = (f==='priceSar') ? (+inp.value || 0) : inp.value;
+        if(f==='priceSar' || f==='panelCount' || f==='batteryCount') sys[f] = +inp.value || 0;
+        else if(f==='inverterModel') sys[f] = inp.value || null;
+        else sys[f] = inp.value;
       });
       const webhookEl = document.getElementById('a_webhook');
       if(webhookEl) adminConfig.leadsWebhookUrl = webhookEl.value.trim();
     }
+
+    document.querySelectorAll('[data-recompute-readysys]').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const i = +btn.dataset.recomputeReadysys;
+        harvestAdminInputs();
+        const sys = adminConfig.readyOffgridSystems[i];
+        const noteEl = document.getElementById(`readysys-recompute-note-${i}`);
+        btn.disabled = true; if(noteEl) noteEl.textContent = 'جارِ الحساب...';
+        try{
+          const res = await callEngine('recompute-ready-system-price', {
+            adminToken: adminTokenMem,
+            input: { panelCount: sys.panelCount, inverterModel: sys.inverterModel, batteryModel: sys.batteryModel, batteryCount: sys.batteryCount },
+          });
+          if(res.error){ if(noteEl) noteEl.textContent = 'خطأ: '+res.error; }
+          else{
+            sys.priceSar = res.priceSar;
+            const priceInput = document.querySelector(`input[data-readysys="${i}"][data-rf="priceSar"]`);
+            if(priceInput) priceInput.value = res.priceSar;
+            if(noteEl) noteEl.textContent = `تم — السعر الجديد ${fmt(res.priceSar)} ﷼ (لسه لازم تضغط "حفظ التعديلات" عشان يتفعّل)`;
+          }
+        }catch(e){ if(noteEl) noteEl.textContent = 'تعذر الاتصال بالخادم'; }
+        btn.disabled = false;
+      };
+    });
 
     document.getElementById('admSave').onclick = async ()=>{
       harvestAdminInputs();

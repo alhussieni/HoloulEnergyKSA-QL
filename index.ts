@@ -309,11 +309,13 @@ function parseKwFromModel(model: string): number {
 function pickCatalogInverter(D: any, kwNeeded: number) {
   const cat = findCatalogCategory(D, "انفرتر");
   const priceIdx = cat.columns.length - 2; // second-to-last column = excl-VAT price, by table convention
+  // Exclude industrial pump VFDs (VLT/VHT model prefixes) and DC-only battery
+  // racks that share this category but aren't hybrid solar+battery inverters.
   const rows = cat.rows
     .map((r: any) => ({ model: r[0], kw: parseKwFromModel(r[0]), costBasis: parseFloat(r[priceIdx]) }))
-    .filter((r: any) => r.kw > 0)
+    .filter((r: any) => r.kw > 0 && !/^VLT|^VHT|Rack/i.test(r.model))
     .sort((a: any, b: any) => a.kw - b.kw);
-  if (!rows.length) throw new Error('لا يوجد أي موديل انفرتر بقدرة (KW) واضحة في اسم الموديل داخل كتالوج "شواحن/انفرترات هجين MPPT"');
+  if (!rows.length) throw new Error('لا يوجد أي موديل انفرتر هجين بقدرة (KW) واضحة في اسم الموديل داخل كتالوج "شواحن/انفرترات هجين MPPT"');
   return rows.find((r: any) => r.kw >= kwNeeded) || rows[rows.length - 1];
 }
 // Battery rows: [model, current(A), voltage(V), priceExclTax, priceInclTax].
@@ -498,6 +500,54 @@ function resolveOffgridOngridInput(D: any, rawInput: any) {
   const tier = D.discountTiers[tierIdx] || D.discountTiers[D.defaultDiscountIdx ?? 1];
   return { ...rawInput, panel, discountFactor: tier.factor };
 }
+
+function findExactCatalogRow(D: any, categoryNameIncludes: string, model: string) {
+  const cat = findCatalogCategory(D, categoryNameIncludes);
+  const row = cat.rows.find((r: any) => r[0] === model);
+  if (!row) throw new Error(`الموديل "${model}" غير موجود في كتالوج "${categoryNameIncludes}"`);
+  const priceIdx = categoryNameIncludes === "بطاريات ليثيوم" ? 3 : cat.columns.length - 2;
+  return { model: row[0], costBasis: parseFloat(row[priceIdx]) };
+}
+
+// Ready-made off-grid packages: supply-only re-pricing (no install/structure
+// line items — this is a materials-only quote, per business decision). Used
+// by the admin panel's "إعادة حساب السعر" button when swapping which
+// inverter/battery model backs a given ready system.
+function computeReadySystemPrice(D: any, inp: {
+  panelCount: number; panelIdx?: number;
+  inverterModel: string | null; batteryModel: string; batteryCount: number;
+}) {
+  const og = D.offgrid;
+  const panel = D.panels[inp.panelIdx ?? og.panelIdx ?? 0];
+  if (!panel) throw new Error("invalid panelIdx");
+  const panelCost = inp.panelCount * panel.power * panel.priceW;
+
+  let inverterCostBasis = 0, inverterSell = 0;
+  if (inp.inverterModel) {
+    const inv = findExactCatalogRow(D, "انفرتر", inp.inverterModel);
+    inverterCostBasis = inv.costBasis;
+    inverterSell = inverterCostBasis * (1 + og.inverterMarkupPct / 100);
+  }
+
+  const bat = findExactCatalogRow(D, "بطاريات ليثيوم", inp.batteryModel);
+  const batteryCostBasis = bat.costBasis * inp.batteryCount;
+  const batterySell = batteryCostBasis * (1 + og.batteryMarkupPct / 100);
+
+  const cablingSell = og.cablingFixedSell; // materials-only estimate; no install/structure line items
+  const sellTotal = panelCost + inverterSell + batterySell + cablingSell;
+  const priceSar = Math.round(sellTotal * (1 + D.vat));
+
+  return {
+    priceSar,
+    breakdown: {
+      panelCost: Math.round(panelCost),
+      inverterCostBasis, inverterSell: Math.round(inverterSell),
+      batteryCostBasis, batterySell: Math.round(batterySell),
+      cablingSell, sellTotal: Math.round(sellTotal), vat: D.vat,
+    },
+  };
+}
+
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
@@ -764,6 +814,14 @@ Deno.serve(async (req: Request) => {
 
   if (body.action === "get-portfolio") {
     return json({ portfolio: D.portfolio || null });
+  }
+
+  if (body.action === "recompute-ready-system-price") {
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
+    try {
+      const result = computeReadySystemPrice(D, body.input);
+      return json(result);
+    } catch (e) { return json({ error: (e as Error).message }, 400); }
   }
 
   if (body.action === "get-ready-offgrid-systems") {
