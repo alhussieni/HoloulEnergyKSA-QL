@@ -153,6 +153,13 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 /* Level 1 — category grid: each tile is a golden rectangle (φ≈1.618:1) photo
    with the label overlaid like a catalog cover, instead of a small icon+caption. */
 .category-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:var(--sp-3);}
+/* list mode: one compact row per category instead of a photo grid */
+.category-grid.view-list{display:flex;flex-direction:column;gap:var(--sp-1);}
+.category-grid.view-list .category-card{aspect-ratio:auto;display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-1) var(--sp-2);}
+.category-grid.view-list .category-card img,.category-grid.view-list .category-card .noimg{width:55px;height:55px;flex:0 0 55px;border-radius:9px;font-size:22px;}
+.category-grid.view-list .category-card .overlay{position:static;background:none;padding:0;color:var(--ink);flex:1;min-width:0;}
+.category-grid.view-list .category-card .overlay h3{color:var(--ink);font-size:13.5px;}
+.category-grid.view-list .category-card .overlay .count{color:var(--muted);}
 .category-card{position:relative;cursor:pointer;border-radius:var(--radius);overflow:hidden;aspect-ratio:1.618/1;
   border:1px solid var(--line);box-shadow:var(--shadow);transition:transform .18s,box-shadow .18s;background:var(--sand);}
 .category-card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(13,52,82,.16);}
@@ -217,6 +224,37 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .unavail-chip{background:#FBEAEA;color:var(--bad);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;}
 .chip{background:var(--panel-2,#F0F4F8);color:var(--ink);padding:3px 9px;border-radius:20px;white-space:nowrap;border:1px solid var(--line);}
 .chip-muted{opacity:.6;}
+
+/* ready-made systems — same visual language as model-card (thumb, chips, tokens),
+   with a golden-ratio (1.618:1) image area like category-card so the grid reads
+   as one consistent family of cards across the whole catalog. */
+.ready-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--sp-3);margin-top:var(--sp-3);}
+.ready-card{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;cursor:pointer;transition:transform .18s,box-shadow .18s;}
+.ready-card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(13,52,82,.16);}
+.ready-card .visual{position:relative;aspect-ratio:1.618/1;background:var(--sand);}
+.ready-card .visual img{width:100%;height:100%;object-fit:cover;display:block;}
+.ready-card .visual .noimg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:40px;
+  background:linear-gradient(135deg,var(--teal-tint),var(--sun-tint));color:var(--teal-dark);}
+.ready-card .visual .status-chip{position:absolute;top:var(--sp-1);inset-inline-start:var(--sp-1);}
+.ready-card .body{padding:var(--sp-2) var(--sp-3) var(--sp-3);display:flex;flex-direction:column;gap:var(--sp-1);}
+.ready-card .name{margin:0;font-size:15px;font-weight:700;color:var(--night);}
+.ready-card .price{font-family:'Cairo';font-weight:800;font-size:20px;color:var(--teal-dark);}
+.ready-card .specs{display:flex;flex-wrap:wrap;gap:5px;margin-top:2px;}
+
+/* list mode: compact row, same thumb/chip language as .model-list.view-list */
+.ready-grid.view-list{grid-template-columns:1fr;gap:var(--sp-1);}
+.ready-grid.view-list .ready-card{flex-direction:row;align-items:center;gap:var(--sp-2);padding:var(--sp-1) var(--sp-2);}
+.ready-grid.view-list .ready-card .visual{aspect-ratio:auto;width:55px;height:55px;flex:0 0 55px;border-radius:9px;overflow:hidden;}
+.ready-grid.view-list .ready-card .visual .noimg{font-size:20px;}
+.ready-grid.view-list .ready-card .body{flex:1;min-width:0;padding:0;flex-direction:row;align-items:center;gap:var(--sp-3);flex-wrap:wrap;}
+.ready-grid.view-list .ready-card .name{flex:0 0 auto;white-space:nowrap;font-size:13.5px;}
+.ready-grid.view-list .ready-card .specs{flex-wrap:nowrap;overflow:hidden;margin-top:0;}
+.ready-grid.view-list .ready-card .price{font-size:14px;margin-inline-start:auto;white-space:nowrap;}
+@media (max-width:640px){
+  .ready-grid.view-list .ready-card .body{flex-direction:column;align-items:flex-start;gap:2px;}
+  .ready-grid.view-list .ready-card .name{white-space:normal;}
+}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;}
 .modal-box{background:var(--bg,#fff);border-radius:14px;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
 .modal-box h3{margin-top:0}
@@ -425,8 +463,6 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
       <a class="btn small" style="text-decoration:none;background:#25D366;color:#fff" href="https://wa.me/966561274344" target="_blank" rel="noopener">💬 واتساب</a>
       <nav class="tabs no-print">
         <button data-view="calc" class="active">الحاسبة</button>
-        <button data-view="feas">دراسة الجدوى</button>
-        <button data-view="ready" id="readyNavBtn">منظومات جاهزة</button>
         <button data-view="products" id="productsNavBtn">قائمة المنتجات</button>
         <button data-view="portfolio">البورتفوليو</button>
         <button data-view="admin">لوحة التحكم</button>
@@ -481,6 +517,36 @@ let cachedInverterBrandOptions = []; // [{idx,brand}] — never list/cost/discou
 let cachedProductCatalog = null; // fetched lazily when the products tab opens
 let productCatalogLoading = false;
 let productCatalogError = null;
+let cachedPanelsPublic = null; // [{brand,power,datasheetUrl,...}] — fetched once, used to show the datasheet link in quotes/offers
+let panelsPublicLoading = false;
+async function ensurePanelsPublicLoaded(){
+  if(cachedPanelsPublic || panelsPublicLoading) return;
+  panelsPublicLoading = true;
+  try{
+    const data = await callEngine('get-panels-public', {});
+    cachedPanelsPublic = data.panels || [];
+  }catch(e){ cachedPanelsPublic = []; }
+  panelsPublicLoading = false;
+  render();
+}
+// Datasheet link for a given panel brand/power, e.g. for the currently selected
+// panel in a quote/offer. Returns '' if no datasheet has been set for it.
+function panelDatasheetUrl(brand, power){
+  if(!cachedPanelsPublic){ ensurePanelsPublicLoaded(); return ''; }
+  const match = cachedPanelsPublic.find(p => p.brand===brand && +p.power===+power);
+  return (match && match.datasheetUrl) || '';
+}
+// Small inline "📄 الداتا شيت" link for a BOM/offer panel row, given brand+power.
+function panelDatasheetLink(brand, power){
+  const url = panelDatasheetUrl(brand, power);
+  return url ? ` <a href="${url}" target="_blank" rel="noopener" class="no-print" style="font-size:11px">📄 الداتا شيت</a>` : '';
+}
+// Same, but resolves brand/power from a cachedPanelOptions index (as used by
+// the custom "calc" flow, which stores state.panelIdx rather than brand/power).
+function panelDatasheetLinkForIdx(panelIdx){
+  const opt = cachedPanelOptions.find(p => p.idx === panelIdx);
+  return opt ? panelDatasheetLink(opt.brand, opt.power) : '';
+}
 
 let cachedReadySystems = null; // fetched lazily when the ready-systems tab opens
 let readySystemsLoading = false;
@@ -1029,6 +1095,7 @@ function renderCalc(){
   ];
   const subnav = `<div class="calc-subnav no-print">
     ${SUBTABS.map(([key,label])=>`<button type="button" class="calc-subtab ${state.calcSystem===key?'active':''}" data-calcsys="${key}">${label}</button>`).join('')}
+    <button type="button" class="calc-subtab" onclick="window.goToView('feas')" style="margin-inline-start:auto">📊 دراسة الجدوى</button>
   </div>`;
   let body;
   if(state.calcSystem==='offgrid') body = renderOffgridCalc();
@@ -1164,6 +1231,7 @@ function renderIrrigationCalc(){
             <div class="big num">${fmt(q.finalTotal)} ﷼</div>
           </div>
         </div>
+        ${renderSupplyInstallSplit(q)}
       </div>
       <div class="card no-print">
         <h3>المواصفات الفنية <span class="tag">محسوبة تلقائيًا</span></h3>
@@ -1203,7 +1271,7 @@ function renderIrrigationCalc(){
             ${q.items.map((it,i)=>`
               <tr class="${it.on?'':'off'}">
                 <td>${i+1}</td>
-                <td>${it.label}</td>
+                <td>${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.panelIdx) : ''}</td>
                 <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
                 <td style="font-size:11.5px">${it.qty}</td>
                 <td style="font-size:11.5px">${it.warranty}</td>
@@ -1299,6 +1367,18 @@ function renderQuoteHeaderBanner(){
   </div>`;
 }
 
+// Supply-only vs supply+install reference prices, shown together in every
+// system summary. Both fields are computed server-side (supplyOnlyTotal /
+// supplyPlusInstallTotal) — this just displays them.
+function renderSupplyInstallSplit(q){
+  if(q.supplyOnlyTotal == null || q.supplyPlusInstallTotal == null) return '';
+  return `
+  <div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:10px">
+    <div class="stat"><div class="v">${fmt(q.supplyOnlyTotal)} ﷼</div><div class="l">سعر التوريد فقط</div></div>
+    <div class="stat"><div class="v">${fmt(q.supplyPlusInstallTotal)} ﷼</div><div class="l">سعر التوريد والتركيب</div></div>
+  </div>`;
+}
+
 function renderQuoteBomAndTotal(q, introText){
   return `
   <div class="card">
@@ -1310,7 +1390,7 @@ function renderQuoteBomAndTotal(q, introText){
       <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
       <tbody>
         ${q.items.map((it,i)=>`
-          <tr><td>${i+1}</td><td>${it.label}</td>
+          <tr><td>${i+1}</td><td>${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.offgrid?.panelIdx ?? state.ongrid?.panelIdx) : ''}</td>
             <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
             <td style="font-size:11.5px">${it.qty}</td>
             <td style="font-size:11.5px">${it.warranty}</td></tr>`).join('')}
@@ -1329,6 +1409,7 @@ function renderQuoteBomAndTotal(q, introText){
         <div class="big num">${fmt(q.finalTotal)} ﷼</div>
       </div>
     </div>
+    ${renderSupplyInstallSplit(q)}
     <div class="legal-note" style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
       الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${new Date().toLocaleDateString('en-GB')}).
     </div>
@@ -1806,6 +1887,8 @@ function renderPortfolio(){
 }
 
 let productViewMode = localStorage.getItem('holoul_product_view') || 'cards'; // 'cards' | 'list' — remembered across visits
+let categoriesViewMode = localStorage.getItem('holoul_categories_view') || 'cards'; // products landing page (level 1)
+let readyViewMode = localStorage.getItem('holoul_ready_view') || 'cards'; // منظومات جاهزة
 
 function isProductAvailable(cat, ri){
   const detail = (cat.productDetails && cat.productDetails[ri]) || {};
@@ -1937,9 +2020,20 @@ function renderProducts(){
   return `
   <div class="card no-print">
     <h3>قائمة المنتجات</h3>
-    <div class="note">اختر نوع المنتج لعرض الموديلات المتاحة</div>
+    <div class="note">اختر نوع المنتج لعرض الموديلات المتاحة، أو تصفح المنظومات الجاهزة أدناه</div>
+    <div class="viewmode-toggle" role="group" aria-label="طريقة العرض" data-catview-toggle>
+      <button class="${categoriesViewMode==='cards'?'active':''}" data-catviewmode="cards">▦ شبكة</button>
+      <button class="${categoriesViewMode==='list'?'active':''}" data-catviewmode="list">☰ ليستة</button>
+    </div>
   </div>
-  <div class="category-grid">
+  <div class="category-grid view-${categoriesViewMode}">
+    <div class="category-card" onclick="window.goToView('ready')" style="cursor:pointer">
+      <div class="noimg">🗂️</div>
+      <div class="overlay">
+        <h3>منظومات جاهزة (عروض جاهزة)</h3>
+        <div class="count">تصفّح المنظومات المجهزة مسبقًا بسعر ثابت</div>
+      </div>
+    </div>
     ${catalog.map((cat,ci)=>`
       <div class="category-card" data-opencat="${ci}">
         ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}">` : `<div class="noimg">📦</div>`}
@@ -2039,28 +2133,28 @@ function renderReadySystems(){
   <div class="card no-print">
     <h3>منظومات أوف-جريد جاهزة</h3>
     <div class="note">اضغط على أي منظومة لمعرفة تفاصيل ومواصفات المكونات المستخدمة فيها.</div>
+    <div class="viewmode-toggle" role="group" aria-label="طريقة العرض">
+      <button class="${readyViewMode==='cards'?'active':''}" data-readyviewmode="cards">▦ شبكة</button>
+      <button class="${readyViewMode==='list'?'active':''}" data-readyviewmode="list">☰ ليستة</button>
+    </div>
   </div>
-  <div class="ready-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+  <div class="ready-grid view-${readyViewMode}">
     ${systems.map(s=>`
-      <div class="card" style="display:flex;flex-direction:column;gap:8px;cursor:pointer" onclick="openReadySystemDetail(${s.id})">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-          <h3 style="margin:0">${s.name}</h3>
-          <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
+      <div class="ready-card" onclick="openReadySystemDetail(${s.id})">
+        <div class="visual">
+          ${s.image ? `<img src="${s.image}" alt="${s.name}">` : `<div class="noimg">🗂️</div>`}
+          <span class="${s.status==='متوفر'?'tag':'unavail-chip'} status-chip">${s.status}</span>
         </div>
-        <div class="big num" style="font-size:20px">${fmt(s.priceSar)} ﷼</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11.5px">
-          ${readySystemCoolingLine(s)}
-          ${s.fridgeCount ? `<span class="chip">🧊 ثلاجة ${s.fridgeHours}س</span>` : `<span class="chip chip-muted">🧊 بدون ثلاجة</span>`}
-          ${s.lampCount ? `<span class="chip">💡 ${s.lampCount}× ${s.lampPowerW}W — ${s.lampHours}س</span>` : ''}
-          ${s.otherDevices ? `<span class="chip">${s.otherDevices}</span>` : ''}
+        <div class="body">
+          <h3 class="name">${s.name}</h3>
+          <div class="price">${fmt(s.priceSar)} ﷼</div>
+          <div class="specs">
+            ${readySystemCoolingLine(s)}
+            ${s.fridgeCount ? `<span class="chip">🧊 ثلاجة ${s.fridgeHours}س</span>` : `<span class="chip chip-muted">🧊 بدون ثلاجة</span>`}
+            ${s.lampCount ? `<span class="chip">💡 ${s.lampCount}× ${s.lampPowerW}W — ${s.lampHours}س</span>` : ''}
+            ${s.otherDevices ? `<span class="chip">${s.otherDevices}</span>` : ''}
+          </div>
         </div>
-        <table class="admtable" style="margin-top:4px">
-          <tbody>
-            <tr><td style="font-weight:600">الإنفرتر</td><td class="num">${s.inverterBrand}${s.inverterPowerW?' '+fmt(s.inverterPowerW)+'W':''}</td></tr>
-            <tr><td style="font-weight:600">البطاريات</td><td class="num">${s.batteryType} — ${s.batteryCount}× ${s.batteryUnitCapacity}${s.batteryCapacityUnit}</td></tr>
-            <tr><td style="font-weight:600">الألواح</td><td class="num">${s.panelCount}× ${s.panelPowerW}W</td></tr>
-          </tbody>
-        </table>
       </div>`).join('')}
   </div>
   ${!systems.length ? `<div class="card"><div class="note">لا توجد منظومات جاهزة متاحة حاليًا.</div></div>` : ''}
@@ -2118,13 +2212,17 @@ function renderReadySystemDetail(id){
   }
   const invEntry = findCatalogEntryByModel(cachedProductCatalog, 'انفرتر', s.inverterModel);
   const batEntry = findCatalogEntryByModel(cachedProductCatalog, 'بطاريات ليثيوم', s.batteryModel);
+  if(!cachedPanelsPublic) ensurePanelsPublicLoaded();
+  const panelPublic = (cachedPanelsPublic||[]).find(p=>p.brand===s.panelBrand && +p.power===+s.panelPowerW);
+  const panelEntry = panelPublic ? { row: [`${panelPublic.brand} ${panelPublic.power}W`], image: panelPublic.image, description: panelPublic.description, specs: panelPublic.specs || {} } : null;
   return `
   <div class="card">
+    ${s.image ? `<img src="${s.image}" alt="${s.name}" style="width:100%;aspect-ratio:1.618/1;object-fit:cover;border-radius:var(--radius);margin-bottom:var(--sp-2)">` : ''}
     <h3 style="margin:0">${s.name}</h3>
     <div class="big num" style="font-size:24px;margin-top:6px">${fmt(s.priceSar)} ﷼</div>
     <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
   </div>
-  ${renderComponentDetailCard('الألواح الشمسية', null, `${s.panelCount}× ${s.panelBrand||''} ${s.panelPowerW}W`)}
+  ${renderComponentDetailCard('الألواح الشمسية', panelEntry, `${s.panelCount}× ${s.panelBrand||''} ${s.panelPowerW}W${panelDatasheetLink(s.panelBrand, s.panelPowerW)}`)}
   ${s.inverterModel ? renderComponentDetailCard('الإنفرتر', invEntry, `${s.inverterBrand} ${s.inverterModel}`) : `<div class="card"><h3>الإنفرتر</h3><div class="note">لا يوجد إنفرتر — منظم شحن فقط</div></div>`}
   ${renderComponentDetailCard(`البطارية (${s.batteryCount}×)`, batEntry, `${s.batteryType} ${s.batteryModel||''}`)}
   `;
@@ -2507,6 +2605,10 @@ function renderAdmin(){
           <div><label>السعر (﷼)</label><input data-readysys="${i}" data-rf="priceSar" type="number" value="${s.priceSar}"></div>
         </div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+          ${s.image ? `<img src="${s.image}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
+          <label class="btn ghost small" style="cursor:pointer">📷 ${s.image?'تغيير صورة المنظومة':'رفع صورة المنظومة (اختياري)'}<input type="file" accept="image/*" data-readysysimg="${i}" style="display:none"></label>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
           <button class="btn ghost small" data-recompute-readysys="${i}">🔄 إعادة حساب السعر من الكتالوج</button>
           <span class="note" id="readysys-recompute-note-${i}"></span>
         </div>
@@ -2604,6 +2706,16 @@ function renderAdmin(){
    8) WIRING
    ======================================================================= */
 const app = document.getElementById('app');
+// "دراسة الجدوى" and "منظومات جاهزة" no longer have their own top-level nav
+// buttons — they're reached from inside "الحاسبة" and "قائمة المنتجات"
+// respectively. This helper switches the view the same way clicking a
+// nav.tabs button used to, for use by those nested links.
+window.goToView = function(view){
+  currentView = view;
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  render();
+  window.scrollTo({top:0, behavior:'smooth'});
+};
 let currentView = 'calc';
 let deepLinkReadySystemId = null;
 {
@@ -2733,6 +2845,11 @@ function wire(){
   if(currentView==='ready'){
     const retryBtn = document.getElementById('retryReadyBtn');
     if(retryBtn) retryBtn.onclick = ()=>{ readySystemsError=null; render(); };
+    document.querySelectorAll('[data-readyviewmode]').forEach(b=>b.onclick=()=>{
+      readyViewMode = b.dataset.readyviewmode;
+      try{ localStorage.setItem('holoul_ready_view', readyViewMode); }catch(e){}
+      render();
+    });
     return;
   }
   if(currentView==='products'){
@@ -2748,6 +2865,11 @@ function wire(){
     document.querySelectorAll('[data-viewmode]').forEach(b=>b.onclick=()=>{
       productViewMode = b.dataset.viewmode;
       try{ localStorage.setItem('holoul_product_view', productViewMode); }catch(e){}
+      render();
+    });
+    document.querySelectorAll('[data-catviewmode]').forEach(b=>b.onclick=()=>{
+      categoriesViewMode = b.dataset.catviewmode;
+      try{ localStorage.setItem('holoul_categories_view', categoriesViewMode); }catch(e){}
       render();
     });
     const backCatBtn = document.getElementById('backToCategoryBtn');
@@ -3237,6 +3359,15 @@ function wire(){
       try{
         const url = await uploadImage(file);
         adminConfig.productCatalog[+inp.dataset.catimg].categoryImage = url;
+        render();
+      }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
+    });
+    document.querySelectorAll('[data-readysysimg]').forEach(inp=>inp.onchange = async ()=>{
+      const file = inp.files[0]; if(!file) return;
+      harvestAdminInputs();
+      try{
+        const url = await uploadImage(file);
+        adminConfig.readyOffgridSystems[+inp.dataset.readysysimg].image = url;
         render();
       }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
     });
