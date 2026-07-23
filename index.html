@@ -229,9 +229,14 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
    with a golden-ratio (1.618:1) image area like category-card so the grid reads
    as one consistent family of cards across the whole catalog. */
 .ready-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--sp-3);margin-top:var(--sp-3);}
+.bom-thumb{width:42px;height:42px;border-radius:8px;overflow:hidden;background:var(--sand);flex:0 0 42px;}
+.bom-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+.bom-thumb .noimg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:.45;}
+.admtable td.bom-thumb-cell{width:42px;padding-inline-end:0;}
 .ready-card{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
   overflow:hidden;cursor:pointer;transition:transform .18s,box-shadow .18s;}
 .ready-card:hover{transform:translateY(-3px);box-shadow:0 10px 24px rgba(13,52,82,.16);}
+.ready-card.static:hover{transform:none;box-shadow:none;}
 .ready-card .visual{position:relative;aspect-ratio:1.618/1;background:var(--sand);}
 .ready-card .visual img{width:100%;height:100%;object-fit:cover;display:block;}
 .ready-card .visual .noimg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:40px;
@@ -512,6 +517,7 @@ async function callEngine(action, payload){
    ======================================================================= */
 let cachedQuote = null;       // public quote (sell prices only)
 let cachedFeas = null;        // general feasibility-study assumptions (non-sensitive)
+let cachedBomItemImages = {}; // admin-managed fallback images for generic BOM line items (by item key)
 let cachedPanelOptions = [];  // [{brand,power}] — never priceW
 let cachedInverterBrandOptions = []; // [{idx,brand}] — never list/cost/discount
 let cachedProductCatalog = null; // fetched lazily when the products tab opens
@@ -531,6 +537,18 @@ async function ensurePanelsPublicLoaded(){
 }
 // Datasheet link for a given panel brand/power, e.g. for the currently selected
 // panel in a quote/offer. Returns '' if no datasheet has been set for it.
+// Real product photo for a BOM line item if the server resolved one (panel,
+// or a specific catalog-backed inverter/battery in offgrid/ongrid); otherwise
+// an admin-managed generic photo for that item type (cables, structure...);
+// otherwise blank — left for the admin to add later rather than guessing.
+function itemImage(it){
+  return it.image || cachedBomItemImages[it.key] || '';
+}
+function bomRowThumb(it){
+  const url = itemImage(it);
+  return url ? `<img src="${url}" alt="${it.label}" loading="lazy">` : `<div class="noimg">📦</div>`;
+}
+
 function panelDatasheetUrl(brand, power){
   if(!cachedPanelsPublic){ ensurePanelsPublicLoaded(); return ''; }
   const match = cachedPanelsPublic.find(p => p.brand===brand && +p.power===+power);
@@ -594,6 +612,7 @@ async function refreshQuote(){
     cachedFeas = data.feas;
     cachedPanelOptions = data.panelOptions;
     cachedInverterBrandOptions = data.inverterBrandOptions || [];
+    cachedBomItemImages = data.bomItemImages || cachedBomItemImages;
     adminFinancials = adminData ? adminData.quote : null;
     let needsRetry = false;
     if(!cachedPanelOptions.some(p=>p.idx===state.panelIdx) && cachedPanelOptions.length){
@@ -644,6 +663,7 @@ async function refreshOffgridQuote(){
       state.offgrid.panelIdx = data.panelOptions[0].idx;
     }
     cachedPanelOptions = data.panelOptions || cachedPanelOptions;
+    cachedBomItemImages = data.bomItemImages || cachedBomItemImages;
     adminFinancialsOffgrid = adminData ? adminData.quote : null;
   }catch(e){
     offgridEngineError = e.message || 'تعذر الاتصال بالخادم';
@@ -676,6 +696,7 @@ async function refreshOngridQuote(){
       state.ongrid.panelIdx = data.panelOptions[0].idx;
     }
     cachedPanelOptions = data.panelOptions || cachedPanelOptions;
+    cachedBomItemImages = data.bomItemImages || cachedBomItemImages;
     adminFinancialsOngrid = adminData ? adminData.quote : null;
   }catch(e){
     ongridEngineError = e.message || 'تعذر الاتصال بالخادم';
@@ -1266,10 +1287,11 @@ function renderIrrigationCalc(){
       <div class="card">
         <h3>تفصيل عرض السعر</h3>
         <table class="bom">
-          <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
+          <thead><tr><th></th><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
           <tbody>
             ${q.items.map((it,i)=>`
               <tr class="${it.on?'':'off'}">
+                <td class="bom-thumb-cell"><div class="bom-thumb">${bomRowThumb(it)}</div></td>
                 <td>${i+1}</td>
                 <td>${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.panelIdx) : ''}</td>
                 <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
@@ -1387,10 +1409,10 @@ function renderQuoteBomAndTotal(q, introText){
   <div class="card">
     <h3>تفصيل عرض السعر</h3>
     <table class="bom">
-      <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
+      <thead><tr><th></th><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
       <tbody>
         ${q.items.map((it,i)=>`
-          <tr><td>${i+1}</td><td>${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.offgrid?.panelIdx ?? state.ongrid?.panelIdx) : ''}</td>
+          <tr><td class="bom-thumb-cell"><div class="bom-thumb">${bomRowThumb(it)}</div></td><td>${i+1}</td><td>${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.offgrid?.panelIdx ?? state.ongrid?.panelIdx) : ''}</td>
             <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
             <td style="font-size:11.5px">${it.qty}</td>
             <td style="font-size:11.5px">${it.warranty}</td></tr>`).join('')}
@@ -1895,6 +1917,32 @@ function isProductAvailable(cat, ri){
   return detail.available !== false;
 }
 
+// Panels live in D.panels (used by the calculator engine), not D.productCatalog
+// — but reps want to browse them like any other product, with a real price
+// (total panel price, excl. VAT, same convention as every other category).
+// Building a synthetic category here reuses 100% of the existing catalog
+// browsing/search/grid-list-toggle/detail-page code for free.
+function buildCatalogWithPanels(realCatalog){
+  if(!cachedPanelsPublic) ensurePanelsPublicLoaded();
+  const panels = cachedPanelsPublic || [];
+  if(!panels.length) return realCatalog;
+  const panelsCat = {
+    category: 'الألواح الشمسية',
+    // Matches the "last two columns = price pair" convention every other
+    // category uses (so the existing card/detail renderers work unchanged);
+    // panels only have one real price (excl. VAT), so it's duplicated here —
+    // the detail-page table dedupes identical column names automatically.
+    columns: ['الموديل', 'القدرة', 'السعر', 'السعر'],
+    rows: panels.map(p => [`${p.brand} ${p.power}W`, `${p.power} واط`, p.priceExclVat ?? '', p.priceExclVat ?? '']),
+    categoryImage: panels.find(p=>p.image)?.image || '',
+    categoryInfo: '',
+    productDetails: Object.fromEntries(panels.map((p,i) => [i, {
+      image: p.image, description: p.description, specs: p.specs, datasheetUrl: p.datasheetUrl,
+    }])),
+  };
+  return [panelsCat, ...realCatalog];
+}
+
 function renderProducts(){
   if(!cachedProductCatalog && !productCatalogLoading && !productCatalogError){
     loadProductCatalog();
@@ -1909,7 +1957,7 @@ function renderProducts(){
       <button class="btn small" id="retryProductsBtn" style="margin-top:12px">إعادة المحاولة</button>
     </div>`;
   }
-  const catalog = cachedProductCatalog || [];
+  const catalog = buildCatalogWithPanels(cachedProductCatalog || []);
 
   // ---- Level 3: single product detail page ----
   if(productsNav==='detail' && selectedProduct){
@@ -1937,12 +1985,14 @@ function renderProducts(){
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:var(--sp-2)">
               <h3 style="margin:0">${row[0]}</h3>
               ${!available ? `<span class="unavail-chip">غير متاح حاليًا</span>` : ''}
+              ${detail.datasheetUrl ? `<a href="${detail.datasheetUrl}" target="_blank" rel="noopener" class="tag" style="text-decoration:none">📄 الداتا شيت الرسمي (يشمل المقاسات والوزن)</a>` : ''}
             </div>
             <table class="admtable">
               <tbody>
-                ${cat.columns.map((c,i)=>`<tr><td style="font-weight:600;width:150px">${c}</td><td class="num">${row[i]}</td></tr>`).join('')}
+                ${cat.columns.map((c,i)=>({c,i})).filter(({c},idx,arr)=>!c.includes('شامل الضريبة') && arr.findIndex(x=>x.c===c)===idx).map(({c,i})=>`<tr><td style="font-weight:600;width:150px">${c}</td><td class="num">${row[i]}</td></tr>`).join('')}
               </tbody>
             </table>
+            <div class="note" style="margin-top:6px;font-size:11px">* الأسعار المعروضة بدون ضريبة القيمة المضافة</div>
             ${detail.description ? `<div class="note" style="margin-top:var(--sp-2);font-size:13px">${detail.description}</div>` : ''}
           </div>
         </div>
@@ -1971,6 +2021,7 @@ function renderProducts(){
           <span class="current">${cat.category}</span>
         </div>
         <input type="text" id="productSearch" placeholder="ابحث في ${cat.category}...">
+        <div class="note" style="color:var(--bad);font-weight:600">⚠️ الأسعار بدون ضريبة القيمة المضافة (15%)</div>
         <div class="viewmode-toggle" role="group" aria-label="طريقة العرض">
           <button class="${productViewMode==='cards'?'active':''}" data-viewmode="cards">▦ كروت</button>
           <button class="${productViewMode==='list'?'active':''}" data-viewmode="list">☰ ليستة</button>
@@ -1990,14 +2041,13 @@ function renderProducts(){
             const thumb = detail.image || '';
             const nCols = cat.columns.length;
             // convention (matches the rest of the app): the LAST TWO columns are
-            // the sell price and the tax-inclusive price; everything between
-            // the name (col 0) and those two is a spec, shown as a small chip.
+            // the sell price (excl. VAT) and the tax-inclusive price; everything
+            // between the name (col 0) and those two is a spec, shown as a chip.
+            // Customers/reps only ever see the excl-VAT price here, with a
+            // disclaimer on the category page — VAT-inclusive is admin-only.
             const midCols = cat.columns.slice(1, Math.max(1, nCols-2));
             const midVals = row.slice(1, Math.max(1, nCols-2));
-            const priceLbl = cat.columns[nCols-1] || '';
-            const priceVal = row[nCols-1];
-            const price2Lbl = nCols>=2 ? (cat.columns[nCols-2]||'') : '';
-            const price2Val = nCols>=2 ? row[nCols-2] : '';
+            const priceVal = nCols>=2 ? row[nCols-2] : row[nCols-1];
             return `<div class="model-card product-row${available?'':' unavailable-row'}" data-search="${row.join(' ').toLowerCase()}">
               ${thumb ? `<img class="thumb" src="${thumb}" alt="${row[0]}">` : `<div class="thumb-noimg">📦</div>`}
               <div class="body">
@@ -2005,8 +2055,7 @@ function renderProducts(){
                 <div class="specs">${midCols.map((c,i)=>`<span>${c}: ${midVals[i]}</span>`).join('')}</div>
               </div>
               <div class="side">
-                <div class="price">${priceVal}<small>${priceLbl}</small></div>
-                ${price2Lbl && nCols>=3 ? `<div class="price-sub">${price2Val} · ${price2Lbl}</div>` : ''}
+                <div class="price">${priceVal} ﷼<small>بدون ضريبة</small></div>
                 <button class="btn ghost small" data-viewproduct="${selectedCategoryIdx}:${ri}">التفاصيل</button>
               </div>
             </div>`;
@@ -2021,6 +2070,7 @@ function renderProducts(){
   <div class="card no-print">
     <h3>قائمة المنتجات</h3>
     <div class="note">اختر نوع المنتج لعرض الموديلات المتاحة، أو تصفح المنظومات الجاهزة أدناه</div>
+    <div class="note" style="color:var(--bad);font-weight:600;margin-top:4px">⚠️ جميع الأسعار المعروضة بدون ضريبة القيمة المضافة (15%)</div>
     <div class="viewmode-toggle" role="group" aria-label="طريقة العرض" data-catview-toggle>
       <button class="${categoriesViewMode==='cards'?'active':''}" data-catviewmode="cards">▦ شبكة</button>
       <button class="${categoriesViewMode==='list'?'active':''}" data-catviewmode="list">☰ ليستة</button>
@@ -2039,7 +2089,7 @@ function renderProducts(){
         ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}">` : `<div class="noimg">📦</div>`}
         <div class="overlay">
           <h3>${cat.category}</h3>
-          <div class="count">${cat.rows.length} موديل${cat.categoryInfo ? ' · '+cat.categoryInfo : ''}</div>
+          <div class="count">${cat.rows.length} موديل</div>
         </div>
       </div>`).join('')}
   </div>
@@ -2180,15 +2230,25 @@ function findCatalogEntryByModel(catalog, categoryNameIncludes, model){
 
 function renderComponentDetailCard(title, entry, fallbackLabel){
   if(!entry){
-    return `<div class="card"><h3>${title}</h3><div class="note">${fallbackLabel}</div></div>`;
+    return `<div class="ready-card static" style="flex-direction:row;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3)">
+      <div class="visual" style="aspect-ratio:auto;width:64px;height:64px;flex:0 0 64px;border-radius:9px"><div class="noimg" style="font-size:22px">📦</div></div>
+      <div class="body" style="padding:0;flex:1;min-width:0">
+        <h3 class="name" style="font-size:13.5px">${title}</h3>
+        <div class="note" style="margin-top:2px">${fallbackLabel}</div>
+      </div>
+    </div>`;
   }
-  const specsRows = Object.entries(entry.specs||{}).map(([k,v])=>`<tr><td style="font-weight:600">${k}</td><td class="num">${v}</td></tr>`).join('');
+  const specChips = Object.entries(entry.specs||{}).slice(0,6).map(([k,v])=>`<span class="chip">${k}: ${v}</span>`).join('');
   return `
-  <div class="card">
-    <h3>${title} — ${entry.row[0]}</h3>
-    ${entry.image ? `<img src="${entry.image}" alt="${entry.row[0]}" style="max-width:100%;border-radius:10px;margin:8px 0">` : ''}
-    ${entry.description ? `<div class="note">${entry.description}</div>` : ''}
-    ${specsRows ? `<table class="admtable" style="margin-top:10px"><tbody>${specsRows}</tbody></table>` : ''}
+  <div class="ready-card static" style="flex-direction:row;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3)">
+    <div class="visual" style="aspect-ratio:auto;width:64px;height:64px;flex:0 0 64px;border-radius:9px">
+      ${entry.image ? `<img src="${entry.image}" alt="${entry.row[0]}">` : `<div class="noimg" style="font-size:22px">📦</div>`}
+    </div>
+    <div class="body" style="padding:0;flex:1;min-width:0">
+      <h3 class="name" style="font-size:13.5px">${title} — ${entry.row[0]}</h3>
+      ${entry.description ? `<div class="note" style="margin-top:2px">${entry.description}</div>` : ''}
+      ${specChips ? `<div class="specs" style="margin-top:6px">${specChips}</div>` : ''}
+    </div>
   </div>`;
 }
 
@@ -2222,11 +2282,34 @@ function renderReadySystemDetail(id){
     <div class="big num" style="font-size:24px;margin-top:6px">${fmt(s.priceSar)} ﷼</div>
     <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
   </div>
-  ${renderComponentDetailCard('الألواح الشمسية', panelEntry, `${s.panelCount}× ${s.panelBrand||''} ${s.panelPowerW}W${panelDatasheetLink(s.panelBrand, s.panelPowerW)}`)}
-  ${s.inverterModel ? renderComponentDetailCard('الإنفرتر', invEntry, `${s.inverterBrand} ${s.inverterModel}`) : `<div class="card"><h3>الإنفرتر</h3><div class="note">لا يوجد إنفرتر — منظم شحن فقط</div></div>`}
-  ${renderComponentDetailCard(`البطارية (${s.batteryCount}×)`, batEntry, `${s.batteryType} ${s.batteryModel||''}`)}
+  <div class="card" style="padding:0;display:flex;flex-direction:column">
+    <div style="padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line)">${renderComponentDetailCard('الألواح الشمسية', panelEntry, `${s.panelCount}× ${s.panelBrand||''} ${s.panelPowerW}W${panelDatasheetLink(s.panelBrand, s.panelPowerW)}`)}</div>
+    <div style="padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line)">${s.inverterModel ? renderComponentDetailCard('الإنفرتر', invEntry, `${s.inverterBrand} ${s.inverterModel}`) : renderComponentDetailCard('الإنفرتر', null, 'لا يوجد إنفرتر — منظم شحن فقط')}</div>
+    <div style="padding:var(--sp-2) var(--sp-3)">${renderComponentDetailCard(`البطارية (${s.batteryCount}×)`, batEntry, `${s.batteryType} ${s.batteryModel||''}`)}</div>
+  </div>
   `;
 }
+
+// Generic recurring BOM line items that aren't tied to one specific catalog
+// model (unlike panels/inverters/batteries, which already carry real photos
+// automatically) — the admin can attach a representative photo to each.
+const BOM_GENERIC_ITEM_KEYS = [
+  ['inverter', 'الانفرتر (الحاسبة المخصصة)'],
+  ['ip65', 'لوحة الحماية IP65'],
+  ['combiner', 'صندوق التجميع (Combiner Box)'],
+  ['cables', 'الكابلات - DC'],
+  ['mc4', 'وصلات MC4'],
+  ['structure', 'الشاسيه/الحوامل'],
+  ['concrete', 'الخرسانة'],
+  ['earth', 'التأريض'],
+  ['reactor', 'الريأكتور'],
+  ['install_mech', 'الأعمال الميدانية وتثبيت الألواح'],
+  ['install_elec', 'التركيبات والتوصيلات الكهربائية'],
+  ['transport', 'النقل'],
+  ['cabling', 'الكابلات ولوحة الحماية (أوف-جريد/أون-جريد)'],
+  ['install', 'التركيب والتشغيل (أوف-جريد/أون-جريد)'],
+  ['netmetering', 'رسوم صافي القياس'],
+];
 
 function renderAdmin(){
   return `
@@ -2565,6 +2648,23 @@ function renderAdmin(){
       <div><label>صافي القياس (﷼) - بيع</label><input type="number" id="a_ng_netsell" value="${adminConfig.ongrid.netMeteringFeeSell}"></div>
       <div><label>التركيب (﷼/KW) - تكلفة</label><input type="number" id="a_ng_instcost" value="${adminConfig.ongrid.installPerKwCost}"></div>
       <div><label>التركيب (﷼/KW) - بيع</label><input type="number" id="a_ng_instsell" value="${adminConfig.ongrid.installPerKwSell}"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>صور عناصر عروض الأسعار <span class="tag">تظهر في جدول تفصيل العرض</span></h3>
+    <div class="note">صورة تمثيلية لكل بند متكرر (كابلات، شاسيه، صندوق تجميع...) تظهر في جدول تفصيل العرض بكل الحاسبات. الألواح والبطاريات وبعض الإنفرترات لها صور حقيقية تلقائيًا من قائمة المنتجات — هذا القسم للبنود العامة اللي مالهاش موديل محدد.</div>
+    <div class="grid2" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--sp-2);margin-top:var(--sp-2)">
+      ${BOM_GENERIC_ITEM_KEYS.map(([key,label])=>`
+        <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:var(--radius);padding:var(--sp-1) var(--sp-2)">
+          <div class="bom-thumb" style="width:44px;height:44px;flex:0 0 44px">
+            ${adminConfig.bomItemImages && adminConfig.bomItemImages[key] ? `<img src="${adminConfig.bomItemImages[key]}">` : `<div class="noimg" style="font-size:16px">📦</div>`}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600">${label}</div>
+            <label class="btn ghost small" style="cursor:pointer;font-size:11px;margin-top:4px;display:inline-block">📷 رفع صورة<input type="file" accept="image/*" data-bomimg="${key}" style="display:none"></label>
+          </div>
+        </div>`).join('')}
     </div>
   </div>
 
@@ -3368,6 +3468,16 @@ function wire(){
       try{
         const url = await uploadImage(file);
         adminConfig.readyOffgridSystems[+inp.dataset.readysysimg].image = url;
+        render();
+      }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
+    });
+    document.querySelectorAll('[data-bomimg]').forEach(inp=>inp.onchange = async ()=>{
+      const file = inp.files[0]; if(!file) return;
+      harvestAdminInputs();
+      try{
+        const url = await uploadImage(file);
+        adminConfig.bomItemImages = adminConfig.bomItemImages || {};
+        adminConfig.bomItemImages[inp.dataset.bomimg] = url;
         render();
       }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
     });
