@@ -118,6 +118,9 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .btn:hover{box-shadow:0 3px 10px rgba(231,172,18,.4);transform:translateY(-1px);}
 .btn.ghost{background:transparent;border:1px solid var(--teal);color:var(--teal-dark);box-shadow:none;}
 .btn.ghost:hover{background:var(--teal-tint);transform:none;}
+.btn.teal{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#fff;box-shadow:0 2px 6px rgba(15,169,141,.35);}
+.btn.teal:hover{box-shadow:0 3px 10px rgba(15,169,141,.45);transform:translateY(-1px);}
+.btn.full{width:100%;justify-content:center;}
 .btn.small{padding:7px 12px;font-size:12.5px;}
 .btn.danger{background:#F4E4E0;color:var(--bad);box-shadow:none;}
 
@@ -269,12 +272,37 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 
 /* Level 3 — product detail: golden split, photo ≈61.8% / spec panel ≈38.2% */
 .detail-split{display:grid;grid-template-columns:1.618fr 1fr;gap:var(--sp-3);align-items:start;}
-.detail-split .photo{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:var(--sand);
-  box-shadow:var(--shadow);aspect-ratio:1.618/1;}
-.detail-split .photo img{width:100%;height:100%;object-fit:cover;display:block;}
+.detail-split .photo{border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:#fff;
+  box-shadow:var(--shadow);aspect-ratio:1.618/1;padding:var(--sp-3);}
+.detail-split .photo img{width:100%;height:100%;object-fit:contain;display:block;}
 .detail-split .photo .noimg{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:52px;
   background:linear-gradient(135deg,var(--teal-tint),var(--sun-tint));color:var(--teal-dark);}
 @media (max-width:820px){.detail-split{grid-template-columns:1fr;}}
+
+/* redesigned product detail page — category badge, big price, feature
+   badges, icon spec strip, tabs, similar-products rail */
+.detail-split .photo{position:relative;}
+.detail-cat-badge{background:var(--sun-tint);color:#8a6a12;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;
+  display:inline-block;margin-bottom:var(--sp-1);}
+.detail-price-block{margin:var(--sp-2) 0;}
+.detail-price-block .big-price{font-family:'Cairo';font-weight:800;font-size:32px;color:var(--teal-dark);line-height:1.2;}
+.detail-meta-line{font-size:11.5px;color:var(--muted);margin-top:var(--sp-2);padding-top:var(--sp-2);border-top:1px solid var(--line);}
+
+.spec-strip-wrap{background:linear-gradient(135deg,var(--teal-tint),var(--sun-tint));border-radius:var(--radius);padding:var(--sp-2);}
+.spec-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:var(--sp-2);}
+.spec-strip .spec-item{text-align:center;background:var(--card);border-radius:10px;padding:var(--sp-2) var(--sp-1);box-shadow:var(--shadow-soft);}
+.spec-strip .spec-item .ico{font-size:22px;margin-bottom:4px;}
+.spec-strip .spec-item .val{font-weight:800;font-size:14px;color:var(--night);}
+.spec-strip .spec-item .lbl{font-size:10.5px;color:var(--muted);margin-top:2px;}
+
+.detail-tabs-nav{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:var(--sp-3);flex-wrap:wrap;}
+.detail-tabs-nav button{background:none;border:none;padding:10px 16px;font-size:13px;font-weight:700;color:var(--muted);
+  cursor:pointer;border-bottom:2px solid transparent;font-family:'Cairo';}
+.detail-tabs-nav button.active{color:var(--teal-dark);border-bottom-color:var(--teal-dark);}
+
+.similar-rail{display:flex;gap:var(--sp-2);overflow-x:auto;padding-bottom:6px;}
+.similar-rail .ready-card{flex:0 0 200px;cursor:pointer;}
+.similar-rail .ready-card .price{font-size:15px;}
 
 tr.unavailable-row{opacity:.55;}
 
@@ -1917,6 +1945,24 @@ function isProductAvailable(cat, ri){
   return detail.available !== false;
 }
 
+// Small heuristic so the icon spec-strip (temperature/weight/protection/etc.)
+// works generically across every category's differently-named spec keys,
+// without hand-mapping icons per product.
+function specIcon(key){
+  const k = String(key);
+  if(/وزن/.test(k)) return '⚖️';
+  if(/حماية|IP\d/i.test(k)) return '🛡️';
+  if(/جهد|فولت|V\b/i.test(k)) return '⚡';
+  if(/سعة|Ah\b/i.test(k)) return '🔋';
+  if(/ضمان/.test(k)) return '📜';
+  if(/حرارة|تشغيل|°/.test(k)) return '🌡️';
+  if(/دورات|عمر/.test(k)) return '🔄';
+  if(/كفاءة|%/.test(k)) return '📈';
+  if(/أبعاد|مقاس|مم|mm/i.test(k)) return '📐';
+  return '📌';
+}
+let detailTab = 'description'; // 'description' | 'specs' — product detail page tabs
+
 // Panels live in D.panels (used by the calculator engine), not D.productCatalog
 // — but reps want to browse them like any other product, with a real price
 // (total panel price, excl. VAT, same convention as every other category).
@@ -1941,6 +1987,35 @@ function buildCatalogWithPanels(realCatalog){
     }])),
   };
   return [panelsCat, ...realCatalog];
+}
+
+// "Similar products" rail on the detail page — other models from the same
+// category, reusing the ready-card visual language for consistency.
+function renderSimilarProducts(catalog, catIdx, excludeRowIdx){
+  const cat = catalog[catIdx];
+  if(!cat) return '';
+  const others = cat.rows.map((r,i)=>({r,i})).filter(({i})=>i!==excludeRowIdx).slice(0,8);
+  if(!others.length) return '';
+  const nCols = cat.columns.length;
+  return `
+  <div class="card">
+    <h3>منتجات مشابهة</h3>
+    <div class="similar-rail">
+      ${others.map(({r,i})=>{
+        const d = (cat.productDetails && cat.productDetails[i]) || {};
+        const img = d.image || cat.categoryImage;
+        const price = r[nCols-2];
+        return `<div class="ready-card" data-similar="${catIdx}:${i}">
+          <div class="visual">${img ? `<img src="${img}" alt="${r[0]}">` : `<div class="noimg">📦</div>`}</div>
+          <div class="body">
+            <h3 class="name">${r[0]}</h3>
+            <div class="price" style="color:var(--teal-dark)">${price} ﷼</div>
+            <button class="btn ghost small full" data-similar="${catIdx}:${i}" style="margin-top:6px">‹ عرض التفاصيل</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
 }
 
 function renderProducts(){
@@ -1968,6 +2043,10 @@ function renderProducts(){
       const detail = (cat.productDetails && cat.productDetails[selectedProduct.rowIdx]) || {};
       const img = detail.image || cat.categoryImage;
       const available = isProductAvailable(cat, selectedProduct.rowIdx);
+      // price = second-to-last column, same convention used everywhere else (excl. VAT)
+      const priceVal = row[cat.columns.length-2];
+      const specEntries = Object.entries(detail.specs||{});
+      const otherCols = cat.columns.map((c,i)=>({c,i})).filter(({c,i},idx,arr)=>i!==0 && !c.includes('شامل الضريبة') && arr.findIndex(x=>x.c===c)===idx && arr.findIndex(x=>x.c===c)!==arr.length-1);
       return `
       <div class="card no-print">
         <div class="crumbs">
@@ -1982,29 +2061,43 @@ function renderProducts(){
         <div class="detail-split">
           <div class="photo">${img ? `<img src="${img}" alt="${row[0]}">` : `<div class="noimg">📦</div>`}</div>
           <div>
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:var(--sp-2)">
-              <h3 style="margin:0">${row[0]}</h3>
-              ${!available ? `<span class="unavail-chip">غير متاح حاليًا</span>` : ''}
-              ${detail.datasheetUrl ? `<a href="${detail.datasheetUrl}" target="_blank" rel="noopener" class="tag" style="text-decoration:none">📄 الداتا شيت الرسمي (يشمل المقاسات والوزن)</a>` : ''}
+            <span class="detail-cat-badge">${cat.category}</span>
+            <div style="display:flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap;margin-top:var(--sp-1)">
+              <h2 style="margin:0">${row[0]}</h2>
+              ${!available ? `<span class="unavail-chip">غير متاح حاليًا</span>` : `<span class="tag">✓ متوفر</span>`}
             </div>
-            <table class="admtable">
-              <tbody>
-                ${cat.columns.map((c,i)=>({c,i})).filter(({c},idx,arr)=>!c.includes('شامل الضريبة') && arr.findIndex(x=>x.c===c)===idx).map(({c,i})=>`<tr><td style="font-weight:600;width:150px">${c}</td><td class="num">${row[i]}</td></tr>`).join('')}
-              </tbody>
-            </table>
-            <div class="note" style="margin-top:6px;font-size:11px">* الأسعار المعروضة بدون ضريبة القيمة المضافة</div>
-            ${detail.description ? `<div class="note" style="margin-top:var(--sp-2);font-size:13px">${detail.description}</div>` : ''}
+            <div class="detail-price-block">
+              <div class="big-price">${priceVal} ﷼</div>
+              <div class="note" style="display:inline-block;margin-top:4px">* السعر بدون ضريبة القيمة المضافة</div>
+            </div>
+            ${detail.datasheetUrl ? `<a href="${detail.datasheetUrl}" target="_blank" rel="noopener" class="btn ghost full" style="margin-bottom:var(--sp-2)">📄 تحميل الداتا شيت</a>` : ''}
+            <div class="detail-meta-line">رقم المنتج: ${row[0]} &nbsp;|&nbsp; التصنيف: ${cat.category}</div>
           </div>
         </div>
-        ${detail.specs && Object.keys(detail.specs).length ? `
-        <h3 style="margin-top:var(--sp-4)">مواصفات إضافية</h3>
-        <table class="admtable">
-          <tbody>
-            ${Object.entries(detail.specs).map(([k,v])=>`<tr><td style="font-weight:600;width:180px">${k}</td><td>${v}</td></tr>`).join('')}
-          </tbody>
-        </table>` : ''}
-        ${cat.categoryInfo ? `<div class="note" style="margin-top:var(--sp-2)">${cat.categoryInfo}</div>` : ''}
-      </div>`;
+      </div>
+      ${specEntries.length ? `
+      <div class="card">
+        <div class="spec-strip-wrap"><div class="spec-strip">
+          ${specEntries.map(([k,v])=>`<div class="spec-item"><div class="ico">${specIcon(k)}</div><div class="val">${v}</div><div class="lbl">${k}</div></div>`).join('')}
+        </div></div>
+      </div>` : ''}
+      <div class="card">
+        <div class="detail-tabs-nav no-print">
+          <button class="${detailTab==='description'?'active':''}" data-detailtab="description">الوصف</button>
+          <button class="${detailTab==='specs'?'active':''}" data-detailtab="specs">المواصفات</button>
+        </div>
+        ${detailTab==='description' ? `
+          ${detail.description ? `<div class="note" style="font-size:13px">${detail.description}</div>` : `<div class="note">لا يوجد وصف مفصّل لهذا المنتج بعد.</div>`}
+        ` : `
+          <table class="admtable">
+            <tbody>
+              ${otherCols.map(({c,i})=>`<tr><td style="font-weight:600;width:150px">${c}</td><td class="num">${row[i]}</td></tr>`).join('')}
+            </tbody>
+          </table>
+          ${!otherCols.length ? `<div class="note">راجع شريط المواصفات بالأعلى — كل التفاصيل معروضة هناك.</div>` : ''}
+        `}
+      </div>
+      ${renderSimilarProducts(catalog, selectedProduct.catIdx, selectedProduct.rowIdx)}`;
     }
   }
 
@@ -2980,7 +3073,19 @@ function wire(){
       const [ci,ri] = b.dataset.viewproduct.split(':').map(Number);
       selectedProduct = {catIdx:ci, rowIdx:ri};
       productsNav = 'detail';
+      detailTab = 'description';
       render();
+    });
+    document.querySelectorAll('[data-detailtab]').forEach(b=>b.onclick=()=>{
+      detailTab = b.dataset.detailtab;
+      render();
+    });
+    document.querySelectorAll('[data-similar]').forEach(b=>b.onclick=()=>{
+      const [ci,ri] = b.dataset.similar.split(':').map(Number);
+      selectedProduct = {catIdx:ci, rowIdx:ri};
+      detailTab = 'description';
+      render();
+      window.scrollTo({top:0, behavior:'smooth'});
     });
     const searchInput = document.getElementById('productSearch');
     if(searchInput) searchInput.oninput = e=>{
