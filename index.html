@@ -364,12 +364,20 @@ svg.chart{width:100%;height:260px;}
 .fab-icon{font-size:17px;line-height:1;}
 .fab-wa{background:#25D366;color:#fff;}
 .fab-quote{background:linear-gradient(135deg,var(--sun-2),var(--sun));color:var(--night);}
+.sticky-total-bar{display:none;}
 @media (max-width:640px){
   .fab-bar{inset-inline-end:12px;bottom:12px;gap:8px;}
   .fab{padding:12px;border-radius:50%;box-shadow:0 6px 16px rgba(13,52,82,.28);}
   .fab-label{display:none;}
   .fab-icon{font-size:20px;}
+  .sticky-total-bar{display:flex;position:fixed;inset-inline:0;bottom:0;z-index:400;align-items:center;justify-content:space-between;gap:10px;background:linear-gradient(135deg,var(--night) 0%,var(--night-2) 100%);color:#fff;padding:12px 18px;box-shadow:0 -6px 20px rgba(13,52,82,.28);cursor:pointer;}
+  .sticky-total-bar .stb-lbl{font-size:11px;color:#BFE3D6;}
+  .sticky-total-bar .stb-val{font-family:'Cairo',sans-serif;font-weight:800;font-size:19px;color:var(--sun-2);}
+  .sticky-total-bar .stb-cta{font-size:11px;color:#fff;background:rgba(255,255,255,.16);border-radius:20px;padding:6px 12px;font-weight:700;}
+  .fab-bar{bottom:74px;}
+  .quote-shell,.grid2{padding-bottom:64px;}
 }
+
 .reload-badge .spin{width:13px;height:13px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg);}}
 @keyframes fadeIn{from{opacity:0;transform:translateX(-50%) translateY(-6px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
@@ -387,6 +395,10 @@ svg.chart{width:100%;height:260px;}
 .preset-list button{text-align:right;justify-content:flex-start;width:100%;}
 .portfolio-eyebrow{display:inline-flex;align-items:center;gap:7px;background:rgba(231,172,18,.16);border:1px solid rgba(231,172,18,.4);color:var(--sun-2);font-size:11.5px;font-weight:700;letter-spacing:.03em;padding:5px 13px;border-radius:20px;margin-bottom:14px;}
 .portfolio-eyebrow::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--sun-2);}
+.portfolio-subnav{display:flex;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.94);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:12px;padding:8px;margin-bottom:18px;position:sticky;top:88px;z-index:10;box-shadow:var(--shadow-soft);}
+.portfolio-subnav a{color:var(--night);text-decoration:none;font-family:'Cairo';font-weight:700;font-size:12.5px;padding:8px 14px;border-radius:9px;transition:.15s;}
+.portfolio-subnav a:hover{background:var(--sand);}
+#pf-capabilities,#pf-projects,#pf-roi,#pf-partners{scroll-margin-top:150px;}
 .portfolio-hero{display:grid;grid-template-columns:1.618fr 1fr;gap:21px;align-items:stretch;margin-bottom:21px;}
 .portfolio-hero .visual{position:relative;overflow:hidden;border-radius:var(--radius);min-height:420px;border:1px solid var(--line);box-shadow:var(--shadow);}
 .portfolio-hero .visual img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .6s ease;}
@@ -1442,7 +1454,8 @@ function renderIrrigationCalc(){
         ${adminInfoUnlocked ? (adminFinancials ? renderAdminFinancials(adminFinancials) : `<div class="note">جارِ التحميل...</div>`) : ``}
       </div>
     </div>
-  </div>`;
+  </div>
+  ${renderStickyTotalBar(q.finalTotal)}`;
 }
 
 function renderQuoteHeaderBanner(){
@@ -1476,6 +1489,13 @@ function renderSupplyInstallSplit(q){
   <div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:10px">
     <div class="stat"><div class="v">${fmt(q.supplyOnlyTotal)} ﷼</div><div class="l">سعر التوريد فقط</div></div>
     <div class="stat"><div class="v">${fmt(q.supplyPlusInstallTotal)} ﷼</div><div class="l">سعر التوريد والتركيب</div></div>
+  </div>`;
+}
+
+function renderStickyTotalBar(finalTotal){
+  return `<div class="sticky-total-bar no-print" onclick="document.querySelector('.totalbar')?.scrollIntoView({behavior:'smooth',block:'center'})">
+    <div><div class="stb-lbl">السعر النهائي شامل الضريبة</div><div class="stb-val">${fmt(finalTotal)} ﷼</div></div>
+    <div class="stb-cta">التفاصيل ↑</div>
   </div>`;
 }
 
@@ -1521,7 +1541,8 @@ function renderQuoteBomAndTotal(q, introText){
       <button class="btn" onclick="handlePrint()">🖨️ طباعة / حفظ PDF</button>
       <button class="btn" style="background:#25D366;color:#fff" onclick="sendGenericQuoteWhatsapp(${q.finalTotal})">📤 إرسال العرض للعميل (واتساب)</button>
     </div>
-  </div>`;
+  </div>
+  ${renderStickyTotalBar(q.finalTotal)}`;
 }
 
 function sendGenericQuoteWhatsapp(finalTotal){
@@ -1878,6 +1899,12 @@ function renderPortfolio(){
   return `
   <section class="portfolio-view">
     <div class="portfolio-eyebrow">هندسة، توريد، تنفيذ، تشغيل — EPC متكامل</div>
+    <nav class="portfolio-subnav no-print">
+      <a href="#pf-capabilities">⚙️ قدراتنا</a>
+      <a href="#pf-projects">🏗️ مشاريعنا</a>
+      ${(businessCases.length || roiCases.length) ? `<a href="#pf-roi">📈 عائد الاستثمار</a>` : ''}
+      ${partners.length ? `<a href="#pf-partners">🤝 شركاؤنا</a>` : ''}
+    </nav>
     <div class="portfolio-hero">
       <div class="visual">
         <img src="${hero.image||''}" alt="Holoul Energy solar irrigation project" loading="eager">
@@ -1902,7 +1929,7 @@ function renderPortfolio(){
           ${timeline.map(t=>`<div class="timeline-item">${t.image ? `<img class="timeline-thumb" src="${t.image}" alt="${t.title||''}" loading="lazy">` : `<strong>${t.label||''}</strong>`}<div><b>${t.title||''}</b><p>${t.desc||''}</p></div></div>`).join('')}
         </div>
       </div>
-      <div class="card">
+      <div class="card" id="pf-capabilities">
         <h3>قدرات التنفيذ</h3>
         <div class="stats">
           ${capabilitySteps.map(s=>`<div class="stat"><div class="v">${s.v}</div><div class="l">${s.l}</div></div>`).join('')}
@@ -1910,7 +1937,7 @@ function renderPortfolio(){
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="pf-projects">
       <h3>${pf.projectsTitle||''} <span class="tag">${pf.projectsTag||''}</span></h3>
       <div class="portfolio-projects">
         ${projects.map(p=>`
@@ -1930,7 +1957,7 @@ function renderPortfolio(){
     </div>
 
     ${businessCases.length ? `
-    <div class="card">
+    <div class="card" id="pf-roi">
       <h3>حالات عائد استثماري فعلية <span class="tag">مشاريع منفذة ومُشغّلة</span></h3>
       <div class="bc-grid">
         ${businessCases.map(b=>`
@@ -1956,14 +1983,14 @@ function renderPortfolio(){
       </div>
     </div>` : ''}
 
-    <div class="portfolio-band">
+    <div class="portfolio-band"${businessCases.length ? '' : ' id="pf-roi"'}>
       <div class="card">
         <h3>${businessCases.length ? 'مؤشرات إضافية' : 'حالات عائد الاستثمار'}</h3>
         <div class="stats">
           ${roiCases.map(r=>`<div class="stat"><div class="v">${r.v}</div><div class="l">${r.l}</div></div>`).join('')}
         </div>
       </div>
-      <div class="card">
+      <div class="card" id="pf-partners">
         <h3>شركاء وتقنيات</h3>
         <div class="partner-grid">
           ${partners.map(p=>`<div class="partner-logo"><img src="${p.img}" alt="${p.name}" loading="lazy"></div>`).join('')}
