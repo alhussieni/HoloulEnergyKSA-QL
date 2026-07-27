@@ -126,8 +126,57 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 
 .note{font-size:12px;color:var(--muted);line-height:1.7;background:var(--sand);border:1px solid var(--line);border-radius:10px;padding:10px 12px;}
 
-/* admin */
+/* admin — hybrid layout: sidebar + topbar + cards */
+.admin-shell{display:flex;gap:20px;align-items:flex-start;}
+.admin-sidebar{width:236px;flex:0 0 236px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;position:sticky;top:88px;box-shadow:var(--shadow-soft);}
+.admin-sidebar-title{font-family:'Cairo';font-weight:800;font-size:15px;color:var(--night);}
+.admin-sidebar-sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+.admin-nav{display:flex;flex-direction:column;gap:3px;margin-top:14px;}
+.admin-nav-btn{display:flex;align-items:center;gap:10px;width:100%;text-align:right;background:transparent;border:0;padding:10px 11px;border-radius:9px;font-family:'Cairo';font-weight:600;font-size:13px;color:var(--ink);cursor:pointer;transition:.15s;}
+.admin-nav-btn .ic{font-size:16px;width:20px;text-align:center;flex:0 0 20px;}
+.admin-nav-btn:hover{background:var(--sand);}
+.admin-nav-btn.active{background:linear-gradient(135deg,var(--night),var(--night-2));color:#fff;box-shadow:0 3px 10px rgba(13,52,82,.25);}
+.admin-main{flex:1;min-width:0;}
+.admin-topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px;box-shadow:var(--shadow-soft);position:sticky;top:88px;z-index:5;}
+.admin-topbar-title{font-family:'Cairo';font-weight:800;font-size:17px;color:var(--night);}
+.admsec{display:none;}
+.admsec.active{display:block;}
+.admin-quicklinks{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-top:6px;}
+.admin-quicklink{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px;cursor:pointer;transition:.15s;text-align:right;}
+.admin-quicklink:hover{border-color:var(--teal);box-shadow:0 4px 14px rgba(13,52,82,.08);transform:translateY(-2px);}
+.admin-quicklink .ic{font-size:22px;flex:0 0 auto;}
+.admin-quicklink .t{font-weight:700;font-size:13.5px;color:var(--night);}
+.admin-quicklink .s{font-size:11px;color:var(--muted);margin-top:2px;}
+@media (max-width:900px){
+  .admin-shell{flex-direction:column;}
+  .admin-sidebar{width:100%;position:static;box-shadow:none;}
+  .admin-nav{flex-direction:row;flex-wrap:wrap;}
+  .admin-nav-btn{width:auto;flex:1 1 auto;justify-content:center;}
+  .admin-topbar{position:static;}
+}
 .admtable{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;}
+
+/* product catalog — persistent category sidebar (hybrid: sidebar + cards) */
+.catalog-shell{display:flex;gap:20px;align-items:flex-start;}
+.catalog-sidebar{width:230px;flex:0 0 230px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;position:sticky;top:88px;box-shadow:var(--shadow-soft);}
+.catalog-sidebar-title{font-family:'Cairo';font-weight:800;font-size:15px;color:var(--night);}
+.catalog-sidebar-sub{font-size:11.5px;color:var(--muted);margin-top:2px;}
+.catalog-nav{display:flex;flex-direction:column;gap:3px;margin-top:14px;}
+.catalog-nav-btn{display:flex;align-items:center;gap:9px;width:100%;text-align:right;background:transparent;border:0;padding:9px 10px;border-radius:9px;font-family:'Cairo';font-weight:600;font-size:12.5px;color:var(--ink);cursor:pointer;transition:.15s;}
+.catalog-nav-btn .ic{font-size:15px;width:18px;text-align:center;flex:0 0 18px;}
+.catalog-nav-btn .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.catalog-nav-btn .cnt{font-size:10.5px;color:var(--muted);background:var(--sand);border-radius:20px;padding:1px 7px;flex:0 0 auto;}
+.catalog-nav-btn:hover{background:var(--sand);}
+.catalog-nav-btn.active{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#fff;}
+.catalog-nav-btn.active .cnt{background:rgba(255,255,255,.25);color:#fff;}
+.catalog-main{flex:1;min-width:0;}
+@media (max-width:900px){
+  .catalog-shell{flex-direction:column;}
+  .catalog-sidebar{width:100%;position:static;box-shadow:none;}
+  .catalog-nav{flex-direction:row;flex-wrap:wrap;}
+  .catalog-nav-btn{width:auto;flex:0 0 auto;}
+  .catalog-nav-btn .lbl{max-width:140px;}
+}
 .admtable th{font-size:11px;color:var(--muted);text-align:right;padding:6px;}
 .admtable td{padding:5px;}
 .admtable input{padding:6px 8px;font-size:12.5px;}
@@ -601,6 +650,7 @@ let adminFinancials = null;   // cost/margin breakdown — only after admin auth
 let adminConfig = null;       // full rates object — only after admin auth
 let adminReps = [];           // rep accounts — only after admin auth
 let adminTokenMem = null;     // short-lived session token; held in memory only, lost on page reload
+let currentAdminSection = 'overview'; // which sidebar section is showing inside the admin panel
 let engineError = null;
 let quoteLoading = false;
 
@@ -2033,6 +2083,7 @@ function renderProducts(){
     </div>`;
   }
   const catalog = buildCatalogWithPanels(cachedProductCatalog || []);
+  let innerHtml = '';
 
   // ---- Level 3: single product detail page ----
   if(productsNav==='detail' && selectedProduct){
@@ -2047,7 +2098,7 @@ function renderProducts(){
       const priceVal = row[cat.columns.length-2];
       const specEntries = Object.entries(detail.specs||{});
       const otherCols = cat.columns.map((c,i)=>({c,i})).filter(({c,i},idx,arr)=>i!==0 && !c.includes('شامل الضريبة') && arr.findIndex(x=>x.c===c)===idx && arr.findIndex(x=>x.c===c)!==arr.length-1);
-      return `
+      innerHtml = `
       <div class="card no-print">
         <div class="crumbs">
           <button id="crumbAllCats">كل الفئات</button>
@@ -2106,7 +2157,7 @@ function renderProducts(){
     const cat = catalog[selectedCategoryIdx];
     if(!cat){ productsNav='categories'; }
     else {
-      return `
+      innerHtml = `
       <div class="card no-print">
         <div class="crumbs" style="margin-bottom:var(--sp-2)">
           <button id="backToCategoriesBtn">كل الفئات</button>
@@ -2159,36 +2210,62 @@ function renderProducts(){
   }
 
   // ---- Level 1: main categories landing page ----
-  return `
-  <div class="card no-print">
-    <h3>قائمة المنتجات</h3>
-    <div class="note">اختر نوع المنتج لعرض الموديلات المتاحة، أو تصفح المنظومات الجاهزة أدناه</div>
-    <div class="note" style="color:var(--bad);font-weight:600;margin-top:4px">⚠️ جميع الأسعار المعروضة بدون ضريبة القيمة المضافة (15%)</div>
-    <div class="viewmode-toggle" role="group" aria-label="طريقة العرض" data-catview-toggle>
-      <button class="${categoriesViewMode==='cards'?'active':''}" data-catviewmode="cards">▦ شبكة</button>
-      <button class="${categoriesViewMode==='list'?'active':''}" data-catviewmode="list">☰ ليستة</button>
-    </div>
-  </div>
-  <div class="category-grid view-${categoriesViewMode}">
-    <div class="category-card" onclick="window.goToView('ready')" style="cursor:pointer">
-      <div class="noimg">🗂️</div>
-      <div class="overlay">
-        <h3>منظومات جاهزة (عروض جاهزة)</h3>
-        <div class="count">تصفّح المنظومات المجهزة مسبقًا بسعر ثابت</div>
+  if(!innerHtml){
+    innerHtml = `
+    <div class="card no-print">
+      <h3>قائمة المنتجات</h3>
+      <div class="note">اختر نوع المنتج لعرض الموديلات المتاحة، أو تصفح المنظومات الجاهزة أدناه</div>
+      <div class="note" style="color:var(--bad);font-weight:600;margin-top:4px">⚠️ جميع الأسعار المعروضة بدون ضريبة القيمة المضافة (15%)</div>
+      <div class="viewmode-toggle" role="group" aria-label="طريقة العرض" data-catview-toggle>
+        <button class="${categoriesViewMode==='cards'?'active':''}" data-catviewmode="cards">▦ شبكة</button>
+        <button class="${categoriesViewMode==='list'?'active':''}" data-catviewmode="list">☰ ليستة</button>
       </div>
     </div>
-    ${catalog.map((cat,ci)=>`
-      <div class="category-card" data-opencat="${ci}">
-        ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}">` : `<div class="noimg">📦</div>`}
+    <div class="category-grid view-${categoriesViewMode}">
+      <div class="category-card" onclick="window.goToView('ready')" style="cursor:pointer">
+        <div class="noimg">🗂️</div>
         <div class="overlay">
-          <h3>${cat.category}</h3>
-          <div class="count">${cat.rows.length} موديل</div>
+          <h3>منظومات جاهزة (عروض جاهزة)</h3>
+          <div class="count">تصفّح المنظومات المجهزة مسبقًا بسعر ثابت</div>
         </div>
-      </div>`).join('')}
-  </div>
-  ${!catalog.length ? `<div class="card"><div class="note">لا توجد منتجات مسجّلة بعد.</div></div>` : ''}
-  `;
+      </div>
+      ${catalog.map((cat,ci)=>`
+        <div class="category-card" data-opencat="${ci}">
+          ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}">` : `<div class="noimg">📦</div>`}
+          <div class="overlay">
+            <h3>${cat.category}</h3>
+            <div class="count">${cat.rows.length} موديل</div>
+          </div>
+        </div>`).join('')}
+    </div>
+    ${!catalog.length ? `<div class="card"><div class="note">لا توجد منتجات مسجّلة بعد.</div></div>` : ''}
+    `;
+  }
+
+  // ---- Persistent category sidebar (hybrid: sidebar + cards) ----
+  const sidebarHtml = `
+  <aside class="catalog-sidebar no-print">
+    <div class="catalog-sidebar-head">
+      <div class="catalog-sidebar-title">تصفّح المنتجات</div>
+      <div class="catalog-sidebar-sub">${catalog.reduce((s,c)=>s+c.rows.length,0)} موديل في ${catalog.length} فئة</div>
+    </div>
+    <nav class="catalog-nav">
+      <button class="catalog-nav-btn ${productsNav==='categories'?'active':''}" id="sidebarAllCatsBtn" type="button">
+        <span class="ic">🗂️</span><span class="lbl">كل الفئات</span>
+      </button>
+      ${catalog.map((cat,ci)=>`
+        <button class="catalog-nav-btn ${(productsNav==='category'||productsNav==='detail')&&selectedCategoryIdx===ci?'active':''}" data-opencat="${ci}" type="button">
+          <span class="ic">📦</span><span class="lbl">${cat.category}</span><span class="cnt">${cat.rows.length}</span>
+        </button>`).join('')}
+      <button class="catalog-nav-btn" onclick="window.goToView('ready')" type="button">
+        <span class="ic">🧰</span><span class="lbl">منظومات جاهزة</span>
+      </button>
+    </nav>
+  </aside>`;
+
+  return `<div class="catalog-shell">${sidebarHtml}<div class="catalog-main">${innerHtml}</div></div>`;
 }
+
 
 async function loadProductCatalog(){
   productCatalogLoading = true;
@@ -2405,7 +2482,57 @@ const BOM_GENERIC_ITEM_KEYS = [
 ];
 
 function renderAdmin(){
+  const admSectionTitles = {'overview':'نظرة عامة','pricing':'الأسعار والهوامش','calcs':'حاسبات الأنظمة','products':'المنتجات والكتالوج','portfolio':'البورتفوليو','leads':'طلبات العملاء','reps':'إدارة المناديب','security':'الحماية والنظام'};
   return `
+  <div class="admin-shell">
+  <aside class="admin-sidebar no-print">
+    <div class="admin-sidebar-head">
+      <div class="admin-sidebar-title">لوحة التحكم</div>
+      <div class="admin-sidebar-sub">HoloulEnergy</div>
+    </div>
+    <nav class="admin-nav">
+      <button class="admin-nav-btn ${currentAdminSection==='overview'?'active':''}" data-admsec="overview" type="button"><span class="ic">📊</span><span class="lbl">نظرة عامة</span></button>
+      <button class="admin-nav-btn ${currentAdminSection==='pricing'?'active':''}" data-admsec="pricing" type="button"><span class="ic">💰</span><span class="lbl">الأسعار والهوامش</span></button>
+      <button class="admin-nav-btn ${currentAdminSection==='calcs'?'active':''}" data-admsec="calcs" type="button"><span class="ic">🧮</span><span class="lbl">حاسبات الأنظمة</span></button>
+      <button class="admin-nav-btn ${currentAdminSection==='products'?'active':''}" data-admsec="products" type="button"><span class="ic">📦</span><span class="lbl">المنتجات والكتالوج</span></button>
+      <button class="admin-nav-btn ${currentAdminSection==='portfolio'?'active':''}" data-admsec="portfolio" type="button"><span class="ic">🖼️</span><span class="lbl">البورتفوليو</span></button>
+      <button class="admin-nav-btn ${currentAdminSection==='leads'?'active':''}" data-admsec="leads" type="button"><span class="ic">📋</span><span class="lbl">طلبات العملاء</span></button>
+      <button class="admin-nav-btn ${currentAdminSection==='reps'?'active':''}" data-admsec="reps" type="button"><span class="ic">👥</span><span class="lbl">إدارة المناديب</span></button>
+      <button class="admin-nav-btn ${currentAdminSection==='security'?'active':''}" data-admsec="security" type="button"><span class="ic">🔒</span><span class="lbl">الحماية والنظام</span></button>
+    </nav>
+    <button class="btn ghost small full" id="adm_logout_side" style="margin-top:14px">🚪 تسجيل الخروج</button>
+  </aside>
+  <div class="admin-main">
+    <div class="admin-topbar">
+      <div class="admin-topbar-title" id="admTopbarTitle">نظرة عامة</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn small" id="admSaveTop">💾 حفظ التعديلات</button>
+      </div>
+    </div>
+    <section class="admsec ${currentAdminSection==='overview'?'active':''}" data-admsec="overview">
+  <div class="stats" style="margin-bottom:16px">
+    <div class="stat"><div class="v">${adminConfig.productCatalog.length}</div><div class="l">فئات المنتجات</div></div>
+    <div class="stat"><div class="v">${adminConfig.productCatalog.reduce((s,c)=>s+(c.rows?.length||0),0)}</div><div class="l">إجمالي المنتجات</div></div>
+    <div class="stat"><div class="v">${adminConfig.panels.length}</div><div class="l">أنواع الألواح</div></div>
+    <div class="stat"><div class="v">${adminConfig.inverterBrands.length}</div><div class="l">أنواع الانفرتر</div></div>
+    <div class="stat"><div class="v">${adminConfig.readyOffgridSystems.length}</div><div class="l">منظومات جاهزة</div></div>
+    <div class="stat"><div class="v">${adminReps.filter(r=>r.active).length}/${adminReps.length}</div><div class="l">مناديب نشطون</div></div>
+    <div class="stat"><div class="v">${(JSON.parse(localStorage.getItem(LEADS_KEY)||'[]')).length}</div><div class="l">طلبات عملاء مُسجّلة</div></div>
+    <div class="stat"><div class="v">${adminConfig.discountTiers.length}</div><div class="l">فئات الخصم</div></div>
+  </div>
+  <div class="card">
+    <h3>الوصول السريع</h3>
+    <div class="admin-quicklinks">
+      ${[["pricing","\ud83d\udcb0","الأسعار والهوامش","تعديل أسعار الألواح والإنفرتر والبنود"],["calcs","\ud83e\uddee","حاسبات الأنظمة","إعدادات الأوف-جريد والأون-جريد"],["products","\ud83d\udce6","المنتجات والكتالوج","إدارة الكتالوج والصور والمنظومات"],["portfolio","\ud83d\uddbc\ufe0f","البورتفوليو","محتوى صفحة الأعمال"],["leads","\ud83d\udccb","طلبات العملاء","مراجعة عروض الأسعار المسجلة"],["reps","\ud83d\udc65","إدارة المناديب","حسابات المناديب"]].map(([id,ic,t,s])=>`
+      <div class="admin-quicklink" data-admsec-jump="${id}">
+        <span class="ic">${ic}</span>
+        <div><div class="t">${t}</div><div class="s">${s}</div></div>
+      </div>`).join('')}
+    </div>
+  </div>
+</section>
+
+<section class="admsec ${currentAdminSection==='pricing'?'active':''}" data-admsec="pricing">
   <div class="card">
     <h3>الألواح الشمسية</h3>
     <table class="admtable">
@@ -2460,6 +2587,87 @@ function renderAdmin(){
     <div class="note" style="margin-top:8px">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي). لو فيه أكتر من نوع، هيظهر للعميل اختيار "نوع الانفرتر" في الحاسبة.</div>
   </div>
 
+  <div class="card">
+    <h3>أسعار البنود الأخرى (وحدة)</h3>
+    <div class="assump">
+      <div><label>نسبة السعة للحصان <span style="color:var(--muted)">(معامل تحجيم عدد السلاسل بالنسبة للحصان)</span></label><input type="number" id="a_hpratio" step="0.01" value="${adminConfig.hpCapacityRatio}"></div>
+      <div><label>خرسانة السلسلة (899/55 لكل حصان)</label><input type="number" id="a_steel" step="0.001" value="${adminConfig.steelPanelPerHP}"></div>
+      <div><label>الكابلات (﷼/متر)</label><input type="number" id="a_cable" value="${adminConfig.cablePerMeter}"></div>
+      <div><label>معامل طول الكابل (قدرة ≥100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablehigh" value="${adminConfig.cableHighMultiplier}"></div>
+      <div><label>معامل طول الكابل (قدرة أقل من 100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablelow" value="${adminConfig.cableLowMultiplier}"></div>
+      <div><label>هامش بيع الكابلات (معامل ضرب)</label><input type="number" id="a_cablemarkup" step="0.01" value="${adminConfig.cableMarkup}"></div>
+      <div><label>هامش أمان صندوق التجميع <span style="color:var(--muted)">(نسبة زيادة % فوق عدد المجموعات)</span></label><input type="number" id="a_combheadroom" step="0.01" value="${adminConfig.combinerHeadroom}"></div>
+      <div><label>حد أدنى خطوط إضافية بصندوق التجميع</label><input type="number" id="a_combspare" step="1" value="${adminConfig.combinerMinSpareStrings}"></div>
+      <div><label>MC4 (﷼/وحدة)</label><input type="number" id="a_mc4" value="${adminConfig.mc4PerUnit}"></div>
+      <div><label>الشاسيه الثابت (﷼/سلسلة)</label><input type="number" id="a_stfix" value="${adminConfig.structurePriceFixed}"></div>
+      <div><label>الشاسيه المتحرك (﷼/سلسلة)</label><input type="number" id="a_strot" value="${adminConfig.structurePriceRotational}"></div>
+      <div><label>الخرسانة (﷼/وحدة)</label><input type="number" id="a_conc" value="${adminConfig.concretePerUnit}"></div>
+      <div><label>التأريض (﷼/وحدة)</label><input type="number" id="a_earth" value="${adminConfig.earthingPerUnit}"></div>
+      <div><label>الأنابيب المرنة (﷼/وحدة)</label><input type="number" id="a_flex" value="${adminConfig.flexTubePerUnit}"></div>
+      <div><label>الأعمال الميدانية وتثبيت الألواح (﷼/لوح)</label><input type="number" id="a_mechinst" value="${adminConfig.mechInstallPerPanel}"></div>
+      <div><label>التركيبات والتوصيلات الكهربائية (﷼/لوح)</label><input type="number" id="a_elecinst" value="${adminConfig.elecInstallPerPanel}"></div>
+      <div><label>النقل (﷼/رحلة)</label><input type="number" id="a_trans" value="${adminConfig.transportPerTrip}"></div>
+      <div><label>الحد الأدنى لتكلفة النقل (﷼)</label><input type="number" id="a_transmin" value="${adminConfig.transportMinimum}"></div>
+      <div><label>ضريبة القيمة المضافة</label><input type="number" id="a_vat" step="0.01" value="${adminConfig.vat}"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>فئات الخصم</h3>
+    <table class="admtable">
+      <thead><tr><th>الاسم</th><th>نسبة من الهامش</th></tr></thead>
+      <tbody>
+        ${adminConfig.discountTiers.map((d,i)=>`
+          <tr><td><input data-d="${i}" data-f="label" value="${d.label}"></td>
+              <td><input data-d="${i}" data-f="factor" type="number" step="0.05" value="${d.factor}"></td></tr>`).join('')}
+      </tbody>
+    </table>
+    <label>فئة الخصم المطبّقة تلقائيًا على كل العروض (غير ظاهرة للعميل)</label>
+    <select id="a_defdisc">
+      ${adminConfig.discountTiers.map((d,i)=>`<option value="${i}" ${i==(adminConfig.defaultDiscountIdx??1)?'selected':''}>${d.label}</option>`).join('')}
+    </select>
+  </div>
+</section>
+
+<section class="admsec ${currentAdminSection==='calcs'?'active':''}" data-admsec="calcs">
+  <div class="card">
+    <h3>حاسبة الأوف-جريد <span class="tag">أسعار حقيقية من الكتالوج + هامش قابل للتعديل</span></h3>
+    <div class="assump">
+      <div><label>ساعات الشمس القصوى اليومية</label><input type="number" id="a_og_sun" step="0.1" value="${adminConfig.offgrid.sunHours}"></div>
+      <div><label>كفاءة المنظومة الإجمالية</label><input type="number" id="a_og_eff" step="0.01" value="${adminConfig.offgrid.systemEfficiency}"></div>
+      <div><label>عمق تفريغ البطارية القابل للاستخدام (DoD)</label><input type="number" id="a_og_dod" step="0.01" value="${adminConfig.offgrid.batteryDoD}"></div>
+      <div><label>أيام الاستقلالية الافتراضية</label><input type="number" id="a_og_autonomy" step="1" value="${adminConfig.offgrid.defaultAutonomyDays}"></div>
+      <div><label>هامش/خصم البطاريات % <span style="color:var(--muted)">(فوق سعر الكتالوج)</span></label><input type="number" id="a_og_batmarkup" step="1" value="${adminConfig.offgrid.batteryMarkupPct}"></div>
+      <div><label>هامش/خصم الانفرتر % <span style="color:var(--muted)">(فوق سعر الكتالوج)</span></label><input type="number" id="a_og_invmarkup" step="1" value="${adminConfig.offgrid.inverterMarkupPct}"></div>
+      <div><label>الشاسيه (﷼/لوح) - تكلفة</label><input type="number" id="a_og_strcost" value="${adminConfig.offgrid.structurePerPanelCost}"></div>
+      <div><label>الشاسيه (﷼/لوح) - بيع</label><input type="number" id="a_og_strsell" value="${adminConfig.offgrid.structurePerPanelSell}"></div>
+      <div><label>الكابلات ولوحة الحماية (﷼) - تكلفة</label><input type="number" id="a_og_cabcost" value="${adminConfig.offgrid.cablingFixedCost}"></div>
+      <div><label>الكابلات ولوحة الحماية (﷼) - بيع</label><input type="number" id="a_og_cabsell" value="${adminConfig.offgrid.cablingFixedSell}"></div>
+      <div><label>التركيب (﷼/KW) - تكلفة</label><input type="number" id="a_og_instcost" value="${adminConfig.offgrid.installPerKwCost}"></div>
+      <div><label>التركيب (﷼/KW) - بيع</label><input type="number" id="a_og_instsell" value="${adminConfig.offgrid.installPerKwSell}"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>حاسبة الأون-جريد <span class="tag">أسعار حقيقية من الكتالوج + هامش قابل للتعديل</span></h3>
+    <div class="assump">
+      <div><label>ساعات الشمس القصوى اليومية</label><input type="number" id="a_ng_sun" step="0.1" value="${adminConfig.ongrid.sunHours}"></div>
+      <div><label>معامل الأداء (Performance Ratio)</label><input type="number" id="a_ng_pr" step="0.01" value="${adminConfig.ongrid.performanceRatio}"></div>
+      <div><label>سعر تعرفة الكهرباء (﷼/كيلوواط ساعة) <span style="color:var(--muted)">(لتحويل الفاتورة لاستهلاك)</span></label><input type="number" id="a_ng_tariff" step="0.01" value="${adminConfig.ongrid.tariffRate}"></div>
+      <div><label>هامش/خصم الانفرتر % <span style="color:var(--muted)">(فوق سعر الكتالوج)</span></label><input type="number" id="a_ng_invmarkup" step="1" value="${adminConfig.ongrid.inverterMarkupPct}"></div>
+      <div><label>الشاسيه (﷼/لوح) - تكلفة</label><input type="number" id="a_ng_strcost" value="${adminConfig.ongrid.structurePerPanelCost}"></div>
+      <div><label>الشاسيه (﷼/لوح) - بيع</label><input type="number" id="a_ng_strsell" value="${adminConfig.ongrid.structurePerPanelSell}"></div>
+      <div><label>الكابلات ولوحة الحماية (﷼) - تكلفة</label><input type="number" id="a_ng_cabcost" value="${adminConfig.ongrid.cablingFixedCost}"></div>
+      <div><label>الكابلات ولوحة الحماية (﷼) - بيع</label><input type="number" id="a_ng_cabsell" value="${adminConfig.ongrid.cablingFixedSell}"></div>
+      <div><label>صافي القياس (﷼) - تكلفة</label><input type="number" id="a_ng_netcost" value="${adminConfig.ongrid.netMeteringFeeCost}"></div>
+      <div><label>صافي القياس (﷼) - بيع</label><input type="number" id="a_ng_netsell" value="${adminConfig.ongrid.netMeteringFeeSell}"></div>
+      <div><label>التركيب (﷼/KW) - تكلفة</label><input type="number" id="a_ng_instcost" value="${adminConfig.ongrid.installPerKwCost}"></div>
+      <div><label>التركيب (﷼/KW) - بيع</label><input type="number" id="a_ng_instsell" value="${adminConfig.ongrid.installPerKwSell}"></div>
+    </div>
+  </div>
+</section>
+
+<section class="admsec ${currentAdminSection==='products'?'active':''}" data-admsec="products">
   <div class="card no-print">
     <h3>قائمة المنتجات</h3>
     ${(adminConfig.productCatalog||[]).map((cat,ci)=>`
@@ -2556,6 +2764,85 @@ function renderAdmin(){
     </div>
   </div>
 
+  <div class="card">
+    <h3>صور عناصر عروض الأسعار <span class="tag">تظهر في جدول تفصيل العرض</span></h3>
+    <div class="note">صورة تمثيلية لكل بند متكرر (كابلات، شاسيه، صندوق تجميع...) تظهر في جدول تفصيل العرض بكل الحاسبات. الألواح والبطاريات وبعض الإنفرترات لها صور حقيقية تلقائيًا من قائمة المنتجات — هذا القسم للبنود العامة اللي مالهاش موديل محدد.</div>
+    <div class="grid2" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--sp-2);margin-top:var(--sp-2)">
+      ${BOM_GENERIC_ITEM_KEYS.map(([key,label])=>`
+        <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:var(--radius);padding:var(--sp-1) var(--sp-2)">
+          <div class="bom-thumb" style="width:44px;height:44px;flex:0 0 44px">
+            ${adminConfig.bomItemImages && adminConfig.bomItemImages[key] ? `<img src="${adminConfig.bomItemImages[key]}">` : `<div class="noimg" style="font-size:16px">📦</div>`}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600">${label}</div>
+            <label class="btn ghost small" style="cursor:pointer;font-size:11px;margin-top:4px;display:inline-block">📷 رفع صورة<input type="file" accept="image/*" data-bomimg="${key}" style="display:none"></label>
+          </div>
+        </div>`).join('')}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>منظومات أوف-جريد جاهزة <span class="tag">مراجعة كاملة + تغيير المعدات من قائمة المنتجات</span></h3>
+    <div class="note">لكل منظومة: عدّل الاسم/السعر/الحالة، وغيّر موديل الإنفرتر أو البطارية من نفس قائمة المنتجات الحقيقية، واضغط "🔄 إعادة حساب السعر" لتحديث السعر بناءً على أسعار الكتالوج الحالية وهوامش الربح في إعدادات الأوف-جريد بالأعلى. السعر المحسوب هو توريد خامات فقط (بدون تركيب أو شاسيه).</div>
+    ${adminConfig.readyOffgridSystems.map((s,i)=>{
+      const invOptions = getReadyInverterModelOptions(adminConfig);
+      const batOptions = getReadyBatteryModelOptions(adminConfig);
+      return `
+      <details style="margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px 14px">
+        <summary style="cursor:pointer;font-weight:700;display:flex;justify-content:space-between;align-items:center">
+          <span>${s.name} — <span class="num">${fmt(s.priceSar)} ﷼</span></span>
+          <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
+        </summary>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px">
+          <div><label>الاسم</label><input data-readysys="${i}" data-rf="name" value="${s.name}"></div>
+          <div><label>الحالة</label>
+            <select data-readysys="${i}" data-rf="status">
+              <option value="متوفر" ${s.status==='متوفر'?'selected':''}>متوفر</option>
+              <option value="غير متوفر" ${s.status==='غير متوفر'?'selected':''}>غير متوفر</option>
+              <option value="اخفاء من العروض" ${s.status==='اخفاء من العروض'?'selected':''}>اخفاء من العروض</option>
+            </select>
+          </div>
+          <div><label>عدد الألواح (${s.panelPowerW||'-'}W ${s.panelBrand||''})</label><input data-readysys="${i}" data-rf="panelCount" type="number" value="${s.panelCount}"></div>
+          <div><label>موديل الإنفرتر</label>
+            <select data-readysys="${i}" data-rf="inverterModel">
+              <option value="" ${!s.inverterModel?'selected':''}>بدون إنفرتر (منظم شحن فقط)</option>
+              ${invOptions.map(m=>`<option value="${m}" ${s.inverterModel===m?'selected':''}>${m}</option>`).join('')}
+            </select>
+          </div>
+          <div><label>موديل البطارية</label>
+            <select data-readysys="${i}" data-rf="batteryModel">
+              ${batOptions.map(m=>`<option value="${m}" ${s.batteryModel===m?'selected':''}>${m}</option>`).join('')}
+            </select>
+          </div>
+          <div><label>عدد البطاريات</label><input data-readysys="${i}" data-rf="batteryCount" type="number" min="1" value="${s.batteryCount}"></div>
+          <div><label>السعر (﷼)</label><input data-readysys="${i}" data-rf="priceSar" type="number" value="${s.priceSar}"></div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+          ${s.image ? `<img src="${s.image}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
+          <label class="btn ghost small" style="cursor:pointer">📷 ${s.image?'تغيير صورة المنظومة':'رفع صورة المنظومة (اختياري)'}<input type="file" accept="image/*" data-readysysimg="${i}" style="display:none"></label>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
+          <button class="btn ghost small" data-recompute-readysys="${i}">🔄 إعادة حساب السعر من الكتالوج</button>
+          <span class="note" id="readysys-recompute-note-${i}"></span>
+        </div>
+        <div style="margin-top:10px">
+          <label>الأجهزة اللي بتشغّلها (مرجعي، للعرض فقط)</label>
+          <div class="note">
+            ${s.acType && s.acType!=='لا يوجد' ? `تبريد: ${s.acType} — نهارًا ${s.acCountDay||0}×${s.acPowerDayW||0}W/${s.acHoursDay||0}س، ليلاً ${s.acCountNight||0}×${s.acPowerNightW||0}W/${s.acHoursNight||0}س<br>` : 'بدون تبريد<br>'}
+            ${s.fridgeCount ? `ثلاجة ${s.fridgeHours||0}س<br>` : ''}
+            ${s.lampCount ? `إضاءة ${s.lampCount}×${s.lampPowerW||0}W لمدة ${s.lampHours||0}س<br>` : ''}
+            ${s.otherDevices ? `${s.otherDevices}<br>` : ''}
+            كابلات: ${s.cables || '-'}
+          </div>
+        </div>
+        ${s.notes ? `<div class="note" style="margin-top:6px">${s.notes}</div>` : ''}
+      </details>`;
+    }).join('')}
+    <div class="note" style="margin-top:8px">التعديلات هنا بتتحفظ مع باقي إعدادات الأدمن — لازم تضغط "💾 حفظ التعديلات" بالأسفل عشان تتفعّل فعليًا.</div>
+  </div>
+</section>
+
+<section class="admsec ${currentAdminSection==='portfolio'?'active':''}" data-admsec="portfolio">
   <div class="card no-print">
     <h3>البورتفوليو</h3>
     <div class="note">المحتوى هنا بيظهر في تبويب "البورتفوليو" العام (بدون تسجيل دخول). عدّل زي ما تحب، وادّي "💾 حفظ التعديلات" تحت عشان ينزل على الموقع.</div>
@@ -2682,161 +2969,9 @@ function renderAdmin(){
       <button class="btn ghost small" data-addpfpartner>+ إضافة شريك</button>
     </div>
   </div>
+</section>
 
-  <div class="card">
-    <h3>أسعار البنود الأخرى (وحدة)</h3>
-    <div class="assump">
-      <div><label>نسبة السعة للحصان <span style="color:var(--muted)">(معامل تحجيم عدد السلاسل بالنسبة للحصان)</span></label><input type="number" id="a_hpratio" step="0.01" value="${adminConfig.hpCapacityRatio}"></div>
-      <div><label>خرسانة السلسلة (899/55 لكل حصان)</label><input type="number" id="a_steel" step="0.001" value="${adminConfig.steelPanelPerHP}"></div>
-      <div><label>الكابلات (﷼/متر)</label><input type="number" id="a_cable" value="${adminConfig.cablePerMeter}"></div>
-      <div><label>معامل طول الكابل (قدرة ≥100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablehigh" value="${adminConfig.cableHighMultiplier}"></div>
-      <div><label>معامل طول الكابل (قدرة أقل من 100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablelow" value="${adminConfig.cableLowMultiplier}"></div>
-      <div><label>هامش بيع الكابلات (معامل ضرب)</label><input type="number" id="a_cablemarkup" step="0.01" value="${adminConfig.cableMarkup}"></div>
-      <div><label>هامش أمان صندوق التجميع <span style="color:var(--muted)">(نسبة زيادة % فوق عدد المجموعات)</span></label><input type="number" id="a_combheadroom" step="0.01" value="${adminConfig.combinerHeadroom}"></div>
-      <div><label>حد أدنى خطوط إضافية بصندوق التجميع</label><input type="number" id="a_combspare" step="1" value="${adminConfig.combinerMinSpareStrings}"></div>
-      <div><label>MC4 (﷼/وحدة)</label><input type="number" id="a_mc4" value="${adminConfig.mc4PerUnit}"></div>
-      <div><label>الشاسيه الثابت (﷼/سلسلة)</label><input type="number" id="a_stfix" value="${adminConfig.structurePriceFixed}"></div>
-      <div><label>الشاسيه المتحرك (﷼/سلسلة)</label><input type="number" id="a_strot" value="${adminConfig.structurePriceRotational}"></div>
-      <div><label>الخرسانة (﷼/وحدة)</label><input type="number" id="a_conc" value="${adminConfig.concretePerUnit}"></div>
-      <div><label>التأريض (﷼/وحدة)</label><input type="number" id="a_earth" value="${adminConfig.earthingPerUnit}"></div>
-      <div><label>الأنابيب المرنة (﷼/وحدة)</label><input type="number" id="a_flex" value="${adminConfig.flexTubePerUnit}"></div>
-      <div><label>الأعمال الميدانية وتثبيت الألواح (﷼/لوح)</label><input type="number" id="a_mechinst" value="${adminConfig.mechInstallPerPanel}"></div>
-      <div><label>التركيبات والتوصيلات الكهربائية (﷼/لوح)</label><input type="number" id="a_elecinst" value="${adminConfig.elecInstallPerPanel}"></div>
-      <div><label>النقل (﷼/رحلة)</label><input type="number" id="a_trans" value="${adminConfig.transportPerTrip}"></div>
-      <div><label>الحد الأدنى لتكلفة النقل (﷼)</label><input type="number" id="a_transmin" value="${adminConfig.transportMinimum}"></div>
-      <div><label>ضريبة القيمة المضافة</label><input type="number" id="a_vat" step="0.01" value="${adminConfig.vat}"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>حاسبة الأوف-جريد <span class="tag">أسعار حقيقية من الكتالوج + هامش قابل للتعديل</span></h3>
-    <div class="assump">
-      <div><label>ساعات الشمس القصوى اليومية</label><input type="number" id="a_og_sun" step="0.1" value="${adminConfig.offgrid.sunHours}"></div>
-      <div><label>كفاءة المنظومة الإجمالية</label><input type="number" id="a_og_eff" step="0.01" value="${adminConfig.offgrid.systemEfficiency}"></div>
-      <div><label>عمق تفريغ البطارية القابل للاستخدام (DoD)</label><input type="number" id="a_og_dod" step="0.01" value="${adminConfig.offgrid.batteryDoD}"></div>
-      <div><label>أيام الاستقلالية الافتراضية</label><input type="number" id="a_og_autonomy" step="1" value="${adminConfig.offgrid.defaultAutonomyDays}"></div>
-      <div><label>هامش/خصم البطاريات % <span style="color:var(--muted)">(فوق سعر الكتالوج)</span></label><input type="number" id="a_og_batmarkup" step="1" value="${adminConfig.offgrid.batteryMarkupPct}"></div>
-      <div><label>هامش/خصم الانفرتر % <span style="color:var(--muted)">(فوق سعر الكتالوج)</span></label><input type="number" id="a_og_invmarkup" step="1" value="${adminConfig.offgrid.inverterMarkupPct}"></div>
-      <div><label>الشاسيه (﷼/لوح) - تكلفة</label><input type="number" id="a_og_strcost" value="${adminConfig.offgrid.structurePerPanelCost}"></div>
-      <div><label>الشاسيه (﷼/لوح) - بيع</label><input type="number" id="a_og_strsell" value="${adminConfig.offgrid.structurePerPanelSell}"></div>
-      <div><label>الكابلات ولوحة الحماية (﷼) - تكلفة</label><input type="number" id="a_og_cabcost" value="${adminConfig.offgrid.cablingFixedCost}"></div>
-      <div><label>الكابلات ولوحة الحماية (﷼) - بيع</label><input type="number" id="a_og_cabsell" value="${adminConfig.offgrid.cablingFixedSell}"></div>
-      <div><label>التركيب (﷼/KW) - تكلفة</label><input type="number" id="a_og_instcost" value="${adminConfig.offgrid.installPerKwCost}"></div>
-      <div><label>التركيب (﷼/KW) - بيع</label><input type="number" id="a_og_instsell" value="${adminConfig.offgrid.installPerKwSell}"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>حاسبة الأون-جريد <span class="tag">أسعار حقيقية من الكتالوج + هامش قابل للتعديل</span></h3>
-    <div class="assump">
-      <div><label>ساعات الشمس القصوى اليومية</label><input type="number" id="a_ng_sun" step="0.1" value="${adminConfig.ongrid.sunHours}"></div>
-      <div><label>معامل الأداء (Performance Ratio)</label><input type="number" id="a_ng_pr" step="0.01" value="${adminConfig.ongrid.performanceRatio}"></div>
-      <div><label>سعر تعرفة الكهرباء (﷼/كيلوواط ساعة) <span style="color:var(--muted)">(لتحويل الفاتورة لاستهلاك)</span></label><input type="number" id="a_ng_tariff" step="0.01" value="${adminConfig.ongrid.tariffRate}"></div>
-      <div><label>هامش/خصم الانفرتر % <span style="color:var(--muted)">(فوق سعر الكتالوج)</span></label><input type="number" id="a_ng_invmarkup" step="1" value="${adminConfig.ongrid.inverterMarkupPct}"></div>
-      <div><label>الشاسيه (﷼/لوح) - تكلفة</label><input type="number" id="a_ng_strcost" value="${adminConfig.ongrid.structurePerPanelCost}"></div>
-      <div><label>الشاسيه (﷼/لوح) - بيع</label><input type="number" id="a_ng_strsell" value="${adminConfig.ongrid.structurePerPanelSell}"></div>
-      <div><label>الكابلات ولوحة الحماية (﷼) - تكلفة</label><input type="number" id="a_ng_cabcost" value="${adminConfig.ongrid.cablingFixedCost}"></div>
-      <div><label>الكابلات ولوحة الحماية (﷼) - بيع</label><input type="number" id="a_ng_cabsell" value="${adminConfig.ongrid.cablingFixedSell}"></div>
-      <div><label>صافي القياس (﷼) - تكلفة</label><input type="number" id="a_ng_netcost" value="${adminConfig.ongrid.netMeteringFeeCost}"></div>
-      <div><label>صافي القياس (﷼) - بيع</label><input type="number" id="a_ng_netsell" value="${adminConfig.ongrid.netMeteringFeeSell}"></div>
-      <div><label>التركيب (﷼/KW) - تكلفة</label><input type="number" id="a_ng_instcost" value="${adminConfig.ongrid.installPerKwCost}"></div>
-      <div><label>التركيب (﷼/KW) - بيع</label><input type="number" id="a_ng_instsell" value="${adminConfig.ongrid.installPerKwSell}"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>صور عناصر عروض الأسعار <span class="tag">تظهر في جدول تفصيل العرض</span></h3>
-    <div class="note">صورة تمثيلية لكل بند متكرر (كابلات، شاسيه، صندوق تجميع...) تظهر في جدول تفصيل العرض بكل الحاسبات. الألواح والبطاريات وبعض الإنفرترات لها صور حقيقية تلقائيًا من قائمة المنتجات — هذا القسم للبنود العامة اللي مالهاش موديل محدد.</div>
-    <div class="grid2" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--sp-2);margin-top:var(--sp-2)">
-      ${BOM_GENERIC_ITEM_KEYS.map(([key,label])=>`
-        <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:var(--radius);padding:var(--sp-1) var(--sp-2)">
-          <div class="bom-thumb" style="width:44px;height:44px;flex:0 0 44px">
-            ${adminConfig.bomItemImages && adminConfig.bomItemImages[key] ? `<img src="${adminConfig.bomItemImages[key]}">` : `<div class="noimg" style="font-size:16px">📦</div>`}
-          </div>
-          <div style="flex:1;min-width:0">
-            <div style="font-size:12px;font-weight:600">${label}</div>
-            <label class="btn ghost small" style="cursor:pointer;font-size:11px;margin-top:4px;display:inline-block">📷 رفع صورة<input type="file" accept="image/*" data-bomimg="${key}" style="display:none"></label>
-          </div>
-        </div>`).join('')}
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>منظومات أوف-جريد جاهزة <span class="tag">مراجعة كاملة + تغيير المعدات من قائمة المنتجات</span></h3>
-    <div class="note">لكل منظومة: عدّل الاسم/السعر/الحالة، وغيّر موديل الإنفرتر أو البطارية من نفس قائمة المنتجات الحقيقية، واضغط "🔄 إعادة حساب السعر" لتحديث السعر بناءً على أسعار الكتالوج الحالية وهوامش الربح في إعدادات الأوف-جريد بالأعلى. السعر المحسوب هو توريد خامات فقط (بدون تركيب أو شاسيه).</div>
-    ${adminConfig.readyOffgridSystems.map((s,i)=>{
-      const invOptions = getReadyInverterModelOptions(adminConfig);
-      const batOptions = getReadyBatteryModelOptions(adminConfig);
-      return `
-      <details style="margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:10px 14px">
-        <summary style="cursor:pointer;font-weight:700;display:flex;justify-content:space-between;align-items:center">
-          <span>${s.name} — <span class="num">${fmt(s.priceSar)} ﷼</span></span>
-          <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
-        </summary>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:12px">
-          <div><label>الاسم</label><input data-readysys="${i}" data-rf="name" value="${s.name}"></div>
-          <div><label>الحالة</label>
-            <select data-readysys="${i}" data-rf="status">
-              <option value="متوفر" ${s.status==='متوفر'?'selected':''}>متوفر</option>
-              <option value="غير متوفر" ${s.status==='غير متوفر'?'selected':''}>غير متوفر</option>
-              <option value="اخفاء من العروض" ${s.status==='اخفاء من العروض'?'selected':''}>اخفاء من العروض</option>
-            </select>
-          </div>
-          <div><label>عدد الألواح (${s.panelPowerW||'-'}W ${s.panelBrand||''})</label><input data-readysys="${i}" data-rf="panelCount" type="number" value="${s.panelCount}"></div>
-          <div><label>موديل الإنفرتر</label>
-            <select data-readysys="${i}" data-rf="inverterModel">
-              <option value="" ${!s.inverterModel?'selected':''}>بدون إنفرتر (منظم شحن فقط)</option>
-              ${invOptions.map(m=>`<option value="${m}" ${s.inverterModel===m?'selected':''}>${m}</option>`).join('')}
-            </select>
-          </div>
-          <div><label>موديل البطارية</label>
-            <select data-readysys="${i}" data-rf="batteryModel">
-              ${batOptions.map(m=>`<option value="${m}" ${s.batteryModel===m?'selected':''}>${m}</option>`).join('')}
-            </select>
-          </div>
-          <div><label>عدد البطاريات</label><input data-readysys="${i}" data-rf="batteryCount" type="number" min="1" value="${s.batteryCount}"></div>
-          <div><label>السعر (﷼)</label><input data-readysys="${i}" data-rf="priceSar" type="number" value="${s.priceSar}"></div>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
-          ${s.image ? `<img src="${s.image}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
-          <label class="btn ghost small" style="cursor:pointer">📷 ${s.image?'تغيير صورة المنظومة':'رفع صورة المنظومة (اختياري)'}<input type="file" accept="image/*" data-readysysimg="${i}" style="display:none"></label>
-        </div>
-        <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
-          <button class="btn ghost small" data-recompute-readysys="${i}">🔄 إعادة حساب السعر من الكتالوج</button>
-          <span class="note" id="readysys-recompute-note-${i}"></span>
-        </div>
-        <div style="margin-top:10px">
-          <label>الأجهزة اللي بتشغّلها (مرجعي، للعرض فقط)</label>
-          <div class="note">
-            ${s.acType && s.acType!=='لا يوجد' ? `تبريد: ${s.acType} — نهارًا ${s.acCountDay||0}×${s.acPowerDayW||0}W/${s.acHoursDay||0}س، ليلاً ${s.acCountNight||0}×${s.acPowerNightW||0}W/${s.acHoursNight||0}س<br>` : 'بدون تبريد<br>'}
-            ${s.fridgeCount ? `ثلاجة ${s.fridgeHours||0}س<br>` : ''}
-            ${s.lampCount ? `إضاءة ${s.lampCount}×${s.lampPowerW||0}W لمدة ${s.lampHours||0}س<br>` : ''}
-            ${s.otherDevices ? `${s.otherDevices}<br>` : ''}
-            كابلات: ${s.cables || '-'}
-          </div>
-        </div>
-        ${s.notes ? `<div class="note" style="margin-top:6px">${s.notes}</div>` : ''}
-      </details>`;
-    }).join('')}
-    <div class="note" style="margin-top:8px">التعديلات هنا بتتحفظ مع باقي إعدادات الأدمن — لازم تضغط "💾 حفظ التعديلات" بالأسفل عشان تتفعّل فعليًا.</div>
-  </div>
-
-  <div class="card">
-    <h3>فئات الخصم</h3>
-    <table class="admtable">
-      <thead><tr><th>الاسم</th><th>نسبة من الهامش</th></tr></thead>
-      <tbody>
-        ${adminConfig.discountTiers.map((d,i)=>`
-          <tr><td><input data-d="${i}" data-f="label" value="${d.label}"></td>
-              <td><input data-d="${i}" data-f="factor" type="number" step="0.05" value="${d.factor}"></td></tr>`).join('')}
-      </tbody>
-    </table>
-    <label>فئة الخصم المطبّقة تلقائيًا على كل العروض (غير ظاهرة للعميل)</label>
-    <select id="a_defdisc">
-      ${adminConfig.discountTiers.map((d,i)=>`<option value="${i}" ${i==(adminConfig.defaultDiscountIdx??1)?'selected':''}>${d.label}</option>`).join('')}
-    </select>
-  </div>
-
+<section class="admsec ${currentAdminSection==='leads'?'active':''}" data-admsec="leads">
   <div class="card">
     <h3>طلبات العملاء المُسجّلة <span class="tag">${adminConfig.leadsWebhookUrl?'مُزامَنة سحابيًا — Google Sheet':'محفوظة محليًا على هذا الجهاز فقط'}</span></h3>
     <label>رابط المزامنة السحابية (Google Apps Script Web App URL)</label>
@@ -2848,8 +2983,9 @@ function renderAdmin(){
       <button class="btn ghost small" id="leadsRefresh">🔄 تحديث من السحابة</button>
     </div>
   </div>
-  </div>
+</section>
 
+<section class="admsec ${currentAdminSection==='reps'?'active':''}" data-admsec="reps">
   <div class="card no-print">
     <h3>إدارة المناديب</h3>
     <table class="admtable">
@@ -2875,7 +3011,9 @@ function renderAdmin(){
     <button class="btn ghost small" id="saveRepsBtn" style="margin-top:8px">💾 حفظ تعديلات المناديب</button>
     <div class="note" style="margin-top:8px">كل مندوب يسجّل دخوله بحسابه الخاص من شاشة الحاسبة الرئيسية. تعطيل "مفعّل" يمنعه من الدخول فورًا بدون حذف بياناته.</div>
   </div>
+</section>
 
+<section class="admsec ${currentAdminSection==='security'?'active':''}" data-admsec="security">
   <div class="card no-print">
     <h3>الحماية</h3>
     <label>كلمة مرور جديدة</label>
@@ -2892,7 +3030,10 @@ function renderAdmin(){
       <input type="file" id="admImport" accept=".json" style="display:none">
     </div>
     <div class="note" style="margin-top:12px">"حفظ التعديلات" يرفع الأسعار مباشرة للخادم — تنعكس فورًا على كل من يستخدم الأداة. "تصدير/استيراد JSON" لعمل نسخة احتياطية أو نقل الإعدادات.</div>
-  </div>`;
+</section>
+  </div>
+</div>
+  `;
 }
 
 /* =======================================================================
@@ -3053,6 +3194,8 @@ function wire(){
       productsNav = 'category';
       render();
     });
+    const sidebarAllCatsBtn = document.getElementById('sidebarAllCatsBtn');
+    if(sidebarAllCatsBtn) sidebarAllCatsBtn.onclick = ()=>{ productsNav='categories'; selectedCategoryIdx=null; selectedProduct=null; render(); };
     const backCatsBtn = document.getElementById('backToCategoriesBtn');
     if(backCatsBtn) backCatsBtn.onclick = ()=>{ productsNav='categories'; selectedCategoryIdx=null; render(); };
     document.querySelectorAll('[data-viewmode]').forEach(b=>b.onclick=()=>{
@@ -3184,6 +3327,20 @@ function wire(){
     });
   }
   if(currentView==='admin'){
+    const admSectionTitles = {overview:'نظرة عامة',pricing:'الأسعار والهوامش',calcs:'حاسبات الأنظمة',products:'المنتجات والكتالوج',portfolio:'البورتفوليو',leads:'طلبات العملاء',reps:'إدارة المناديب',security:'الحماية والنظام'};
+    function goToAdminSection(id){
+      currentAdminSection = id;
+      document.querySelectorAll('.admin-nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.admsec===id));
+      document.querySelectorAll('.admsec').forEach(s=>s.classList.toggle('active', s.dataset.admsec===id));
+      const t = document.getElementById('admTopbarTitle'); if(t) t.textContent = admSectionTitles[id] || id;
+      const main = document.querySelector('.admin-main'); if(main) main.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+    document.querySelectorAll('.admin-nav-btn').forEach(b=>{ b.onclick = ()=>goToAdminSection(b.dataset.admsec); });
+    document.querySelectorAll('[data-admsec-jump]').forEach(b=>{ b.onclick = ()=>goToAdminSection(b.dataset.admsecJump); });
+    const admLogoutSide = document.getElementById('adm_logout_side');
+    if(admLogoutSide) admLogoutSide.onclick = ()=>document.getElementById('adm_logout').click();
+    const admSaveTop = document.getElementById('admSaveTop');
+    if(admSaveTop) admSaveTop.onclick = ()=>document.getElementById('admSave').click();
     document.getElementById('addRepBtn').onclick = async ()=>{
       const username = document.getElementById('newrep_username').value.trim();
       const displayName = document.getElementById('newrep_displayname').value.trim();
