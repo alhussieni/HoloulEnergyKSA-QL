@@ -72,7 +72,7 @@ section.view.active{display:block;}
 
 label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px;font-weight:500;}
 label:first-child{margin-top:0;}
-input[type=text],input[type=number],select{
+input:not([type=checkbox]):not([type=radio]):not([type=file]),select{
   width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;
   font-family:'Cairo';background:#fff;color:var(--ink);transition:border-color .15s,box-shadow .15s;
 }
@@ -156,6 +156,22 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 }
 .admtable{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;}
 
+/* admin — secondary in-page sidebar for long sections (products, pricing...) */
+.admsub-shell{display:flex;gap:16px;align-items:flex-start;}
+.admsub-sidebar{width:180px;flex:0 0 180px;display:flex;flex-direction:column;gap:3px;position:sticky;top:150px;}
+.admsub-nav-btn{display:flex;align-items:center;gap:8px;width:100%;text-align:right;background:var(--card);border:1px solid var(--line);padding:9px 10px;border-radius:9px;font-family:'Cairo';font-weight:600;font-size:12px;color:var(--ink);cursor:pointer;transition:.15s;}
+.admsub-nav-btn .ic{font-size:14px;width:16px;text-align:center;flex:0 0 16px;}
+.admsub-nav-btn:hover{background:var(--sand);}
+.admsub-nav-btn.active{background:var(--sun-2);border-color:var(--sun-2);color:var(--night);}
+.admsub-main{flex:1;min-width:0;}
+.admsubsec{display:none;}
+.admsubsec.active{display:block;}
+@media (max-width:1100px){
+  .admsub-shell{flex-direction:column;}
+  .admsub-sidebar{width:100%;position:static;flex-direction:row;flex-wrap:wrap;}
+  .admsub-nav-btn{width:auto;flex:1 1 auto;justify-content:center;}
+}
+
 /* product catalog — persistent category sidebar (hybrid: sidebar + cards) */
 .catalog-shell{display:flex;gap:20px;align-items:flex-start;}
 .catalog-sidebar{width:230px;flex:0 0 230px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;position:sticky;top:88px;box-shadow:var(--shadow-soft);}
@@ -177,10 +193,12 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
   .catalog-nav-btn{width:auto;flex:0 0 auto;}
   .catalog-nav-btn .lbl{max-width:140px;}
 }
-.admtable th{font-size:11px;color:var(--muted);text-align:right;padding:6px;}
-.admtable td{padding:5px;}
+.admtable th{font-size:11px;color:var(--muted);text-align:right;padding:6px;white-space:nowrap;}
+.admtable td{padding:6px;vertical-align:middle;}
 .admtable input{padding:6px 8px;font-size:12.5px;}
-.admtable td.op{width:34px;text-align:center;}
+.admtable td.op{width:1%;white-space:nowrap;text-align:center;}
+.admtable tbody tr:not(:last-child) td{border-bottom:1px solid var(--line);}
+.admtable tbody tr:hover td{background:var(--sand);}
 
 .product-category table.admtable thead th{
   position:sticky;top:0;background:#fff;z-index:2;
@@ -663,6 +681,7 @@ let adminConfig = null;       // full rates object — only after admin auth
 let adminReps = [];           // rep accounts — only after admin auth
 let adminTokenMem = null;     // short-lived session token; held in memory only, lost on page reload
 let currentAdminSection = 'overview'; // which sidebar section is showing inside the admin panel
+let currentAdminSubSection = { pricing:'panels', products:'catalog' }; // secondary in-page sidebar for long sections
 let engineError = null;
 let quoteLoading = false;
 
@@ -1839,11 +1858,13 @@ function renderLeadsRows(){
 
 async function loadCloudLeads(){
   const el = document.getElementById('leadsTable');
+  const ov = document.getElementById('ovLeadsCount');
   if(!el || !adminConfig || !adminConfig.leadsWebhookUrl) return;
   el.innerHTML = '<tr><td style="padding:10px;color:var(--muted)">جارِ التحميل من Google Sheet...</td></tr>';
   try{
     const res = await fetch(adminConfig.leadsWebhookUrl);
     const data = await res.json();
+    if(ov) ov.textContent = data.length;
     if(!data.length){ el.innerHTML = '<tr><td style="color:var(--muted);padding:10px">لا توجد طلبات مسجلة بعد</td></tr>'; return; }
     el.innerHTML = '<thead><tr><th>الاسم</th><th>الهاتف</th><th>القدرة HP</th><th>الإجمالي</th><th>التاريخ</th></tr></thead><tbody>' +
       data.slice().reverse().map(l=>`<tr><td>${l.name}</td><td class="num">${l.phone}</td><td class="num">${l.hp}</td><td class="num">${fmt(+l.total)} ﷼</td><td>${new Date(l.date).toLocaleString('en-GB')}</td></tr>`).join('') +
@@ -2544,7 +2565,7 @@ function renderAdmin(){
     <div class="stat"><div class="v">${adminConfig.inverterBrands.length}</div><div class="l">أنواع الانفرتر</div></div>
     <div class="stat"><div class="v">${adminConfig.readyOffgridSystems.length}</div><div class="l">منظومات جاهزة</div></div>
     <div class="stat"><div class="v">${adminReps.filter(r=>r.active).length}/${adminReps.length}</div><div class="l">مناديب نشطون</div></div>
-    <div class="stat"><div class="v">${(JSON.parse(localStorage.getItem(LEADS_KEY)||'[]')).length}</div><div class="l">طلبات عملاء مُسجّلة</div></div>
+    <div class="stat"><div class="v" id="ovLeadsCount">${(JSON.parse(localStorage.getItem(LEADS_KEY)||'[]')).length}</div><div class="l">طلبات عملاء مُسجّلة</div></div>
     <div class="stat"><div class="v">${adminConfig.discountTiers.length}</div><div class="l">فئات الخصم</div></div>
   </div>
   <div class="card">
@@ -2560,6 +2581,15 @@ function renderAdmin(){
 </section>
 
 <section class="admsec ${currentAdminSection==='pricing'?'active':''}" data-admsec="pricing">
+<div class="admsub-shell">
+  <aside class="admsub-sidebar no-print">
+    <button class="admsub-nav-btn ${currentAdminSubSection.pricing==='panels'?'active':''}" data-admsubparent="pricing" data-admsub="panels" type="button"><span class="ic">☀️</span><span class="lbl">الألواح الشمسية</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.pricing==='inverters'?'active':''}" data-admsubparent="pricing" data-admsub="inverters" type="button"><span class="ic">🔌</span><span class="lbl">أنواع الانفرتر</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.pricing==='otheritems'?'active':''}" data-admsubparent="pricing" data-admsub="otheritems" type="button"><span class="ic">🧾</span><span class="lbl">أسعار البنود الأخرى</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.pricing==='discounts'?'active':''}" data-admsubparent="pricing" data-admsub="discounts" type="button"><span class="ic">🏷️</span><span class="lbl">فئات الخصم</span></button>
+  </aside>
+  <div class="admsub-main">
+  <div class="admsubsec ${currentAdminSubSection.pricing==='panels'?'active':''}" data-admsub="panels">
   <div class="card">
     <h3>الألواح الشمسية</h3>
     <table class="admtable">
@@ -2582,7 +2612,9 @@ function renderAdmin(){
     <button class="btn ghost small" id="addPanel">+ إضافة لوح</button>
     <div class="note" style="margin-top:8px">اللوح يظهر للعميل فقط لو كان "ظاهر للعميل" مفعّل ومعاه سعر أكبر من صفر. عطّل التكة لإخفاء لوح مؤقتًا بدون حذفه.</div>
   </div>
+  </div>
 
+  <div class="admsubsec ${currentAdminSubSection.pricing==='inverters'?'active':''}" data-admsub="inverters">
   <div class="card">
     <h3>أنواع الانفرتر</h3>
     ${adminConfig.inverterBrands.map((brand,bi)=>`
@@ -2613,7 +2645,9 @@ function renderAdmin(){
     <button class="btn ghost small" id="addInverterBrand">+ إضافة نوع انفرتر جديد</button>
     <div class="note" style="margin-top:8px">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي). لو فيه أكتر من نوع، هيظهر للعميل اختيار "نوع الانفرتر" في الحاسبة.</div>
   </div>
+  </div>
 
+  <div class="admsubsec ${currentAdminSubSection.pricing==='otheritems'?'active':''}" data-admsub="otheritems">
   <div class="card">
     <h3>أسعار البنود الأخرى (وحدة)</h3>
     <div class="assump">
@@ -2638,7 +2672,9 @@ function renderAdmin(){
       <div><label>ضريبة القيمة المضافة</label><input type="number" id="a_vat" step="0.01" value="${adminConfig.vat}"></div>
     </div>
   </div>
+  </div>
 
+  <div class="admsubsec ${currentAdminSubSection.pricing==='discounts'?'active':''}" data-admsub="discounts">
   <div class="card">
     <h3>فئات الخصم</h3>
     <table class="admtable">
@@ -2654,6 +2690,9 @@ function renderAdmin(){
       ${adminConfig.discountTiers.map((d,i)=>`<option value="${i}" ${i==(adminConfig.defaultDiscountIdx??1)?'selected':''}>${d.label}</option>`).join('')}
     </select>
   </div>
+  </div>
+  </div>
+</div>
 </section>
 
 <section class="admsec ${currentAdminSection==='calcs'?'active':''}" data-admsec="calcs">
@@ -2695,6 +2734,14 @@ function renderAdmin(){
 </section>
 
 <section class="admsec ${currentAdminSection==='products'?'active':''}" data-admsec="products">
+<div class="admsub-shell">
+  <aside class="admsub-sidebar no-print">
+    <button class="admsub-nav-btn ${currentAdminSubSection.products==='catalog'?'active':''}" data-admsubparent="products" data-admsub="catalog" type="button"><span class="ic">📋</span><span class="lbl">قائمة المنتجات</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.products==='bomimages'?'active':''}" data-admsubparent="products" data-admsub="bomimages" type="button"><span class="ic">🖼️</span><span class="lbl">صور عناصر العرض</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.products==='ready'?'active':''}" data-admsubparent="products" data-admsub="ready" type="button"><span class="ic">🧰</span><span class="lbl">منظومات جاهزة</span></button>
+  </aside>
+  <div class="admsub-main">
+  <div class="admsubsec ${currentAdminSubSection.products==='catalog'?'active':''}" data-admsub="catalog">
   <div class="card no-print">
     <h3>قائمة المنتجات</h3>
     ${(adminConfig.productCatalog||[]).map((cat,ci)=>`
@@ -2790,7 +2837,9 @@ function renderAdmin(){
       <button class="btn ghost small" id="sip_cancel">إلغاء</button>
     </div>
   </div>
+  </div>
 
+  <div class="admsubsec ${currentAdminSubSection.products==='bomimages'?'active':''}" data-admsub="bomimages">
   <div class="card">
     <h3>صور عناصر عروض الأسعار <span class="tag">تظهر في جدول تفصيل العرض</span></h3>
     <div class="note">صورة تمثيلية لكل بند متكرر (كابلات، شاسيه، صندوق تجميع...) تظهر في جدول تفصيل العرض بكل الحاسبات. الألواح والبطاريات وبعض الإنفرترات لها صور حقيقية تلقائيًا من قائمة المنتجات — هذا القسم للبنود العامة اللي مالهاش موديل محدد.</div>
@@ -2807,7 +2856,9 @@ function renderAdmin(){
         </div>`).join('')}
     </div>
   </div>
+  </div>
 
+  <div class="admsubsec ${currentAdminSubSection.products==='ready'?'active':''}" data-admsub="ready">
   <div class="card">
     <h3>منظومات أوف-جريد جاهزة <span class="tag">مراجعة كاملة + تغيير المعدات من قائمة المنتجات</span></h3>
     <div class="note">لكل منظومة: عدّل الاسم/السعر/الحالة، وغيّر موديل الإنفرتر أو البطارية من نفس قائمة المنتجات الحقيقية، واضغط "🔄 إعادة حساب السعر" لتحديث السعر بناءً على أسعار الكتالوج الحالية وهوامش الربح في إعدادات الأوف-جريد بالأعلى. السعر المحسوب هو توريد خامات فقط (بدون تركيب أو شاسيه).</div>
@@ -2867,6 +2918,9 @@ function renderAdmin(){
     }).join('')}
     <div class="note" style="margin-top:8px">التعديلات هنا بتتحفظ مع باقي إعدادات الأدمن — لازم تضغط "💾 حفظ التعديلات" بالأسفل عشان تتفعّل فعليًا.</div>
   </div>
+  </div>
+  </div>
+</div>
 </section>
 
 <section class="admsec ${currentAdminSection==='portfolio'?'active':''}" data-admsec="portfolio">
@@ -3364,6 +3418,17 @@ function wire(){
     }
     document.querySelectorAll('.admin-nav-btn').forEach(b=>{ b.onclick = ()=>goToAdminSection(b.dataset.admsec); });
     document.querySelectorAll('[data-admsec-jump]').forEach(b=>{ b.onclick = ()=>goToAdminSection(b.dataset.admsecJump); });
+    document.querySelectorAll('.admsub-nav-btn').forEach(b=>{
+      b.onclick = ()=>{
+        const parent = b.dataset.admsubparent, sub = b.dataset.admsub;
+        currentAdminSubSection[parent] = sub;
+        const shell = b.closest('.admsub-shell');
+        if(shell){
+          shell.querySelectorAll('.admsub-nav-btn').forEach(x=>x.classList.toggle('active', x.dataset.admsub===sub));
+          shell.querySelectorAll('.admsubsec').forEach(x=>x.classList.toggle('active', x.dataset.admsub===sub));
+        }
+      };
+    });
     const admLogoutSide = document.getElementById('adm_logout_side');
     if(admLogoutSide) admLogoutSide.onclick = ()=>document.getElementById('adm_logout').click();
     const admSaveTop = document.getElementById('admSaveTop');
