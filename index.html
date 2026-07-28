@@ -1023,6 +1023,7 @@ function debouncedUpdatePrevLeadBox(){
 
 function loadPrevLead(lead){
   const s = lead.snapshot;
+  if(!s){ alert('هذا العرض القديم لا يحتوي على بيانات كافية لإعادة استخدامه تلقائيًا.'); return; }
   state.hp = s.hp;
   state.panelIdx = s.panelIdx;
   state.inverterBrandIdx = s.inverterBrandIdx ?? 0;
@@ -1856,20 +1857,20 @@ function buildChart(cfGrid, cfDiesel){
    available purely as an optional external export. ---- */
 let cachedCustomers = null, customersLoading = false, customersError = null;
 let customerDetail = null, customerDetailLoading = false, customerSearchQuery = '';
-let overviewStats = null, overviewStatsLoading = false;
+let overviewStats = null, overviewStatsLoading = false, overviewStatsError = false;
 
-async function loadOverviewStats(){
-  if(overviewStatsLoading || overviewStats) return;
-  overviewStatsLoading = true;
+async function loadOverviewStats(force){
+  if(overviewStatsLoading || (overviewStats && !force) || (overviewStatsError && !force)) return;
+  overviewStatsLoading = true; overviewStatsError = false;
   try{
     overviewStats = await callEngine('admin-overview-stats', { adminToken: adminTokenMem });
-  }catch(e){ overviewStats = null; }
+  }catch(e){ overviewStats = null; overviewStatsError = true; }
   overviewStatsLoading = false;
   render();
 }
 
 async function loadCustomers(force){
-  if(customersLoading || (cachedCustomers && !force)) return;
+  if(customersLoading || (cachedCustomers && !force) || (customersError && !force)) return;
   customersLoading = true; customersError = null;
   try{
     const data = await callEngine('admin-list-customers', { adminToken: adminTokenMem });
@@ -2684,16 +2685,6 @@ function renderAdmin(){
     <div class="stat stat-click" data-admsec-jump="leads"><div class="v">${overviewStats ? overviewStats.quotesThisMonth : '…'}</div><div class="l">عروض أسعار هذا الشهر</div></div>
     <div class="stat stat-click" data-admsec-jump="leads"><div class="v">${overviewStats ? fmt(overviewStats.avgQuoteValue)+' ﷼' : '…'}</div><div class="l">متوسط قيمة العرض (الشهر)</div></div>
     <div class="stat stat-click" data-admsec-jump="reps"><div class="v" style="font-size:14px">${overviewStats ? overviewStats.mostActiveRep : '…'}</div><div class="l">الأكثر نشاطًا هذا الشهر (${overviewStats?overviewStats.mostActiveRepCount:0} عرض)</div></div>
-  </div>
-  <div class="card">
-    <h3>الوصول السريع</h3>
-    <div class="admin-quicklinks">
-      ${[["pricing","\ud83d\udcb0","الأسعار والهوامش","تعديل أسعار الألواح والإنفرتر والبنود"],["calcs","\ud83e\uddee","حاسبات الأنظمة","إعدادات الأوف-جريد والأون-جريد"],["products","\ud83d\udce6","المنتجات والكتالوج","إدارة الكتالوج والصور والمنظومات"],["portfolio","\ud83d\uddbc\ufe0f","البورتفوليو","محتوى صفحة الأعمال"],["leads","\ud83d\udccb","قاعدة العملاء","كل العملاء وعروض الأسعار — مركزيًا من أي جهاز"],["reps","\ud83d\udc65","إدارة المناديب","حسابات المناديب"]].map(([id,ic,t,s])=>`
-      <div class="admin-quicklink" data-admsec-jump="${id}">
-        <span class="ic">${ic}</span>
-        <div><div class="t">${t}</div><div class="s">${s}</div></div>
-      </div>`).join('')}
-    </div>
   </div>
 </section>
 
@@ -3767,7 +3758,7 @@ function wire(){
       }catch(e){ alert('تعذر الحفظ: '+e.message); }
       render();
     };
-    if(currentAdminSection==='leads' && !cachedCustomers && !customersLoading) loadCustomers();
+    if(currentAdminSection==='leads' && !cachedCustomers && !customersLoading && !customersError) loadCustomers();
     const custSearch = document.getElementById('customerSearch');
     if(custSearch) custSearch.oninput = e=>{ customerSearchQuery = e.target.value; render(); };
     const custRetry = document.getElementById('customersRetryBtn');
@@ -3776,7 +3767,7 @@ function wire(){
     if(custBack) custBack.onclick = ()=>{ customerDetail=null; render(); };
     document.querySelectorAll('[data-custid-open]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); openCustomerDetail(+b.dataset.custidOpen); });
     document.querySelectorAll('.customer-row').forEach(row=>row.onclick=()=>openCustomerDetail(+row.dataset.custid));
-    if(!overviewStats && !overviewStatsLoading) loadOverviewStats();
+    if(!overviewStats && !overviewStatsLoading && !overviewStatsError) loadOverviewStats();
     document.getElementById('adm_changecred').onclick = async ()=>{
       const np=document.getElementById('adm_newpass').value;
       if(!np){ alert('اكتب كلمة مرور جديدة أولاً'); return; }
