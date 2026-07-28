@@ -28,7 +28,8 @@ In the Supabase dashboard → SQL Editor, paste and run, in order:
 `0006_session_tokens.sql`, `0007_veichi_inverter_specs_phase1.sql`,
 `0008_veichi_inverter_specs_phase234.sql`, `0009_veichi_pump_inverter_specs.sql`,
 `0010_veichi_battery_specs.sql`, `0011_veichi_accessories_specs.sql`,
-`0012_portfolio_content.sql`
+`0012_portfolio_content.sql`, `0013_offgrid_ongrid_ready_systems.sql`,
+`0014_veichi_ready_systems_repricing.sql`, `0015_customers.sql`
 
 (or, if you use the Supabase CLI locally: `supabase db push`)
 
@@ -129,11 +130,14 @@ behaviour as today — the only difference is where the math happens.
 | `rep-login` | `username` + `password` | `{ displayName, token }` — use `token` below for 12h |
 | `admin-login` | `adminPassword` | `{ token }` — use `adminToken` below for 4h |
 | `find-client` | `token` | prior quotes tied to a phone number (rep name, specs, price) |
-| `save-quote` | `token` (or `guest:true`) | logs a finalized quote centrally |
+| `save-quote` | `token` (or `guest:true`) | logs a finalized quote centrally, and upserts a row in `customers` (deduped by phone) |
 | `admin-view` | `adminToken` | same quote + cost basis, total cost, profit, profit % |
 | `update-config` | `adminToken` | overwrites `pricing_config` with a new rates object |
 | `change-admin-password` | `adminToken` | rotates the password + session; returns a fresh `token` |
 | `admin-list-reps` / `admin-save-rep` / `admin-delete-rep` | `adminToken` | manage rep accounts |
+| `admin-list-customers` | `adminToken` | unified customer list (name, phone, quotes count, last contact) — source for the "قاعدة العملاء" dashboard screen |
+| `admin-customer-detail` | `adminToken` | one customer's full quote history, given `customerId` |
+| `admin-overview-stats` | `adminToken` | dashboard numbers: total customers, quotes this month, avg quote value, most active rep |
 | `upload-product-image` | `adminToken` | uploads to the `product-images` Storage bucket |
 | `get-product-catalog` | none | public reference list prices for any rep |
 | `get-portfolio` | none | public portfolio content (hero, projects, partners, timeline) |

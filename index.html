@@ -97,6 +97,8 @@ details.adv summary{cursor:pointer;font-size:13px;color:var(--night-2);font-weig
 .stat{background:#fff;border:1px solid var(--line);border-inline-end:3px solid var(--teal);border-radius:10px;padding:11px 13px;}
 .stat .v{font-family:'Cairo';font-size:19px;font-weight:600;color:var(--night);}
 .stat .l{font-size:11.5px;color:var(--muted);margin-top:3px;}
+.stat-click{cursor:pointer;transition:.15s;}
+.stat-click:hover{border-color:var(--teal);box-shadow:0 4px 14px rgba(13,52,82,.08);transform:translateY(-2px);}
 
 table.bom{width:100%;border-collapse:collapse;font-size:13px;}
 table.bom th{text-align:right;color:var(--muted);font-weight:600;font-size:11.5px;padding:8px 8px;border-bottom:2px solid var(--night);position:sticky;top:74px;background:#fff;z-index:1;}
@@ -1848,35 +1850,104 @@ function buildChart(cfGrid, cfDiesel){
 /* =======================================================================
    7) RENDER — ADMIN VIEW
    ======================================================================= */
-function renderLeadsRows(){
-  const leads = JSON.parse(localStorage.getItem(LEADS_KEY)||'[]');
-  if(!leads.length) return '<tr><td style="color:var(--muted);padding:10px">لا توجد طلبات مسجلة بعد</td></tr>';
-  return '<thead><tr><th>الاسم</th><th>الهاتف</th><th>القدرة HP</th><th>الإجمالي</th><th>التاريخ</th></tr></thead><tbody>' +
-    leads.map(l=>`<tr><td>${l.name}</td><td class="num">${l.phone}</td><td class="num">${l.hp}</td><td class="num">${fmt(l.total)} ﷼</td><td>${new Date(l.date).toLocaleString('en-GB')}</td></tr>`).join('') +
-    '</tbody>';
+/* ---- unified customers view — backed by the `customers` table in Supabase
+   (any rep, any device, always current). Replaces the old localStorage-only
+   leads cache as the primary source; the Google Sheet webhook below stays
+   available purely as an optional external export. ---- */
+let cachedCustomers = null, customersLoading = false, customersError = null;
+let customerDetail = null, customerDetailLoading = false, customerSearchQuery = '';
+let overviewStats = null, overviewStatsLoading = false;
+
+async function loadOverviewStats(){
+  if(overviewStatsLoading || overviewStats) return;
+  overviewStatsLoading = true;
+  try{
+    overviewStats = await callEngine('admin-overview-stats', { adminToken: adminTokenMem });
+  }catch(e){ overviewStats = null; }
+  overviewStatsLoading = false;
+  render();
 }
 
-async function loadCloudLeads(){
-  const el = document.getElementById('leadsTable');
-  const ov = document.getElementById('ovLeadsCount');
-  if(!el || !adminConfig || !adminConfig.leadsWebhookUrl) return;
-  el.innerHTML = '<tr><td style="padding:10px;color:var(--muted)">جارِ التحميل من Google Sheet...</td></tr>';
+async function loadCustomers(force){
+  if(customersLoading || (cachedCustomers && !force)) return;
+  customersLoading = true; customersError = null;
   try{
-    const res = await fetch(adminConfig.leadsWebhookUrl);
-    const data = await res.json();
-    if(ov) ov.textContent = data.length;
-    if(!data.length){ el.innerHTML = '<tr><td style="color:var(--muted);padding:10px">لا توجد طلبات مسجلة بعد</td></tr>'; return; }
-    el.innerHTML = '<thead><tr><th>الاسم</th><th>الهاتف</th><th>القدرة HP</th><th>الإجمالي</th><th>التاريخ</th></tr></thead><tbody>' +
-      data.slice().reverse().map(l=>`<tr><td>${l.name}</td><td class="num">${l.phone}</td><td class="num">${l.hp}</td><td class="num">${fmt(+l.total)} ﷼</td><td>${new Date(l.date).toLocaleString('en-GB')}</td></tr>`).join('') +
-      '</tbody>';
-  }catch(err){
-    el.innerHTML = renderLeadsRows() + '<tr><td style="color:#B0432C;font-size:11px;padding:6px">تعذر الاتصال بـ Google Sheet — تم عرض النسخة المحلية بدلاً منها. تأكد من صحة الرابط ومن أن النشر (Deployment) بحالة "Anyone".</td></tr>';
+    const data = await callEngine('admin-list-customers', { adminToken: adminTokenMem });
+    cachedCustomers = data.customers || [];
+  }catch(e){
+    customersError = e.message || 'تعذر تحميل قائمة العملاء';
   }
+  customersLoading = false;
+  render();
+}
+
+async function openCustomerDetail(id){
+  customerDetail = null; customerDetailLoading = true; render();
+  try{
+    const data = await callEngine('admin-customer-detail', { adminToken: adminTokenMem, customerId: id });
+    customerDetail = data;
+  }catch(e){
+    customerDetail = { error: e.message || 'تعذر تحميل بيانات العميل' };
+  }
+  customerDetailLoading = false;
+  render();
+}
+
+function renderCustomersSection(){
+  if(customerDetailLoading || customerDetail){
+    if(customerDetailLoading) return `<div class="card"><div class="note">جارِ التحميل...</div></div>`;
+    if(customerDetail.error) return `<div class="card"><div class="note" style="color:#B0432C">${customerDetail.error}</div><button class="btn ghost small" id="custBackBtn" style="margin-top:8px">◀ رجوع لقائمة العملاء</button></div>`;
+    const c = customerDetail.customer, qs = customerDetail.quotes || [];
+    return `
+    <div class="card">
+      <button class="btn ghost small no-print" id="custBackBtn">◀ رجوع لقائمة العملاء</button>
+      <h3 style="margin-top:10px">${c.name || '(بدون اسم)'} <span class="tag">${c.phone}</span></h3>
+      <div class="stats" style="margin:12px 0">
+        <div class="stat"><div class="v">${c.quotes_count}</div><div class="l">إجمالي عروض الأسعار</div></div>
+        <div class="stat"><div class="v" style="font-size:14px">${c.rep_username||'-'}</div><div class="l">آخر مندوب تواصل</div></div>
+        <div class="stat"><div class="v" style="font-size:13px">${c.first_quote_at?new Date(c.first_quote_at).toLocaleDateString('en-GB'):'-'}</div><div class="l">أول تواصل</div></div>
+        <div class="stat"><div class="v" style="font-size:13px">${c.last_quote_at?new Date(c.last_quote_at).toLocaleDateString('en-GB'):'-'}</div><div class="l">آخر تواصل</div></div>
+      </div>
+      <table class="admtable">
+        <thead><tr><th>التاريخ</th><th>المندوب</th><th>القدرة HP</th><th>الإجمالي</th></tr></thead>
+        <tbody>${qs.length ? qs.map(q=>`<tr><td>${new Date(q.created_at).toLocaleString('en-GB')}</td><td>${q.rep_display_name||'-'}</td><td class="num">${q.hp||'-'}</td><td class="num">${fmt(+q.final_total||0)} ﷼</td></tr>`).join('') : '<tr><td colspan="4" style="color:var(--muted);padding:10px">لا توجد عروض بعد</td></tr>'}</tbody>
+      </table>
+    </div>`;
+  }
+  const list = (cachedCustomers || []).filter(c=>{
+    if(!customerSearchQuery) return true;
+    const q = customerSearchQuery.toLowerCase();
+    return (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q);
+  });
+  return `
+  <div class="card">
+    <h3>قاعدة بيانات العملاء <span class="tag">${cachedCustomers?cachedCustomers.length:'…'} عميل مسجّل — مركزية، من أي مندوب وأي جهاز</span></h3>
+    <input type="text" id="customerSearch" placeholder="ابحث بالاسم أو الهاتف..." value="${customerSearchQuery}">
+    ${customersLoading ? `<div class="note" style="margin-top:8px">جارِ التحميل...</div>` :
+      customersError ? `<div class="note" style="color:#B0432C;margin-top:8px">${customersError}</div><button class="btn ghost small" id="customersRetryBtn" style="margin-top:6px">إعادة المحاولة</button>` :
+      `<table class="admtable" style="margin-top:10px">
+        <thead><tr><th>الاسم</th><th>الهاتف</th><th>عدد العروض</th><th>آخر مندوب</th><th>آخر تواصل</th><th></th></tr></thead>
+        <tbody>${list.length ? list.map(c=>`
+          <tr class="customer-row" data-custid="${c.id}" style="cursor:pointer">
+            <td>${c.name||'(بدون اسم)'}</td><td class="num">${c.phone}</td><td class="num">${c.quotes_count}</td>
+            <td>${c.rep_username||'-'}</td><td>${c.last_quote_at?new Date(c.last_quote_at).toLocaleDateString('en-GB'):'-'}</td>
+            <td class="op"><button class="btn ghost small" data-custid-open="${c.id}">عرض التفاصيل</button></td>
+          </tr>`).join('') : '<tr><td colspan="6" style="color:var(--muted);padding:10px">لا يوجد عملاء بعد</td></tr>'}</tbody>
+      </table>`}
+  </div>
+  <div class="card">
+    <h3>تصدير خارجي (اختياري) <span class="tag">${adminConfig.leadsWebhookUrl?'مفعّل — Google Sheet':'غير مفعّل'}</span></h3>
+    <label>رابط المزامنة السحابية (Google Apps Script Web App URL)</label>
+    <input type="text" id="a_webhook" value="${adminConfig.leadsWebhookUrl}" placeholder="https://script.google.com/macros/s/xxxxx/exec">
+    <div class="note" style="margin-top:6px">قاعدة العملاء أعلاه هي المصدر الرئيسي الآن (تشتغل من أي جهاز تلقائيًا). الرابط ده اختياري بس، لو حابب نسخة إضافية على Google Sheet.</div>
+  </div>`;
 }
 
 let productsNav = 'categories'; // 'categories' | 'category' | 'detail'
 let selectedCategoryIdx = null;
 let selectedProduct = null; // {catIdx, rowIdx} when viewing a single product's detail page
+let productsGlobalSearch = ''; // search box on the level-1 "all categories" landing page
+let hideUnavailableProducts = false; // toggle on the level-2 category page
 let cachedPortfolio = null; // fetched lazily when the portfolio tab opens
 let portfolioLoading = false;
 let portfolioError = null;
@@ -2170,6 +2241,7 @@ function renderProducts(){
               <div class="note" style="display:inline-block;margin-top:4px">* السعر بدون ضريبة القيمة المضافة</div>
             </div>
             ${detail.datasheetUrl ? `<a href="${detail.datasheetUrl}" target="_blank" rel="noopener" class="btn ghost full" style="margin-bottom:var(--sp-2)">📄 تحميل الداتا شيت</a>` : ''}
+            <button type="button" class="btn ghost full no-print" id="shareProductLinkBtn" data-shareproduct="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" style="margin-bottom:var(--sp-2)">🔗 نسخ رابط المنتج</button>
             <div class="detail-meta-line">رقم المنتج: ${row[0]} &nbsp;|&nbsp; التصنيف: ${cat.category}</div>
           </div>
         </div>
@@ -2214,6 +2286,9 @@ function renderProducts(){
         </div>
         <input type="text" id="productSearch" placeholder="ابحث في ${cat.category}...">
         <div class="note" style="color:var(--bad);font-weight:600">⚠️ الأسعار بدون ضريبة القيمة المضافة (15%)</div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="hideUnavailableToggle" ${hideUnavailableProducts?'checked':''}> إخفاء غير المتاح
+        </label>
         <div class="viewmode-toggle" role="group" aria-label="طريقة العرض">
           <button class="${productViewMode==='cards'?'active':''}" data-viewmode="cards">▦ كروت</button>
           <button class="${productViewMode==='list'?'active':''}" data-viewmode="list">☰ ليستة</button>
@@ -2229,6 +2304,7 @@ function renderProducts(){
         <div class="model-list view-${productViewMode}" style="grid-column:1/-1;padding:0 var(--sp-3) var(--sp-3)">
           ${cat.rows.map((row,ri)=>{
             const available = isProductAvailable(cat, ri);
+            if(hideUnavailableProducts && !available) return '';
             const detail = (cat.productDetails && cat.productDetails[ri]) || {};
             const thumb = detail.image || '';
             const nCols = cat.columns.length;
@@ -2259,16 +2335,51 @@ function renderProducts(){
 
   // ---- Level 1: main categories landing page ----
   if(!innerHtml){
+    const gq = (productsGlobalSearch||'').trim().toLowerCase();
+    let globalMatches = [];
+    if(gq){
+      catalog.forEach((cat,ci)=>{
+        cat.rows.forEach((row,ri)=>{
+          if(row.join(' ').toLowerCase().includes(gq)) globalMatches.push({cat, ci, row, ri});
+        });
+      });
+    }
     innerHtml = `
     <div class="card no-print">
       <h3>قائمة المنتجات</h3>
       <div class="note">اختر نوع المنتج لعرض الموديلات المتاحة، أو تصفح المنظومات الجاهزة أدناه</div>
       <div class="note" style="color:var(--bad);font-weight:600;margin-top:4px">⚠️ جميع الأسعار المعروضة بدون ضريبة القيمة المضافة (15%)</div>
-      <div class="viewmode-toggle" role="group" aria-label="طريقة العرض" data-catview-toggle>
+      <input type="text" id="productGlobalSearch" placeholder="ابحث في كل المنتجات..." value="${productsGlobalSearch||''}" style="margin-top:10px">
+      ${!gq ? `<div class="viewmode-toggle" role="group" aria-label="طريقة العرض" data-catview-toggle>
         <button class="${categoriesViewMode==='cards'?'active':''}" data-catviewmode="cards">▦ شبكة</button>
         <button class="${categoriesViewMode==='list'?'active':''}" data-catviewmode="list">☰ ليستة</button>
-      </div>
+      </div>` : ''}
     </div>
+    ${gq ? `
+    <div class="card">
+      <div class="note">${globalMatches.length} نتيجة عن "${productsGlobalSearch}"</div>
+      <div class="model-list view-cards" style="margin-top:8px">
+        ${globalMatches.map(({cat,ci,row,ri})=>{
+          const available = isProductAvailable(cat, ri);
+          const detail = (cat.productDetails && cat.productDetails[ri]) || {};
+          const thumb = detail.image || '';
+          const nCols = cat.columns.length;
+          const priceVal = nCols>=2 ? row[nCols-2] : row[nCols-1];
+          return `<div class="model-card${available?'':' unavailable-row'}">
+            ${thumb ? `<img class="thumb" src="${thumb}" alt="${row[0]}">` : `<div class="thumb-noimg">📦</div>`}
+            <div class="body">
+              <div class="name">${row[0]}${!available?' <span class="unavail-chip">غير متاح</span>':''}</div>
+              <div class="specs"><span>${cat.category}</span></div>
+            </div>
+            <div class="side">
+              <div class="price">${priceVal} ﷼<small>بدون ضريبة</small></div>
+              <button class="btn ghost small" data-viewproduct="${ci}:${ri}">التفاصيل</button>
+            </div>
+          </div>`;
+        }).join('')}
+        ${!globalMatches.length ? `<div class="note" style="padding:10px">لا توجد نتائج مطابقة.</div>` : ''}
+      </div>
+    </div>` : `
     <div class="category-grid view-${categoriesViewMode}">
       <div class="category-card" onclick="window.goToView('ready')" style="cursor:pointer">
         <div class="noimg">🗂️</div>
@@ -2287,6 +2398,7 @@ function renderProducts(){
         </div>`).join('')}
     </div>
     ${!catalog.length ? `<div class="card"><div class="note">لا توجد منتجات مسجّلة بعد.</div></div>` : ''}
+    `}
     `;
   }
 
@@ -2530,7 +2642,7 @@ const BOM_GENERIC_ITEM_KEYS = [
 ];
 
 function renderAdmin(){
-  const admSectionTitles = {'overview':'نظرة عامة','pricing':'الأسعار والهوامش','calcs':'حاسبات الأنظمة','products':'المنتجات والكتالوج','portfolio':'البورتفوليو','leads':'طلبات العملاء','reps':'إدارة المناديب','security':'الحماية والنظام'};
+  const admSectionTitles = {'overview':'نظرة عامة','pricing':'الأسعار والهوامش','calcs':'حاسبات الأنظمة','products':'المنتجات والكتالوج','portfolio':'البورتفوليو','leads':'قاعدة العملاء','reps':'إدارة المناديب','security':'الحماية والنظام'};
   return `
   <div class="admin-shell">
   <aside class="admin-sidebar no-print">
@@ -2544,7 +2656,7 @@ function renderAdmin(){
       <button class="admin-nav-btn ${currentAdminSection==='calcs'?'active':''}" data-admsec="calcs" type="button"><span class="ic">🧮</span><span class="lbl">حاسبات الأنظمة</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='products'?'active':''}" data-admsec="products" type="button"><span class="ic">📦</span><span class="lbl">المنتجات والكتالوج</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='portfolio'?'active':''}" data-admsec="portfolio" type="button"><span class="ic">🖼️</span><span class="lbl">البورتفوليو</span></button>
-      <button class="admin-nav-btn ${currentAdminSection==='leads'?'active':''}" data-admsec="leads" type="button"><span class="ic">📋</span><span class="lbl">طلبات العملاء</span></button>
+      <button class="admin-nav-btn ${currentAdminSection==='leads'?'active':''}" data-admsec="leads" type="button"><span class="ic">📋</span><span class="lbl">قاعدة العملاء</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='reps'?'active':''}" data-admsec="reps" type="button"><span class="ic">👥</span><span class="lbl">إدارة المناديب</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='security'?'active':''}" data-admsec="security" type="button"><span class="ic">🔒</span><span class="lbl">الحماية والنظام</span></button>
     </nav>
@@ -2559,19 +2671,24 @@ function renderAdmin(){
     </div>
     <section class="admsec ${currentAdminSection==='overview'?'active':''}" data-admsec="overview">
   <div class="stats" style="margin-bottom:16px">
-    <div class="stat"><div class="v">${adminConfig.productCatalog.length}</div><div class="l">فئات المنتجات</div></div>
-    <div class="stat"><div class="v">${adminConfig.productCatalog.reduce((s,c)=>s+(c.rows?.length||0),0)}</div><div class="l">إجمالي المنتجات</div></div>
-    <div class="stat"><div class="v">${adminConfig.panels.length}</div><div class="l">أنواع الألواح</div></div>
-    <div class="stat"><div class="v">${adminConfig.inverterBrands.length}</div><div class="l">أنواع الانفرتر</div></div>
-    <div class="stat"><div class="v">${adminConfig.readyOffgridSystems.length}</div><div class="l">منظومات جاهزة</div></div>
-    <div class="stat"><div class="v">${adminReps.filter(r=>r.active).length}/${adminReps.length}</div><div class="l">مناديب نشطون</div></div>
-    <div class="stat"><div class="v" id="ovLeadsCount">${(JSON.parse(localStorage.getItem(LEADS_KEY)||'[]')).length}</div><div class="l">طلبات عملاء مُسجّلة</div></div>
-    <div class="stat"><div class="v">${adminConfig.discountTiers.length}</div><div class="l">فئات الخصم</div></div>
+    <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.productCatalog.length}</div><div class="l">فئات المنتجات</div></div>
+    <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.productCatalog.reduce((s,c)=>s+(c.rows?.length||0),0)}</div><div class="l">إجمالي المنتجات</div></div>
+    <div class="stat stat-click" data-admsec-jump="pricing"><div class="v">${adminConfig.panels.length}</div><div class="l">أنواع الألواح</div></div>
+    <div class="stat stat-click" data-admsec-jump="pricing"><div class="v">${adminConfig.inverterBrands.length}</div><div class="l">أنواع الانفرتر</div></div>
+    <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.readyOffgridSystems.length}</div><div class="l">منظومات جاهزة</div></div>
+    <div class="stat stat-click" data-admsec-jump="reps"><div class="v">${adminReps.filter(r=>r.active).length}/${adminReps.length}</div><div class="l">مناديب نشطون</div></div>
+    <div class="stat stat-click" data-admsec-jump="leads"><div class="v" id="ovLeadsCount">${overviewStats ? overviewStats.totalCustomers : '…'}</div><div class="l">عملاء مسجّلون</div></div>
+    <div class="stat stat-click" data-admsec-jump="pricing"><div class="v">${adminConfig.discountTiers.length}</div><div class="l">فئات الخصم</div></div>
+  </div>
+  <div class="stats" style="margin-bottom:16px">
+    <div class="stat stat-click" data-admsec-jump="leads"><div class="v">${overviewStats ? overviewStats.quotesThisMonth : '…'}</div><div class="l">عروض أسعار هذا الشهر</div></div>
+    <div class="stat stat-click" data-admsec-jump="leads"><div class="v">${overviewStats ? fmt(overviewStats.avgQuoteValue)+' ﷼' : '…'}</div><div class="l">متوسط قيمة العرض (الشهر)</div></div>
+    <div class="stat stat-click" data-admsec-jump="reps"><div class="v" style="font-size:14px">${overviewStats ? overviewStats.mostActiveRep : '…'}</div><div class="l">الأكثر نشاطًا هذا الشهر (${overviewStats?overviewStats.mostActiveRepCount:0} عرض)</div></div>
   </div>
   <div class="card">
     <h3>الوصول السريع</h3>
     <div class="admin-quicklinks">
-      ${[["pricing","\ud83d\udcb0","الأسعار والهوامش","تعديل أسعار الألواح والإنفرتر والبنود"],["calcs","\ud83e\uddee","حاسبات الأنظمة","إعدادات الأوف-جريد والأون-جريد"],["products","\ud83d\udce6","المنتجات والكتالوج","إدارة الكتالوج والصور والمنظومات"],["portfolio","\ud83d\uddbc\ufe0f","البورتفوليو","محتوى صفحة الأعمال"],["leads","\ud83d\udccb","طلبات العملاء","مراجعة عروض الأسعار المسجلة"],["reps","\ud83d\udc65","إدارة المناديب","حسابات المناديب"]].map(([id,ic,t,s])=>`
+      ${[["pricing","\ud83d\udcb0","الأسعار والهوامش","تعديل أسعار الألواح والإنفرتر والبنود"],["calcs","\ud83e\uddee","حاسبات الأنظمة","إعدادات الأوف-جريد والأون-جريد"],["products","\ud83d\udce6","المنتجات والكتالوج","إدارة الكتالوج والصور والمنظومات"],["portfolio","\ud83d\uddbc\ufe0f","البورتفوليو","محتوى صفحة الأعمال"],["leads","\ud83d\udccb","قاعدة العملاء","كل العملاء وعروض الأسعار — مركزيًا من أي جهاز"],["reps","\ud83d\udc65","إدارة المناديب","حسابات المناديب"]].map(([id,ic,t,s])=>`
       <div class="admin-quicklink" data-admsec-jump="${id}">
         <span class="ic">${ic}</span>
         <div><div class="t">${t}</div><div class="s">${s}</div></div>
@@ -3053,17 +3170,7 @@ function renderAdmin(){
 </section>
 
 <section class="admsec ${currentAdminSection==='leads'?'active':''}" data-admsec="leads">
-  <div class="card">
-    <h3>طلبات العملاء المُسجّلة <span class="tag">${adminConfig.leadsWebhookUrl?'مُزامَنة سحابيًا — Google Sheet':'محفوظة محليًا على هذا الجهاز فقط'}</span></h3>
-    <label>رابط المزامنة السحابية (Google Apps Script Web App URL)</label>
-    <input type="text" id="a_webhook" value="${adminConfig.leadsWebhookUrl}" placeholder="https://script.google.com/macros/s/xxxxx/exec">
-    <div class="note" style="margin-top:6px">لما تضيف الرابط ده، أي عرض سعر يُطبع أو يُرسل عبر واتساب هيتسجل تلقائيًا في Google Sheet خاص بيك — تقدر تفتحه من أي جهاز في أي وقت. راجع شرح الإعداد في آخر رسالة من المساعد.</div>
-    <table class="admtable" id="leadsTable" style="margin-top:10px">${renderLeadsRows()}</table>
-    <div style="display:flex;gap:10px;margin-top:8px" class="no-print">
-      <button class="btn ghost small" id="leadsClear">🗑️ مسح النسخة المحلية</button>
-      <button class="btn ghost small" id="leadsRefresh">🔄 تحديث من السحابة</button>
-    </div>
-  </div>
+  ${renderCustomersSection()}
 </section>
 
 <section class="admsec ${currentAdminSection==='reps'?'active':''}" data-admsec="reps">
@@ -3136,6 +3243,15 @@ let deepLinkReadySystemId = null;
 {
   const p = new URLSearchParams(window.location.search).get('readysystem');
   if(p && /^\d+$/.test(p)){ deepLinkReadySystemId = +p; currentView = 'ready-detail'; }
+}
+{
+  const pp = new URLSearchParams(window.location.search).get('product');
+  if(pp && /^\d+:\d+$/.test(pp)){
+    const [ci,ri] = pp.split(':').map(Number);
+    selectedProduct = {catIdx:ci, rowIdx:ri};
+    productsNav = 'detail';
+    currentView = 'products';
+  }
 }
 
 /* ---- rep login gate — every rep has their own username/password, verified
@@ -3321,6 +3437,26 @@ function wire(){
         });
       });
     };
+    const globalSearchInput = document.getElementById('productGlobalSearch');
+    if(globalSearchInput){
+      globalSearchInput.oninput = e=>{ productsGlobalSearch = e.target.value; render(); };
+      globalSearchInput.focus();
+      const len = globalSearchInput.value.length;
+      globalSearchInput.setSelectionRange(len, len);
+    }
+    const hideUnavailToggle = document.getElementById('hideUnavailableToggle');
+    if(hideUnavailToggle) hideUnavailToggle.onchange = e=>{ hideUnavailableProducts = e.target.checked; render(); };
+    const shareBtn = document.getElementById('shareProductLinkBtn');
+    if(shareBtn) shareBtn.onclick = async ()=>{
+      const url = `${window.location.origin}${window.location.pathname}?product=${shareBtn.dataset.shareproduct}`;
+      try{
+        await navigator.clipboard.writeText(url);
+        shareBtn.textContent = '✓ تم نسخ الرابط';
+      }catch(e){
+        shareBtn.textContent = url;
+      }
+      setTimeout(()=>{ shareBtn.textContent = '🔗 نسخ رابط المنتج'; }, 2000);
+    };
     return;
   }
   if(currentView==='portfolio'){
@@ -3408,7 +3544,7 @@ function wire(){
     });
   }
   if(currentView==='admin'){
-    const admSectionTitles = {overview:'نظرة عامة',pricing:'الأسعار والهوامش',calcs:'حاسبات الأنظمة',products:'المنتجات والكتالوج',portfolio:'البورتفوليو',leads:'طلبات العملاء',reps:'إدارة المناديب',security:'الحماية والنظام'};
+    const admSectionTitles = {overview:'نظرة عامة',pricing:'الأسعار والهوامش',calcs:'حاسبات الأنظمة',products:'المنتجات والكتالوج',portfolio:'البورتفوليو',leads:'قاعدة العملاء',reps:'إدارة المناديب',security:'الحماية والنظام'};
     function goToAdminSection(id){
       currentAdminSection = id;
       document.querySelectorAll('.admin-nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.admsec===id));
@@ -3631,11 +3767,16 @@ function wire(){
       }catch(e){ alert('تعذر الحفظ: '+e.message); }
       render();
     };
-    document.getElementById('leadsClear').onclick = ()=>{
-      if(confirm('مسح كل طلبات العملاء المسجلة محليًا؟ (لن يؤثر على بيانات Google Sheet)')){ localStorage.removeItem(LEADS_KEY); render(); }
-    };
-    document.getElementById('leadsRefresh').onclick = ()=>loadCloudLeads();
-    if(adminConfig.leadsWebhookUrl) loadCloudLeads();
+    if(currentAdminSection==='leads' && !cachedCustomers && !customersLoading) loadCustomers();
+    const custSearch = document.getElementById('customerSearch');
+    if(custSearch) custSearch.oninput = e=>{ customerSearchQuery = e.target.value; render(); };
+    const custRetry = document.getElementById('customersRetryBtn');
+    if(custRetry) custRetry.onclick = ()=>loadCustomers(true);
+    const custBack = document.getElementById('custBackBtn');
+    if(custBack) custBack.onclick = ()=>{ customerDetail=null; render(); };
+    document.querySelectorAll('[data-custid-open]').forEach(b=>b.onclick=(e)=>{ e.stopPropagation(); openCustomerDetail(+b.dataset.custidOpen); });
+    document.querySelectorAll('.customer-row').forEach(row=>row.onclick=()=>openCustomerDetail(+row.dataset.custid));
+    if(!overviewStats && !overviewStatsLoading) loadOverviewStats();
     document.getElementById('adm_changecred').onclick = async ()=>{
       const np=document.getElementById('adm_newpass').value;
       if(!np){ alert('اكتب كلمة مرور جديدة أولاً'); return; }

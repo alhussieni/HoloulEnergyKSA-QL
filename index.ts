@@ -689,6 +689,28 @@ Deno.serve(async (req: Request) => {
   return digits.length > 9 ? digits.slice(-9) : digits;
 }
 
+  // Upserts the central customers row for this phone number: creates it on
+  // first contact, or bumps quotes_count/last_quote_at on every later quote.
+  // Returns the customer id (or null if there's no usable phone number).
+  async function upsertCustomer(name: string, phone: string, repUsername: string | null): Promise<number | null> {
+    if (!phone) return null;
+    const now = new Date().toISOString();
+    const { data: existing } = await supabase.from("customers")
+      .select("id, quotes_count").eq("phone", phone).maybeSingle();
+    if (existing) {
+      const upd: any = { quotes_count: (existing.quotes_count || 0) + 1, last_quote_at: now, updated_at: now };
+      if (name) upd.name = name;
+      if (repUsername) upd.rep_username = repUsername;
+      await supabase.from("customers").update(upd).eq("id", existing.id);
+      return existing.id;
+    }
+    const { data: inserted, error } = await supabase.from("customers")
+      .insert({ name: name || "", phone, rep_username: repUsername, quotes_count: 1, first_quote_at: now, last_quote_at: now, updated_at: now })
+      .select("id").single();
+    if (error || !inserted) return null;
+    return inserted.id;
+  }
+
 // ---- rep login: verify the password ONCE, return a short-lived token ----
   if (body.action === "rep-login") {
     const rep = await checkRep(body.username, body.password);
@@ -734,17 +756,66 @@ Deno.serve(async (req: Request) => {
       if (!rep) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
       repUsername = rep.username; repDisplayName = rep.displayName;
     }
+    const phone = phoneKey(body.clientPhone);
+    const customerId = await upsertCustomer(body.clientName || "", phone, repUsername);
     const { error } = await supabase.from("quotes").insert({
       rep_username: repUsername,
       rep_display_name: repDisplayName,
       client_name: body.clientName || "",
-      client_phone: phoneKey(body.clientPhone),
+      client_phone: phone,
       hp: body.hp || null,
       final_total: body.finalTotal || null,
       snapshot: body.snapshot || null,
+      customer_id: customerId,
     });
     if (error) return json({ error: error.message }, 500);
     return json({ ok: true });
+  }
+
+  // ---- admin: unified customers list — the single source of truth for the
+  // dashboard's "طلبات العملاء" screen (replaces the old localStorage/Google
+  // Sheet-only view). Every finalized quote (any rep, any device) lands here. ----
+  if (body.action === "admin-list-customers") {
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
+    const { data, error } = await supabase.from("customers")
+      .select("id, name, phone, rep_username, quotes_count, first_quote_at, last_quote_at")
+      .order("last_quote_at", { ascending: false }).limit(500);
+    if (error) return json({ error: error.message }, 500);
+    return json({ customers: data || [] });
+  }
+
+  // ---- admin: one customer's full quote history (for the detail drill-down) ----
+  if (body.action === "admin-customer-detail") {
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
+    if (!body.customerId) return json({ error: "customerId required" }, 400);
+    const { data: customer, error: cErr } = await supabase.from("customers")
+      .select("*").eq("id", body.customerId).single();
+    if (cErr || !customer) return json({ error: "customer not found" }, 404);
+    const { data: quotesList, error: qErr } = await supabase.from("quotes")
+      .select("id, rep_display_name, hp, final_total, created_at, snapshot")
+      .eq("customer_id", body.customerId).order("created_at", { ascending: false });
+    if (qErr) return json({ error: qErr.message }, 500);
+    return json({ customer, quotes: quotesList || [] });
+  }
+
+  // ---- admin: richer overview numbers for the dashboard's "نظرة عامة" tab ----
+  if (body.action === "admin-overview-stats") {
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    const { count: totalCustomers } = await supabase.from("customers").select("*", { count: "exact", head: true });
+    const { data: monthQuotes, error: mqErr } = await supabase.from("quotes")
+      .select("final_total, rep_display_name").gte("created_at", monthStart.toISOString());
+    if (mqErr) return json({ error: mqErr.message }, 500);
+    const list = monthQuotes || [];
+    const quotesThisMonth = list.length;
+    const avgQuoteValue = quotesThisMonth
+      ? Math.round(list.reduce((s: number, q: any) => s + (Number(q.final_total) || 0), 0) / quotesThisMonth)
+      : 0;
+    const repCounts: Record<string, number> = {};
+    list.forEach((q: any) => { const r = q.rep_display_name || "غير محدد"; repCounts[r] = (repCounts[r] || 0) + 1; });
+    let mostActiveRep = "-", mostActiveRepCount = 0;
+    Object.entries(repCounts).forEach(([r, c]) => { if (c > mostActiveRepCount) { mostActiveRep = r; mostActiveRepCount = c; } });
+    return json({ totalCustomers: totalCustomers || 0, quotesThisMonth, avgQuoteValue, mostActiveRep, mostActiveRepCount });
   }
 
   // ---- admin: manage rep accounts ----
