@@ -1,0 +1,21 @@
+-- ============================================================================
+-- Per-rep permissions — lets the admin delegate specific admin-panel
+-- sections to specific reps (e.g. one rep can edit the product catalog,
+-- another can edit the portfolio) without giving them the admin password.
+--
+-- Every rep can already create/save price quotes just by logging in — that's
+-- the baseline capability and doesn't need a flag. These flags are strictly
+-- ADDITIONAL admin-panel powers on top of that baseline.
+--
+-- Keys used (all booleans, all default false = a plain rep with zero admin
+-- access, exactly like every rep today):
+--   pricing   -> panels / inverter brands / discount tiers / cost & margin
+--                 engine parameters (⚠️ this is the sensitive cost/margin
+--                 data the whole backend split was built to hide — grant
+--                 with care)
+--   calcs     -> off-grid / on-grid calculator settings
+--   products  -> the product catalog (list prices only, no cost data)
+--   portfolio -> the public portfolio page content
+-- ============================================================================
+
+alter table public.reps add column if not exists permissions jsonb not null default '{}'::jsonb;

@@ -603,7 +603,8 @@ Deno.serve(async (req: Request) => {
   if (body.action === "admin-login") {
     if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
     const row = await getAdminSecretRow();
-    const token = await issueToken("admin", row!.session_version, 4 * 3600); // 4h
+    const ttl = body.rememberMe ? 14 * 24 * 3600 : 4 * 3600; // "remember me" -> 14 days, else 4h
+    const token = await issueToken("admin", row!.session_version, ttl);
     return json({ ok: true, token });
   }
 
@@ -612,12 +613,57 @@ Deno.serve(async (req: Request) => {
     return json({ config: D });
   }
 
+  // Which top-level pricing_config keys belong to each admin-panel section —
+  // mirrors the sidebar sections 1:1. Used to scope exactly what a
+  // permission-holding rep (not a full admin) is allowed to read/write:
+  // anything outside their section's key list is never touched, even if
+  // present in what they send.
+  const SECTION_CONFIG_KEYS: Record<string, string[]> = {
+    pricing: ["cableHighMultiplier", "cableLowMultiplier", "cableMarkup", "cablePerMeter", "combinerHeadroom",
+      "combinerMinSpareStrings", "concretePerUnit", "defaultDiscountIdx", "discountTiers", "earthingPerUnit",
+      "elecInstallPerPanel", "flexTubePerUnit", "hpCapacityRatio", "inverterBrands", "mc4PerUnit",
+      "mechInstallPerPanel", "panels", "steelPanelPerHP", "structurePriceFixed", "structurePriceRotational",
+      "transportMinimum", "transportPerTrip", "vat"],
+    calcs: ["offgrid", "ongrid"],
+    products: ["bomItemImages", "productCatalog", "readyOffgridSystems", "readyOngridSystems"],
+    portfolio: ["portfolio"],
+  };
+
   if (body.action === "update-config") {
-    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
+    if (await checkAdminToken(body.adminToken)) {
+      const { error } = await supabase.from("pricing_config")
+        .update({ data: body.config, updated_at: new Date().toISOString() }).eq("id", 1);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
+    }
+    // Not a full admin session — check for a rep with a scoped permission instead.
+    const rep = await checkRepToken(body.token);
+    const section = body.section as string;
+    const allowedKeys = SECTION_CONFIG_KEYS[section];
+    if (!rep || !allowedKeys) return json({ error: "admin session expired" }, 401);
+    if (!rep.permissions || !rep.permissions[section]) return json({ error: "ليس لديك صلاحية تعديل هذا القسم" }, 403);
+    const merged: any = { ...D };
+    for (const k of allowedKeys) {
+      if (body.config && Object.prototype.hasOwnProperty.call(body.config, k)) merged[k] = body.config[k];
+    }
     const { error } = await supabase.from("pricing_config")
-      .update({ data: body.config, updated_at: new Date().toISOString() }).eq("id", 1);
+      .update({ data: merged, updated_at: new Date().toISOString() }).eq("id", 1);
     if (error) return json({ error: error.message }, 500);
     return json({ ok: true });
+  }
+
+  // ---- rep: read-only view of just the config section(s) their permissions
+  // allow — never the full config, so a portfolio-only rep can never see
+  // pricing's cost/margin data by fetching this instead. ----
+  if (body.action === "rep-config") {
+    const rep = await checkRepToken(body.token);
+    if (!rep) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
+    const out: any = {};
+    for (const [section, keys] of Object.entries(SECTION_CONFIG_KEYS)) {
+      if (!rep.permissions || !rep.permissions[section]) continue;
+      for (const k of keys) out[k] = (D as any)[k];
+    }
+    return json({ config: out, permissions: rep.permissions || {} });
   }
 
   if (body.action === "change-admin-password") {
@@ -664,10 +710,10 @@ Deno.serve(async (req: Request) => {
   async function checkRep(username: string | undefined, password: string | undefined) {
     if (!username || !password) return null;
     const { data, error } = await supabase.from("reps")
-      .select("username, password_hash, display_name, active, session_version").eq("username", username).single();
+      .select("username, password_hash, display_name, active, session_version, permissions").eq("username", username).single();
     if (error || !data || !data.active) return null;
     if ((await sha256Hex(password)) !== data.password_hash) return null;
-    return { username: data.username, displayName: data.display_name, sessionVersion: data.session_version };
+    return { username: data.username, displayName: data.display_name, sessionVersion: data.session_version, permissions: data.permissions || {} };
   }
 
   // Verifies a rep session token: signature, expiry, subject, still-active
@@ -678,10 +724,10 @@ Deno.serve(async (req: Request) => {
     if (!payload || !payload.sub.startsWith("rep:")) return null;
     const username = payload.sub.slice(4);
     const { data, error } = await supabase.from("reps")
-      .select("username, display_name, active, session_version").eq("username", username).single();
+      .select("username, display_name, active, session_version, permissions").eq("username", username).single();
     if (error || !data || !data.active) return null;
     if (payload.ver !== data.session_version) return null;
-    return { username: data.username, displayName: data.display_name };
+    return { username: data.username, displayName: data.display_name, permissions: data.permissions || {} };
   }
 
   function phoneKey(raw: string) {
@@ -715,8 +761,9 @@ Deno.serve(async (req: Request) => {
   if (body.action === "rep-login") {
     const rep = await checkRep(body.username, body.password);
     if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
-    const token = await issueToken(`rep:${rep.username}`, rep.sessionVersion, 12 * 3600); // 12h
-    return json({ ok: true, displayName: rep.displayName, token });
+    const ttl = body.rememberMe ? 14 * 24 * 3600 : 12 * 3600; // "remember me" -> 14 days, else 12h
+    const token = await issueToken(`rep:${rep.username}`, rep.sessionVersion, ttl);
+    return json({ ok: true, displayName: rep.displayName, token, permissions: rep.permissions });
   }
 
   // ---- has this client already received a quote, from whom, at what price? ----
@@ -821,7 +868,7 @@ Deno.serve(async (req: Request) => {
   // ---- admin: manage rep accounts ----
   if (body.action === "admin-list-reps") {
     if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
-    const { data, error } = await supabase.from("reps").select("id, username, display_name, active").order("id");
+    const { data, error } = await supabase.from("reps").select("id, username, display_name, active, permissions").order("id");
     if (error) return json({ error: error.message }, 500);
     return json({ reps: data || [] });
   }
@@ -829,6 +876,12 @@ Deno.serve(async (req: Request) => {
   if (body.action === "admin-save-rep") {
     if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     const row: any = { username: body.username, display_name: body.displayName, active: body.active !== false };
+    if (body.permissions && typeof body.permissions === "object") {
+      // Whitelist known keys only — never store arbitrary attacker-controlled keys.
+      const perms: Record<string, boolean> = {};
+      for (const k of ["pricing", "calcs", "products", "portfolio"]) perms[k] = !!body.permissions[k];
+      row.permissions = perms;
+    }
     if (body.password) {
       row.password_hash = await sha256Hex(body.password);
       // New password -> bump this rep's session_version so any of their

@@ -3168,27 +3168,31 @@ function renderAdmin(){
   <div class="card no-print">
     <h3>إدارة المناديب</h3>
     <table class="admtable">
-      <thead><tr><th>اسم المستخدم</th><th>الاسم الظاهر</th><th>كلمة مرور جديدة</th><th>مفعّل</th><th></th></tr></thead>
+      <thead><tr><th>اسم المستخدم</th><th>الاسم الظاهر</th><th>كلمة مرور جديدة</th><th>مفعّل</th><th>الأسعار<br><small style="font-weight:400">⚠️ بيانات تكلفة</small></th><th>الحاسبات</th><th>المنتجات</th><th>البورتفوليو</th><th></th></tr></thead>
       <tbody>
-        ${adminReps.map(r=>`
+        ${adminReps.map(r=>{const p=r.permissions||{};return `
           <tr>
             <td><input data-repid="${r.id}" data-rf="username" value="${r.username}"></td>
             <td><input data-repid="${r.id}" data-rf="displayName" value="${r.display_name}"></td>
             <td><input data-repid="${r.id}" data-rf="password" type="password" placeholder="اتركه فارغًا لعدم التغيير"></td>
             <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="active" ${r.active?'checked':''}></td>
+            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_pricing" ${p.pricing?'checked':''}></td>
+            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_calcs" ${p.calcs?'checked':''}></td>
+            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_products" ${p.products?'checked':''}></td>
+            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_portfolio" ${p.portfolio?'checked':''}></td>
             <td class="op"><button class="btn danger small" data-delrep="${r.id}">✕</button></td>
-          </tr>`).join('')}
+          </tr>`;}).join('')}
         <tr>
           <td><input id="newrep_username" placeholder="اسم مستخدم جديد"></td>
           <td><input id="newrep_displayname" placeholder="اسم المندوب"></td>
           <td><input id="newrep_password" type="password" placeholder="كلمة مرور"></td>
-          <td></td>
+          <td></td><td></td><td></td><td></td><td></td>
           <td class="op"><button class="btn small" id="addRepBtn">+ إضافة</button></td>
         </tr>
       </tbody>
     </table>
     <button class="btn ghost small" id="saveRepsBtn" style="margin-top:8px">💾 حفظ تعديلات المناديب</button>
-    <div class="note" style="margin-top:8px">كل مندوب يسجّل دخوله بحسابه الخاص من شاشة الحاسبة الرئيسية. تعطيل "مفعّل" يمنعه من الدخول فورًا بدون حذف بياناته.</div>
+    <div class="note" style="margin-top:8px">كل مندوب يسجّل دخوله بحسابه الخاص من شاشة الحاسبة الرئيسية. تعطيل "مفعّل" يمنعه من الدخول فورًا بدون حذف بياناته. الأعمدة الأربعة الأخيرة صلاحيات اختيارية لتعديل أقسام محددة من لوحة التحكم — بدون أي منها المندوب يقدر يعمل عروض أسعار فقط، زي أي مندوب عادي.</div>
   </div>
 </section>
 
@@ -3246,14 +3250,24 @@ let deepLinkReadySystemId = null;
 }
 
 /* ---- rep login gate — every rep has their own username/password, verified
-   server-side. Session is kept in sessionStorage so a refresh doesn't force
-   a re-login, but it's gone once the tab is closed. ---- */
-let repAuthed = false, repUsername = null, repTokenMem = null, repDisplayName = null;
+   server-side. Session is kept in sessionStorage (gone once the tab closes)
+   unless "remember me" was checked, in which case it's kept in localStorage
+   with a 14-day expiry so it survives closing the browser entirely. ---- */
+const REP_REMEMBER_KEY = 'holoul_rep_remember_v1';
+const ADMIN_REMEMBER_KEY = 'holoul_admin_remember_v1';
+let repAuthed = false, repUsername = null, repTokenMem = null, repDisplayName = null, repPermissions = {};
 try{
-  const savedRep = JSON.parse(sessionStorage.getItem('holoul_rep_session')||'null');
-  if(savedRep && savedRep.username && savedRep.token){
-    repUsername = savedRep.username; repTokenMem = savedRep.token; repDisplayName = savedRep.displayName;
-    repAuthed = true;
+  const remembered = JSON.parse(localStorage.getItem(REP_REMEMBER_KEY)||'null');
+  if(remembered && remembered.expiresAt > Date.now() && remembered.username && remembered.token){
+    repUsername = remembered.username; repTokenMem = remembered.token; repDisplayName = remembered.displayName;
+    repPermissions = remembered.permissions || {}; repAuthed = true;
+  } else {
+    if(remembered) localStorage.removeItem(REP_REMEMBER_KEY);
+    const savedRep = JSON.parse(sessionStorage.getItem('holoul_rep_session')||'null');
+    if(savedRep && savedRep.username && savedRep.token){
+      repUsername = savedRep.username; repTokenMem = savedRep.token; repDisplayName = savedRep.displayName;
+      repPermissions = savedRep.permissions || {}; repAuthed = true;
+    }
   }
 }catch(e){}
 
@@ -3266,6 +3280,9 @@ function renderRepLogin(){
     <input type="text" id="rep_user" autocomplete="username">
     <label>كلمة المرور</label>
     <input type="password" id="rep_pass" autocomplete="current-password">
+    <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="rep_remember"> تذكرني على هذا الجهاز لمدة أسبوعين
+    </label>
     <button class="btn" id="rep_login_btn" style="margin-top:14px;width:100%">دخول</button>
     <div id="rep_login_err" class="note" style="margin-top:10px;color:#B0432C;display:none"></div>
     <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
@@ -3294,6 +3311,9 @@ function renderAdminLogin(){
     <h3>دخول لوحة التحكم</h3>
     <label>كلمة المرور</label>
     <input type="password" id="adm_pass">
+    <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="adm_remember"> تذكرني على هذا الجهاز لمدة أسبوعين
+    </label>
     <button class="btn" id="adm_login_btn" style="margin-top:14px;width:100%">دخول</button>
   </div>`;
 }
@@ -3317,11 +3337,19 @@ function wire(){
     document.getElementById('rep_login_btn').onclick = async ()=>{
       const username = document.getElementById('rep_user').value.trim();
       const password = document.getElementById('rep_pass').value;
+      const remember = document.getElementById('rep_remember').checked;
       const errBox = document.getElementById('rep_login_err');
       try{
-        const data = await callEngine('rep-login', { username, password });
+        const data = await callEngine('rep-login', { username, password, rememberMe: remember });
         repUsername = username; repTokenMem = data.token; repDisplayName = data.displayName; repAuthed = true;
-        sessionStorage.setItem('holoul_rep_session', JSON.stringify({username, token:data.token, displayName:data.displayName}));
+        repPermissions = data.permissions || {};
+        if(remember){
+          localStorage.setItem(REP_REMEMBER_KEY, JSON.stringify({username, token:data.token, displayName:data.displayName, permissions:repPermissions, expiresAt: Date.now() + 14*24*3600*1000}));
+          sessionStorage.removeItem('holoul_rep_session');
+        } else {
+          sessionStorage.setItem('holoul_rep_session', JSON.stringify({username, token:data.token, displayName:data.displayName, permissions:repPermissions}));
+          localStorage.removeItem(REP_REMEMBER_KEY);
+        }
         showRepBadge();
         refresh();
       }catch(e){
@@ -3350,8 +3378,9 @@ function wire(){
   if(currentView==='admin' && !adminAuthed){
     document.getElementById('adm_login_btn').onclick = async ()=>{
       const p=document.getElementById('adm_pass').value;
+      const remember = document.getElementById('adm_remember').checked;
       try{
-        const loginData = await callEngine('admin-login', { adminPassword: p });
+        const loginData = await callEngine('admin-login', { adminPassword: p, rememberMe: remember });
         adminTokenMem = loginData.token;
         const data = await callEngine('admin-config', { adminToken: adminTokenMem });
         adminConfig = normalizeAdminConfig(data.config); adminAuthed = true;
@@ -3359,6 +3388,11 @@ function wire(){
           const repsData = await callEngine('admin-list-reps', { adminToken: adminTokenMem });
           adminReps = repsData.reps || [];
         }catch(e){ adminReps = []; }
+        if(remember){
+          localStorage.setItem(ADMIN_REMEMBER_KEY, JSON.stringify({token: adminTokenMem, expiresAt: Date.now() + 14*24*3600*1000}));
+        } else {
+          localStorage.removeItem(ADMIN_REMEMBER_KEY);
+        }
         render();
       }catch(e){ adminTokenMem = null; alert('كلمة المرور غير صحيحة'); }
     };
@@ -3574,15 +3608,17 @@ function wire(){
     };
     document.getElementById('saveRepsBtn').onclick = async ()=>{
       const rows = {};
+      const checkboxFields = ['active','perm_pricing','perm_calcs','perm_products','perm_portfolio'];
       document.querySelectorAll('[data-repid]').forEach(inp=>{
         const id = inp.dataset.repid, f = inp.dataset.rf;
         rows[id] = rows[id] || {};
-        rows[id][f] = f==='active' ? inp.checked : inp.value;
+        rows[id][f] = checkboxFields.includes(f) ? inp.checked : inp.value;
       });
       try{
         for(const id of Object.keys(rows)){
           const r = rows[id];
-          const payload = { adminToken: adminTokenMem, id:+id, username:r.username, displayName:r.displayName, active:r.active };
+          const permissions = { pricing:!!r.perm_pricing, calcs:!!r.perm_calcs, products:!!r.perm_products, portfolio:!!r.perm_portfolio };
+          const payload = { adminToken: adminTokenMem, id:+id, username:r.username, displayName:r.displayName, active:r.active, permissions };
           if(r.password) payload.password = r.password;
           await callEngine('admin-save-rep', payload);
         }
@@ -3774,12 +3810,14 @@ function wire(){
       try{
         const data = await callEngine('change-admin-password', { adminToken: adminTokenMem, newPassword: np });
         adminTokenMem = data.token; // server rotates the session; old tokens elsewhere are now invalid
+        if(localStorage.getItem(ADMIN_REMEMBER_KEY)) localStorage.setItem(ADMIN_REMEMBER_KEY, JSON.stringify({token: adminTokenMem, expiresAt: Date.now() + 14*24*3600*1000}));
         alert('تم تحديث كلمة المرور ✔');
       }catch(e){ alert('تعذر التحديث: '+e.message); }
       render();
     };
     document.getElementById('adm_logout').onclick = ()=>{
       adminAuthed = false; adminTokenMem = null; adminConfig = null; currentView='calc';
+      localStorage.removeItem(ADMIN_REMEMBER_KEY);
       document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
       document.querySelector('[data-view="calc"]').classList.add('active');
       render();
@@ -4222,9 +4260,10 @@ function showRepBadge(){
   }
 }
 document.getElementById('repLogoutBtn').onclick = ()=>{
-  repAuthed = false; repUsername = null; repTokenMem = null; repDisplayName = null;
+  repAuthed = false; repUsername = null; repTokenMem = null; repDisplayName = null; repPermissions = {};
   guestMode = false; guestRegistered = false;
   sessionStorage.removeItem('holoul_rep_session');
+  localStorage.removeItem(REP_REMEMBER_KEY);
   state.client = ''; state.clientPhone = '';
   showRepBadge();
   render();
@@ -4274,6 +4313,31 @@ function scheduleRefreshOngrid(delay = 220){
 }
 
 refresh();
+
+// If the admin previously checked "remember me", silently restore that
+// session in the background (needs a round-trip to re-fetch adminConfig,
+// so it can't happen synchronously like the rep restore above does).
+(async function restoreRememberedAdminSession(){
+  let saved;
+  try{ saved = JSON.parse(localStorage.getItem(ADMIN_REMEMBER_KEY)||'null'); }catch(e){ saved = null; }
+  if(!saved || !saved.token || saved.expiresAt <= Date.now()){
+    if(saved) localStorage.removeItem(ADMIN_REMEMBER_KEY);
+    return;
+  }
+  try{
+    adminTokenMem = saved.token;
+    const data = await callEngine('admin-config', { adminToken: adminTokenMem });
+    adminConfig = normalizeAdminConfig(data.config); adminAuthed = true;
+    try{
+      const repsData = await callEngine('admin-list-reps', { adminToken: adminTokenMem });
+      adminReps = repsData.reps || [];
+    }catch(e){ adminReps = []; }
+    render();
+  }catch(e){
+    adminTokenMem = null; adminAuthed = false;
+    localStorage.removeItem(ADMIN_REMEMBER_KEY); // token expired/invalidated server-side — stop retrying
+  }
+})();
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
