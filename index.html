@@ -95,21 +95,31 @@ details.adv summary{cursor:pointer;font-size:13px;color:var(--night-2);font-weig
 /* results */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;margin-bottom:4px;}
 .stat{background:#fff;border:1px solid var(--line);border-inline-end:3px solid var(--teal);border-radius:10px;padding:11px 13px;}
+/* Same boxed look as regular .stat cards, but value + label sit side by
+   side on one line instead of stacked — used for "ملخص المنظومة" and
+   "المواصفات الفنية" to keep each stat compact. */
+.summary-card{padding:16px 20px;}
+.summary-card h3{margin-bottom:10px;}
+.summary-stats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:0;}
+.summary-stats .stat{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:9px 12px;}
+.summary-stats .stat .v{font-family:'Cairo',sans-serif;font-weight:800;font-size:14px;color:var(--night);order:2;}
+.summary-stats .stat .l{font-size:11px;color:var(--muted);order:1;}
 .stat .v{font-family:'Cairo';font-size:19px;font-weight:600;color:var(--night);}
 .stat .l{font-size:11.5px;color:var(--muted);margin-top:3px;}
 .stat-click{cursor:pointer;transition:.15s;}
 .stat-click:hover{border-color:var(--teal);box-shadow:0 4px 14px rgba(13,52,82,.08);transform:translateY(-2px);}
 
 table.bom{width:100%;border-collapse:collapse;font-size:13px;}
-table.bom th{text-align:right;color:var(--muted);font-weight:600;font-size:11.5px;padding:8px 8px;border-bottom:2px solid var(--night);position:sticky;top:74px;background:#fff;z-index:1;}
-table.bom td{padding:9px 8px;border-bottom:1px solid #EFEBE0;}
+table.bom th{text-align:right;color:var(--muted);font-weight:600;font-size:11.5px;padding:6px 8px;border-bottom:2px solid var(--night);position:sticky;top:74px;background:#fff;z-index:1;}
+table.bom td{padding:5px 8px;border-bottom:1px solid #EFEBE0;}
 table.bom tr.off td{opacity:.35;}
 table.bom tr:hover td{background:var(--sand);}
 table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 
-.totalbar{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,var(--night) 0%,var(--night-2) 100%);color:#fff;border-radius:12px;padding:18px 20px;margin-top:14px;flex-wrap:wrap;gap:10px;box-shadow:0 14px 32px rgba(13,52,82,.18);}
-.totalbar .big{font-family:'Cairo',sans-serif;font-weight:800;font-size:clamp(24px,3vw,34px);color:var(--sun-2);}
-.totalbar .lbl{font-size:12px;color:#BFE3D6;}
+.totalbar{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,var(--night) 0%,var(--night-2) 100%);color:#fff;border-radius:12px;padding:10px 20px;margin-top:14px;flex-wrap:wrap;gap:10px;box-shadow:0 14px 32px rgba(13,52,82,.18);}
+.totalbar .big{font-family:'Cairo',sans-serif;font-weight:800;font-size:26px;color:var(--sun-2);}
+.totalbar .lbl{font-size:13px;color:#BFE3D6;}
+.totalbar .line{display:flex;align-items:center;gap:12px;}
 
 .pay3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px;}
 .pay3 div{text-align:center;padding:4px 6px;}
@@ -496,70 +506,76 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
 @page{ size:A4; margin:9mm; }
 @media print{
   header.top,.no-print,footer.foot{display:none!important;}
-  body{background:#fff;font-size:11px!important;line-height:1.42!important;}
+  body{background:#fff;font-size:11px!important;line-height:1.36!important;font-weight:400!important;}
   main{padding:0!important;max-width:100%!important;}
-  .grid2{grid-template-columns:1fr!important;gap:8px!important;display:block!important;}
-  .card{border:1px solid #ddd!important;box-shadow:none!important;padding:7px 14px!important;margin-bottom:6px!important;border-radius:8px!important;}
+  .grid2{grid-template-columns:1fr!important;gap:7px!important;display:block!important;}
+  .card{border:1px solid #ddd!important;box-shadow:none!important;padding:8px 14px!important;margin-bottom:6px!important;border-radius:8px!important;}
   table.bom thead{display:table-header-group;}
   table.bom tr{page-break-inside:avoid;}
   .totalbar,.pay3{page-break-inside:avoid;}
-  .card h3{font-size:13px!important;margin:0 0 8px!important;}
-  .card h3::before{height:14px!important;}
+  .card h3{font-size:12.5px!important;font-weight:700!important;letter-spacing:.01em;margin:0 0 7px!important;}
+  .card h3::before{height:12.5px!important;}
   .card h3 .tag{display:none!important;}
-  .quote-banner{padding:10px 14px!important;}
-  #bannerName{font-size:14px!important;}
-  #bannerPhone{font-size:11px!important;}
-  .stats{grid-template-columns:repeat(6,1fr)!important;gap:6px!important;}
+  .quote-banner{padding:11px 15px!important;}
+  #bannerCompanyName{font-size:14.5px!important;font-weight:800!important;}
+  #bannerName{font-size:15.5px!important;font-weight:800!important;}
+  #bannerPhone{font-size:11px!important;font-weight:500!important;}
+  .stats{grid-template-columns:repeat(6,1fr)!important;gap:5px!important;}
   .stat{padding:6px 7px!important;background:#F7F8F7!important;}
-  .stat .v{font-size:13px!important;}
-  .stat .l{font-size:9px!important;}
+  .stat .v{font-size:12.5px!important;font-weight:700!important;}
+  .stat .l{font-size:8px!important;font-weight:400!important;}
   table.bom{font-size:11px!important;}
-  table.bom th{font-size:9.5px!important;padding:5px 6px!important;}
-  table.bom td{padding:6px 6px!important;}
-  .totalbar{padding:10px 16px!important;margin-top:8px!important;border-radius:10px!important;}
-  .totalbar .big{font-size:22px!important;}
-  .totalbar .lbl{font-size:11px!important;}
-  .pay3{margin-top:8px!important;gap:6px!important;}
-  .pay3 div{padding:8px!important;}
-  .pay3 .p{font-size:12px!important;}
-  .pay3 .l{font-size:9.5px!important;}
-  .note{font-size:10.5px!important;padding:8px 10px!important;}
-  .legal-note{font-size:10px!important;line-height:1.5!important;margin-top:9px!important;}
-  .support-note{font-size:10.5px!important;padding:6px 12px!important;margin-top:7px!important;}
-  .contact-note{font-size:10px!important;line-height:1.5!important;margin-top:9px!important;}
+  table.bom th{font-size:8.5px!important;font-weight:700!important;letter-spacing:.02em;padding:5px 6px!important;}
+  table.bom td{padding:5px 6px!important;font-weight:400!important;}
+  table.bom td.bom-label{font-weight:600!important;color:var(--night)!important;}
+  table.bom td.num{font-weight:600!important;}
+  .totalbar{padding:9px 16px!important;margin-top:6px!important;border-radius:9px!important;}
+  .totalbar .big{font-size:21px!important;font-weight:800!important;}
+  .totalbar .lbl{font-size:10px!important;font-weight:500!important;}
+  .pay3{margin-top:6px!important;gap:6px!important;}
+  .pay3 div{padding:7px!important;}
+  .pay3 .p{font-size:11.5px!important;font-weight:700!important;}
+  .pay3 .l{font-size:8px!important;font-weight:400!important;}
+  .note{font-size:9.5px!important;font-weight:400!important;padding:6px 9px!important;line-height:1.36!important;}
+  .legal-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
+  .support-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
+  .contact-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
 }
 /* Mirrors the @media print block above exactly (same values), so the
    PDF generated for WhatsApp sharing (downloadQuotePdf) looks identical
    to what comes out of the browser's own Print/Save-as-PDF. Applied via
    JS by adding the "pdf-compact" class to the cloned print area before
    capture — kept in sync manually with @media print above. */
-.pdf-compact{font-size:11px;line-height:1.5;}
-.pdf-compact .grid2{grid-template-columns:1fr!important;gap:8px!important;display:block!important;}
-.pdf-compact .card{border:1px solid #ddd!important;box-shadow:none!important;padding:7px 14px!important;margin-bottom:6px!important;border-radius:8px!important;}
-.pdf-compact .card h3{font-size:13px!important;margin:0 0 8px!important;}
-.pdf-compact .card h3::before{height:14px!important;}
+.pdf-compact{font-size:11px;line-height:1.36;font-weight:400;}
+.pdf-compact .grid2{grid-template-columns:1fr!important;gap:7px!important;display:block!important;}
+.pdf-compact .card{border:1px solid #ddd!important;box-shadow:none!important;padding:8px 14px!important;margin-bottom:6px!important;border-radius:8px!important;}
+.pdf-compact .card h3{font-size:12.5px!important;font-weight:700!important;letter-spacing:.01em;margin:0 0 7px!important;}
+.pdf-compact .card h3::before{height:12.5px!important;}
 .pdf-compact .card h3 .tag{display:none!important;}
-.pdf-compact .quote-banner{padding:10px 14px!important;}
-.pdf-compact #bannerName{font-size:14px!important;}
-.pdf-compact #bannerPhone{font-size:11px!important;}
-.pdf-compact .stats{grid-template-columns:repeat(6,1fr)!important;gap:6px!important;}
+.pdf-compact .quote-banner{padding:11px 15px!important;}
+.pdf-compact #bannerCompanyName{font-size:14.5px!important;font-weight:800!important;}
+.pdf-compact #bannerName{font-size:15.5px!important;font-weight:800!important;}
+.pdf-compact #bannerPhone{font-size:11px!important;font-weight:500!important;}
+.pdf-compact .stats{grid-template-columns:repeat(6,1fr)!important;gap:5px!important;}
 .pdf-compact .stat{padding:6px 7px!important;background:#F7F8F7!important;}
-.pdf-compact .stat .v{font-size:13px!important;}
-.pdf-compact .stat .l{font-size:9px!important;}
+.pdf-compact .stat .v{font-size:12.5px!important;font-weight:700!important;}
+.pdf-compact .stat .l{font-size:8px!important;font-weight:400!important;}
 .pdf-compact table.bom{font-size:11px!important;}
-.pdf-compact table.bom th{font-size:9.5px!important;padding:5px 6px!important;}
-.pdf-compact table.bom td{padding:6px 6px!important;}
-.pdf-compact .totalbar{padding:10px 16px!important;margin-top:8px!important;border-radius:10px!important;}
-.pdf-compact .totalbar .big{font-size:22px!important;}
-.pdf-compact .totalbar .lbl{font-size:11px!important;}
-.pdf-compact .pay3{margin-top:8px!important;gap:6px!important;}
-.pdf-compact .pay3 div{padding:8px!important;}
-.pdf-compact .pay3 .p{font-size:12px!important;}
-.pdf-compact .pay3 .l{font-size:9.5px!important;}
-.pdf-compact .note{font-size:10.5px!important;padding:8px 10px!important;}
-.pdf-compact .legal-note{font-size:10px!important;line-height:1.5!important;margin-top:9px!important;}
-.pdf-compact .support-note{font-size:10.5px!important;padding:6px 12px!important;margin-top:7px!important;}
-.pdf-compact .contact-note{font-size:10px!important;line-height:1.5!important;margin-top:9px!important;}
+.pdf-compact table.bom th{font-size:8.5px!important;font-weight:700!important;letter-spacing:.02em;padding:5px 6px!important;}
+.pdf-compact table.bom td{padding:5px 6px!important;font-weight:400!important;}
+.pdf-compact table.bom td.bom-label{font-weight:600!important;color:var(--night)!important;}
+.pdf-compact table.bom td.num{font-weight:600!important;}
+.pdf-compact .totalbar{padding:9px 16px!important;margin-top:6px!important;border-radius:9px!important;}
+.pdf-compact .totalbar .big{font-size:21px!important;font-weight:800!important;}
+.pdf-compact .totalbar .lbl{font-size:10px!important;font-weight:500!important;}
+.pdf-compact .pay3{margin-top:6px!important;gap:6px!important;}
+.pdf-compact .pay3 div{padding:7px!important;}
+.pdf-compact .pay3 .p{font-size:11.5px!important;font-weight:700!important;}
+.pdf-compact .pay3 .l{font-size:8px!important;font-weight:400!important;}
+.pdf-compact .note{font-size:9.5px!important;font-weight:400!important;padding:6px 9px!important;line-height:1.36!important;}
+.pdf-compact .legal-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
+.pdf-compact .support-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
+.pdf-compact .contact-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
 </style>
 </head>
 <body>
@@ -587,7 +603,7 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
   </div>
 </header>
 <main id="app"></main>
-<div class="fab-bar" role="complementary" aria-label="تواصل سريع">
+<div class="fab-bar no-print" role="complementary" aria-label="تواصل سريع">
   <button type="button" class="fab fab-quote" onclick="var b=document.querySelector('[data-view=&quot;calc&quot;]'); if(b) b.click(); window.scrollTo({top:0,behavior:'smooth'});" aria-label="احصل على عرض سعر">
     <span class="fab-icon">🧮</span><span class="fab-label">عرض سعر</span>
   </button>
@@ -1330,45 +1346,37 @@ function renderIrrigationCalc(){
     </div>
 
     <div id="quotePrintArea" class="quote-shell ${quoteLoading?'quote-loading':''}">
-      <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:center">
-        <div style="display:flex;align-items:center;gap:8px">
-          <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:38px;height:38px;object-fit:contain">
+      <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
           <div>
-            <div style="font-family:'Cairo',sans-serif;font-weight:800;font-size:13px">حلول الطاقة المتجددة والمقاولات</div>
-            <div style="font-size:9px;color:var(--muted)">سجل تجاري: 7037810988 · الرقم الضريبي: 311386341200003</div>
-            <div style="font-size:10px;color:var(--muted)">HoloulEnergy · 966561274344+</div>
+            <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">سجل تجاري: 7037810988 · الرقم الضريبي: 311386341200003</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
           </div>
         </div>
         <div>
-          <div style="font-size:11px;color:var(--muted)">عرض سعر مُقدَّم إلى</div>
-          <div id="bannerName" style="font-family:'Cairo',sans-serif;font-weight:700;font-size:14px">${state.client || '—'}</div>
-          <div id="bannerPhone" class="num" style="font-size:11px;color:var(--muted)">${state.clientPhone || '—'}</div>
+          <div style="font-size:11px;color:var(--muted);letter-spacing:.02em">عرض سعر مُقدَّم إلى</div>
+          <div id="bannerName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:18px;margin-top:1px">${state.client || '—'}</div>
+          <div id="bannerPhone" class="num" style="font-size:12.5px;color:var(--muted);margin-top:1px">${state.clientPhone || '—'}</div>
         </div>
         <div style="text-align:left">
-          <div style="font-size:11px;color:var(--muted)">تاريخ العرض</div>
-          <div class="num" style="font-size:12px">${new Date().toLocaleDateString('en-GB')}</div>
+          <div style="font-size:11px;color:var(--muted);letter-spacing:.02em">تاريخ العرض</div>
+          <div class="num" style="font-size:14px;font-weight:700;margin-top:1px">${new Date().toLocaleDateString('en-GB')}</div>
         </div>
       </div>
-      <div class="card no-print">
-        <div class="hero-summary">
-          <div>
-            <h3 style="margin-bottom:6px">ملخص المنظومة <span class="tag">${q.invBrandName||'VEICHI'} ${q.invKW} KW</span></h3>
-            <div class="stats" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px">
-              <div class="stat"><div class="v">${fmt1(q.calcKW)}</div><div class="l">KW</div></div>
-              <div class="stat"><div class="v">${q.totalPanels}</div><div class="l">لوح</div></div>
-              <div class="stat"><div class="v">${fmt(q.sarPerKW)}</div><div class="l">ريال / KW</div></div>
-            </div>
-          </div>
-          <div class="price-card">
-            <div class="lbl">الإجمالي شامل الضريبة</div>
-            <div class="big num">${fmt(q.finalTotal)} ﷼</div>
-          </div>
+      <div class="card summary-card no-print">
+        <h3 style="margin-bottom:6px">ملخص المنظومة <span class="tag">${q.invBrandName||'VEICHI'} ${q.invKW} KW</span></h3>
+        <div class="stats summary-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px">
+          <div class="stat"><div class="v">${fmt1(q.calcKW)}</div><div class="l">KW</div></div>
+          <div class="stat"><div class="v">${q.totalPanels}</div><div class="l">لوح</div></div>
+          <div class="stat"><div class="v">${fmt(q.sarPerKW)}</div><div class="l">ريال / KW</div></div>
         </div>
         ${renderSupplyInstallSplit(q)}
       </div>
-      <div class="card no-print">
+      <div class="card summary-card no-print">
         <h3>المواصفات الفنية <span class="tag">محسوبة تلقائيًا</span></h3>
-        <div class="stats">
+        <div class="stats summary-stats">
           <div class="stat"><div class="v">${fmt1(q.calcKW)}</div><div class="l">القدرة الفعلية KW</div></div>
           <div class="stat"><div class="v">${q.totalPanels}</div><div class="l">عدد الألواح</div></div>
           <div class="stat"><div class="v">${q.arrays}</div><div class="l">عدد السلاسل (Strings)</div></div>
@@ -1399,13 +1407,12 @@ function renderIrrigationCalc(){
       <div class="card">
         <h3>تفصيل عرض السعر</h3>
         <table class="bom">
-          <thead><tr><th></th><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
+          <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
           <tbody>
             ${q.items.map((it,i)=>`
               <tr class="${it.on?'':'off'}">
-                <td class="bom-thumb-cell"><div class="bom-thumb">${bomRowThumb(it)}</div></td>
                 <td>${i+1}</td>
-                <td>${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.panelIdx) : ''}</td>
+                <td class="bom-label">${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.panelIdx) : ''}</td>
                 <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
                 <td style="font-size:11.5px">${it.qty}</td>
                 <td style="font-size:11.5px">${it.warranty}</td>
@@ -1420,7 +1427,7 @@ function renderIrrigationCalc(){
           <div style="display:flex;justify-content:space-between;padding:3px 0"><span>ضريبة القيمة المضافة (${q.netAfterManual ? (q.vat/q.netAfterManual*100).toFixed(0) : 15}%)</span><span class="num" style="color:var(--ink)">${fmt(q.vat)} ﷼</span></div>
         </div>` : ''}
         <div class="totalbar" style="justify-content:center">
-          <div style="text-align:center">
+          <div class="line">
             <div class="lbl">السعر النهائي شامل الضريبة</div>
             <div class="big num">${fmt(q.finalTotal)} ﷼</div>
           </div>
@@ -1481,23 +1488,23 @@ function renderIrrigationCalc(){
 }
 
 function renderQuoteHeaderBanner(){
-  return `<div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:center">
-    <div style="display:flex;align-items:center;gap:8px">
-      <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:38px;height:38px;object-fit:contain">
+  return `<div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
       <div>
-        <div style="font-family:'Cairo',sans-serif;font-weight:800;font-size:13px">حلول الطاقة المتجددة والمقاولات</div>
-        <div style="font-size:9px;color:var(--muted)">سجل تجاري: 7037810988 · الرقم الضريبي: 311386341200003</div>
-        <div style="font-size:10px;color:var(--muted)">HoloulEnergy · 966561274344+</div>
+        <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">سجل تجاري: 7037810988 · الرقم الضريبي: 311386341200003</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
       </div>
     </div>
     <div>
-      <div style="font-size:11px;color:var(--muted)">عرض سعر مُقدَّم إلى</div>
-      <div id="bannerName" style="font-family:'Cairo',sans-serif;font-weight:700;font-size:14px">${state.client || '—'}</div>
-      <div id="bannerPhone" class="num" style="font-size:11px;color:var(--muted)">${state.clientPhone || '—'}</div>
+      <div style="font-size:11px;color:var(--muted);letter-spacing:.02em">عرض سعر مُقدَّم إلى</div>
+      <div id="bannerName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:18px;margin-top:1px">${state.client || '—'}</div>
+      <div id="bannerPhone" class="num" style="font-size:12.5px;color:var(--muted);margin-top:1px">${state.clientPhone || '—'}</div>
     </div>
     <div style="text-align:left">
-      <div style="font-size:11px;color:var(--muted)">تاريخ العرض</div>
-      <div class="num" style="font-size:12px">${new Date().toLocaleDateString('en-GB')}</div>
+      <div style="font-size:11px;color:var(--muted);letter-spacing:.02em">تاريخ العرض</div>
+      <div class="num" style="font-size:14px;font-weight:700;margin-top:1px">${new Date().toLocaleDateString('en-GB')}</div>
     </div>
   </div>`;
 }
@@ -1508,9 +1515,9 @@ function renderQuoteHeaderBanner(){
 function renderSupplyInstallSplit(q){
   if(q.supplyOnlyTotal == null || q.supplyPlusInstallTotal == null) return '';
   return `
-  <div class="stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:10px">
-    <div class="stat"><div class="v">${fmt(q.supplyOnlyTotal)} ﷼</div><div class="l">سعر التوريد فقط</div></div>
-    <div class="stat"><div class="v">${fmt(q.supplyPlusInstallTotal)} ﷼</div><div class="l">سعر التوريد والتركيب</div></div>
+  <div class="stats summary-stats" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:8px;border-top:1px solid var(--line);padding-top:8px">
+    <div class="stat"><div class="v">${fmt(q.supplyOnlyTotal)} ﷼</div><div class="l">توريد خامات فقط</div></div>
+    <div class="stat"><div class="v">${fmt(q.supplyPlusInstallTotal)} ﷼</div><div class="l">توريد وتركيب شامل الضمان</div></div>
   </div>`;
 }
 
@@ -1529,10 +1536,10 @@ function renderQuoteBomAndTotal(q, introText){
   <div class="card">
     <h3>تفصيل عرض السعر</h3>
     <table class="bom">
-      <thead><tr><th></th><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
+      <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
       <tbody>
         ${q.items.map((it,i)=>`
-          <tr><td class="bom-thumb-cell"><div class="bom-thumb">${bomRowThumb(it)}</div></td><td>${i+1}</td><td>${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.offgrid?.panelIdx ?? state.ongrid?.panelIdx) : ''}</td>
+          <tr><td>${i+1}</td><td class="bom-label">${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.offgrid?.panelIdx ?? state.ongrid?.panelIdx) : ''}</td>
             <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
             <td style="font-size:11.5px">${it.qty}</td>
             <td style="font-size:11.5px">${it.warranty}</td></tr>`).join('')}
@@ -1546,7 +1553,7 @@ function renderQuoteBomAndTotal(q, introText){
       <div style="display:flex;justify-content:space-between;padding:3px 0"><span>ضريبة القيمة المضافة</span><span class="num" style="color:var(--ink)">${fmt(q.vat)} ﷼</span></div>
     </div>` : ''}
     <div class="totalbar" style="justify-content:center">
-      <div style="text-align:center">
+      <div class="line">
         <div class="lbl">السعر النهائي شامل الضريبة</div>
         <div class="big num">${fmt(q.finalTotal)} ﷼</div>
       </div>

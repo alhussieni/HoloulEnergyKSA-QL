@@ -238,6 +238,47 @@ function computeQuote(D: any, inp: any) {
   const vat = netAfterManual * D.vat;
   const finalTotal = netAfterManual + vat;
 
+  // "سعر التوريد فقط" / "سعر التوريد والتركيب" — two reference totals shown
+  // instantly in the system summary (no separate request/reload needed to
+  // see what either offer type would cost), independent of which items the
+  // CURRENT toggle selection has on/off. Uses the same raw sell/cost basis
+  // and discount factor as the real quote, just with a different fixed set
+  // of included line items each time — mirrors the two preset buttons above
+  // ("توريد خامات فقط" / "توريد وتركيب شامل الضمان") exactly.
+  const rawItemBasis: Record<string, { sell: number; costBasis: number }> = {
+    panel: { sell: panelCost, costBasis: panelCost },
+    inverter: { sell: invList, costBasis: invCost },
+    ip65: { sell: steelPanelCost * 1.25, costBasis: steelPanelCost },
+    combiner: { sell: combinerCost * 1.3, costBasis: combinerCost },
+    cables: { sell: cablesCost * D.cableMarkup, costBasis: cablesCost },
+    mc4: { sell: mc4Cost * 1.5, costBasis: mc4Cost },
+    structure: { sell: structureCost * 1.1, costBasis: structureCost },
+    concrete: { sell: concreteCost * 1.1, costBasis: concreteCost },
+    earth: { sell: earthCost, costBasis: earthCost },
+    reactor: { sell: reactorCost, costBasis: reactorCost },
+    install_mech: { sell: mechInstallCost, costBasis: mechInstallCost },
+    install_elec: { sell: elecInstallCost, costBasis: elecInstallCost },
+    transport: { sell: transportCost, costBasis: transportCost },
+  };
+  function variantTotal(includeKeys: string[]): number {
+    let sT = 0, dT = 0;
+    for (const key of includeKeys) {
+      const basis = rawItemBasis[key];
+      if (!basis) continue;
+      const margin = basis.sell - basis.costBasis;
+      dT += key === "panel" ? 0 : margin * factor;
+      sT += basis.sell;
+    }
+    dT = Math.round(dT / 10) * 10;
+    const net = sT - dT;
+    return Math.round(net + net * D.vat);
+  }
+  const supplyOnlyTotal = variantTotal(["panel", "inverter", "combiner", "mc4", "cables"]);
+  const supplyPlusInstallTotal = variantTotal([
+    "panel", "inverter", "ip65", "combiner", "cables", "mc4",
+    "structure", "concrete", "install_mech", "install_elec", "transport",
+  ]);
+
   return {
     panelsPerString, arrays, totalPanels, calcKW, efficiencyRatio,
     Iimp, Vimp, Voc, Isc, IscCalc, expectedVAC,
@@ -245,6 +286,7 @@ function computeQuote(D: any, inp: any) {
     inverterCalcKW, invKW, reactorModel, reactorPrice, cbSize, combiner,
     items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt,
     netAfterManual, vat, finalTotal, sarPerKW: finalTotal / calcKW,
+    supplyOnlyTotal, supplyPlusInstallTotal,
   };
 }
 
