@@ -168,6 +168,32 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 }
 .admtable{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:10px;}
 
+/* ---- Admin "معلومات إضافية" financial breakdown: 3 grouped panels + donut ---- */
+.fin-groups{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;}
+@media (max-width:720px){.fin-groups{grid-template-columns:1fr;}}
+.fin-group{background:var(--sand);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;border-top:3px solid var(--line);}
+.fin-group-sell{border-top-color:var(--night);}
+.fin-group-cost{border-top-color:#0D3452;}
+.fin-group-profit{border-top-color:var(--teal);}
+.fin-group-title{font-family:'Cairo';font-weight:800;font-size:12.5px;color:var(--night);display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.fin-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:5px 0;border-bottom:1px dashed var(--line);}
+.fin-row .l{color:var(--muted);}
+.fin-row .v{font-family:'Cairo';font-weight:700;color:var(--ink);white-space:nowrap;}
+.fin-row.total{border-bottom:0;border-top:1px solid var(--line);margin-top:2px;padding-top:8px;}
+.fin-row.total .l{color:var(--night);font-weight:700;}
+.fin-row.total .v{color:var(--teal-dark);font-size:13.5px;}
+
+.fin-donut-wrap{display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-top:16px;padding:14px;background:var(--sand);border:1px solid var(--line);border-radius:var(--radius);}
+.fin-donut{width:140px;height:140px;flex:0 0 140px;}
+.donut-center-v{font-family:'Cairo';font-weight:800;font-size:15px;fill:var(--night);}
+.donut-center-l{font-size:8.5px;fill:var(--muted);}
+.fin-donut-legend{display:flex;flex-direction:column;gap:8px;flex:1;min-width:180px;}
+.fin-legend-row{display:flex;align-items:center;gap:8px;font-size:12.5px;}
+.fin-legend-row .dot{width:11px;height:11px;border-radius:50%;flex:0 0 11px;}
+.fin-legend-row .lbl{font-weight:700;color:var(--ink);}
+.fin-legend-row .pct{font-family:'Cairo';font-weight:800;color:var(--night);margin-inline-start:auto;}
+.fin-legend-row .val{color:var(--muted);font-size:11.5px;min-width:80px;text-align:left;}
+
 /* admin — secondary in-page sidebar for long sections (products, pricing...) */
 .admsub-shell{display:flex;gap:16px;align-items:flex-start;}
 .admsub-sidebar{width:180px;flex:0 0 180px;display:flex;flex-direction:column;gap:3px;position:sticky;top:150px;}
@@ -1782,11 +1808,50 @@ function renderOngridCalc(){
   </div>`;
 }
 
+// Donut chart: cost vs. profit vs. VAT as shares of the final (VAT-incl) total.
+function buildFinancialsDonut(cost, profit, vat){
+  const total = cost + profit + vat;
+  if(total <= 0) return '';
+  const r = 54, cx = 70, cy = 70, circ = 2*Math.PI*r;
+  const segs = [
+    {label:'التكلفة',  value:cost,   color:'#0D3452'},
+    {label:'الربح',    value:profit, color:'#0FA98D'},
+    {label:'الضريبة',  value:vat,    color:'#E7AC12'},
+  ];
+  let offset = 0;
+  const arcs = segs.map(s=>{
+    const frac = s.value/total;
+    const len = frac*circ;
+    const dasharray = `${len.toFixed(2)} ${(circ-len).toFixed(2)}`;
+    const dashoffset = (-offset).toFixed(2);
+    offset += len;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="22" stroke-dasharray="${dasharray}" stroke-dashoffset="${dashoffset}" transform="rotate(-90 ${cx} ${cy})"/>`;
+  }).join('');
+  return `
+  <div class="fin-donut-wrap">
+    <svg viewBox="0 0 140 140" class="fin-donut">
+      ${arcs}
+      <text x="70" y="65" text-anchor="middle" class="donut-center-v">${fmt(total)}</text>
+      <text x="70" y="82" text-anchor="middle" class="donut-center-l">﷼ الإجمالي شامل الضريبة</text>
+    </svg>
+    <div class="fin-donut-legend">
+      ${segs.map(s=>`<div class="fin-legend-row"><span class="dot" style="background:${s.color}"></span><span class="lbl">${s.label}</span><span class="pct">${(s.value/total*100).toFixed(1)}%</span><span class="val">${fmt(s.value)} ﷼</span></div>`).join('')}
+    </div>
+  </div>`;
+}
+
 function renderAdminFinancials(q){
   const onItems = q.items.filter(it=>it.on);
   const totalCost = onItems.reduce((s,it)=>s+it.costBasis,0);
   const profit = q.netAfterDiscount - totalCost;
   const profitPct = q.netAfterDiscount ? (profit/q.netAfterDiscount*100) : 0;
+  // Derive the effective VAT rate from the real server-computed VAT figure
+  // (rather than hardcoding 15%), then split it proportionally across the
+  // cost and profit portions — costVat + profitVat always equals q.vat
+  // exactly, since totalCost + profit = q.netAfterDiscount by definition.
+  const vatRate = q.netAfterDiscount ? (q.vat / q.netAfterDiscount) : 0.15;
+  const costVat = totalCost * vatRate;
+  const profitVat = profit * vatRate;
   return `
     <table class="admtable">
       <thead><tr><th>البند</th><th>سعر التكلفة</th><th>سعر البيع</th><th>الهامش</th></tr></thead>
@@ -1794,17 +1859,36 @@ function renderAdminFinancials(q){
         ${onItems.map(it=>`<tr><td>${it.label}</td><td class="num">${fmt(it.costBasis)}</td><td class="num">${fmt(it.sell)}</td><td class="num">${fmt(it.sell-it.costBasis)}</td></tr>`).join('')}
       </tbody>
     </table>
-    <div class="stats" style="margin-top:10px">
-      <div class="stat"><div class="v">${fmt(totalCost)}</div><div class="l">إجمالي التكلفة الفعلية</div></div>
-      <div class="stat"><div class="v">${fmt(q.sellTotal)}</div><div class="l">إجمالي سعر البيع (قبل الخصم)</div></div>
-      <div class="stat"><div class="v">${fmt(q.discountTotal)}</div><div class="l">إجمالي الخصم الممنوح</div></div>
-      <div class="stat"><div class="v">${fmt(q.netAfterDiscount)}</div><div class="l">الصافي بعد الخصم (بدون ضريبة)</div></div>
-      <div class="stat"><div class="v">${fmt(q.manualDiscountAmt)}</div><div class="l">الخصم الخاص (مبلغ صريح)</div></div>
-      <div class="stat"><div class="v">${fmt(q.vat)}</div><div class="l">قيمة ضريبة القيمة المضافة</div></div>
-      <div class="stat"><div class="v">${fmt(profit)}</div><div class="l">صافي الربح المتوقع</div></div>
-      <div class="stat"><div class="v">${profitPct.toFixed(1)}%</div><div class="l">نسبة هامش الربح</div></div>
+    ${(q.discountTotal || q.manualDiscountAmt) ? `
+    <div class="note" style="margin-bottom:10px">
+      إجمالي سعر البيع قبل الخصم: ${fmt(q.sellTotal)} ﷼ ·
+      الخصم الممنوح: ${fmt(q.discountTotal)} ﷼${q.manualDiscountAmt ? ` (منها خصم خاص ${fmt(q.manualDiscountAmt)} ﷼)` : ''}
+    </div>` : ''}
+
+    <div class="fin-groups">
+      <div class="fin-group fin-group-sell">
+        <div class="fin-group-title">التسعير <span class="tag">البيع</span></div>
+        <div class="fin-row"><span class="l">إجمالي سعر البيع</span><span class="v">${fmt(q.netAfterDiscount)} ﷼</span></div>
+        <div class="fin-row"><span class="l">الضريبة</span><span class="v">${fmt(q.vat)} ﷼</span></div>
+        <div class="fin-row total"><span class="l">السعر شامل الضريبة</span><span class="v">${fmt(q.finalTotal)} ﷼</span></div>
+      </div>
+      <div class="fin-group fin-group-cost">
+        <div class="fin-group-title">التكلفة <span class="tag">Cost</span></div>
+        <div class="fin-row"><span class="l">إجمالي التكلفة الفعلية</span><span class="v">${fmt(totalCost)} ﷼</span></div>
+        <div class="fin-row"><span class="l">ضريبة التكاليف</span><span class="v">${fmt(costVat)} ﷼</span></div>
+        <div class="fin-row total"><span class="l">إجمالي التكلفة شاملة الضريبة</span><span class="v">${fmt(totalCost+costVat)} ﷼</span></div>
+      </div>
+      <div class="fin-group fin-group-profit">
+        <div class="fin-group-title">الربح <span class="tag">${profitPct.toFixed(1)}%</span></div>
+        <div class="fin-row"><span class="l">صافي الربح المتوقع</span><span class="v">${fmt(profit)} ﷼</span></div>
+        <div class="fin-row"><span class="l">ضريبة الربح</span><span class="v">${fmt(profitVat)} ﷼</span></div>
+        <div class="fin-row total"><span class="l">الربح شامل الضريبة</span><span class="v">${fmt(profit+profitVat)} ﷼</span></div>
+      </div>
     </div>
-    <button class="btn ghost small" id="lockAdminInfo" type="button" style="margin-top:10px">إخفاء</button>
+
+    ${buildFinancialsDonut(totalCost, profit, q.vat)}
+
+    <button class="btn ghost small" id="lockAdminInfo" type="button" style="margin-top:14px">إخفاء</button>
   `;
 }
 
@@ -2174,6 +2258,7 @@ let readyViewMode = localStorage.getItem('holoul_ready_view') || 'cards'; // م�
 // ---- Level-2 category page: filter/sort/paginate state (screenshot-style catalog) ----
 let categorySearchQuery = '';       // text search scoped to the open category
 let productBrandFilter = new Set(); // selected brand facet values
+let productSpecFilter = new Set();  // selected secondary spec facet values
 let productSort = 'default';        // 'default' | 'price_asc' | 'price_desc' | 'name_asc'
 let productsPerPage = 12;           // 12 | 24 | 48 | Infinity
 let productsCurrentPage = 1;
@@ -2181,6 +2266,7 @@ let productsCurrentPage = 1;
 function resetCategoryFilters(){
   categorySearchQuery = '';
   productBrandFilter = new Set();
+  productSpecFilter = new Set();
   productSort = 'default';
   productsCurrentPage = 1;
 }
@@ -2192,10 +2278,11 @@ function extractProductBrand(cat, ri){
   const detail = (cat.productDetails && cat.productDetails[ri]) || {};
   if(detail.brand) return detail.brand;
   const name = (cat.rows[ri] && cat.rows[ri][0]) || '';
+  // Only ever label something as a "brand" when it's a real manufacturer name
+  // we recognize — otherwise the first word of a product name (e.g. "MCCB",
+  // "FUSE", "Holder") gets mistaken for a brand, which is wrong.
   const hit = KNOWN_PRODUCT_BRANDS.find(b => name.toUpperCase().startsWith(b.toUpperCase()));
-  if(hit) return hit;
-  const firstWord = (name.split(/[\s\-]/)[0] || '').trim();
-  return firstWord;
+  return hit || '';
 }
 
 // Builds the two facets shown in the sidebar for the open category: brand
