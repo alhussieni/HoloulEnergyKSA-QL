@@ -304,6 +304,60 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .model-card .price small{display:block;font-weight:600;font-size:9px;color:var(--muted);}
 .model-card .price-sub{font-size:10px;color:var(--muted);white-space:nowrap;margin-top:-4px;}
 .unavail-chip{background:#FBEAEA;color:var(--bad);font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;}
+
+/* ---- Screenshot-style catalog: toolbar, facet sidebar, product cards, pagination ---- */
+.catalog-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px;}
+.catalog-toolbar #productSearch{flex:1 1 200px;min-width:160px;margin:0;}
+.catalog-toolbar select{width:auto;flex:0 0 auto;margin:0;padding:10px 12px;font-size:12.5px;}
+.filter-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+.filter-chip{display:inline-flex;align-items:center;gap:6px;background:var(--sun-tint);color:#8a6a12;border:1px solid #F0DDA6;font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:20px;cursor:pointer;}
+.filter-chip .x{opacity:.7;}
+.filter-chip:hover{opacity:.85;}
+.filter-chip.clearall{background:var(--sand);color:var(--muted);border-color:var(--line);}
+
+.facet-panel{margin-top:16px;padding-top:14px;border-top:1px solid var(--line);}
+.facet-panel-title{font-family:'Cairo';font-weight:800;font-size:13px;color:var(--night);margin-bottom:8px;}
+.facet-group{margin-bottom:12px;}
+.facet-group-title{font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:6px;}
+.facet-check{display:flex;align-items:center;gap:7px;padding:5px 2px;font-size:12.5px;color:var(--ink);cursor:pointer;}
+.facet-check input{margin:0;accent-color:var(--teal);flex:0 0 auto;}
+.facet-check .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.facet-check .cnt{color:var(--muted);font-size:10.5px;flex:0 0 auto;}
+
+.pcard2-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:var(--sp-3);margin-top:var(--sp-3);}
+.pcard2-grid.view-list{grid-template-columns:1fr;}
+.pcard2{position:relative;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;transition:.15s;}
+.pcard2:hover{border-color:var(--teal);box-shadow:0 8px 22px rgba(13,52,82,.1);transform:translateY(-2px);}
+.pcard2.unavailable-row{opacity:.6;}
+.pcard2-badge{position:absolute;top:10px;inset-inline-start:10px;z-index:2;font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:20px;}
+.pcard2-badge.unavail{background:#FBEAEA;color:var(--bad);}
+.pcard2-badge.avail{background:var(--teal-tint);color:var(--teal-dark);}
+.pcard2-photo{aspect-ratio:1.3/1;background:var(--sand);display:flex;align-items:center;justify-content:center;}
+.pcard2-photo img{width:100%;height:100%;object-fit:contain;}
+.pcard2-photo .noimg{font-size:38px;opacity:.5;}
+.pcard2-body{padding:12px 14px 4px;flex:1;}
+.pcard2-brand{font-size:10.5px;font-weight:800;color:var(--teal-dark);text-transform:uppercase;letter-spacing:.03em;}
+.pcard2-name{font-family:'Cairo';font-weight:700;font-size:13.5px;color:var(--night);margin:2px 0 8px;}
+.pcard2-specs{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;}
+.pcard2-spec{font-size:11px;color:var(--muted);}
+.pcard2-spec .k{color:var(--ink);font-weight:600;}
+.pcard2-price{font-family:'Cairo';font-weight:800;font-size:14.5px;color:var(--teal-dark);margin-bottom:10px;}
+.pcard2-price small{font-weight:600;font-size:9.5px;color:var(--muted);margin-inline-start:4px;}
+.pcard2-actions{display:flex;gap:6px;padding:0 14px 14px;}
+.pcard2-actions .btn{flex:1;padding:9px 8px;font-size:12px;justify-content:center;}
+.pcard2-quote{background:linear-gradient(135deg,var(--sun-2),var(--sun));color:var(--night);}
+.pcard2-grid.view-list .pcard2{flex-direction:row;align-items:center;}
+.pcard2-grid.view-list .pcard2-photo{width:90px;flex:0 0 90px;aspect-ratio:1/1;}
+.pcard2-grid.view-list .pcard2-body{padding:10px 14px;}
+.pcard2-grid.view-list .pcard2-specs{flex-direction:row;flex-wrap:wrap;gap:10px;}
+.pcard2-grid.view-list .pcard2-actions{flex-direction:column;padding:10px 14px;flex:0 0 150px;}
+@media (max-width:640px){.pcard2-grid.view-list .pcard2{flex-direction:column;}.pcard2-grid.view-list .pcard2-actions{flex-direction:row;flex:0 0 auto;}}
+
+.pagination{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:var(--sp-3);}
+.pg-btn{background:#fff;border:1px solid var(--line);color:var(--ink);font-family:'Cairo';font-weight:700;font-size:12.5px;min-width:34px;padding:8px;border-radius:9px;cursor:pointer;}
+.pg-btn.active{background:var(--night);border-color:var(--night);color:#fff;}
+.pg-btn:disabled{opacity:.4;cursor:default;}
+.pg-btn:not(.active):not(:disabled):hover{border-color:var(--teal);}
 .chip{background:var(--panel-2,#F0F4F8);color:var(--ink);padding:3px 9px;border-radius:20px;white-space:nowrap;border:1px solid var(--line);}
 .chip-muted{opacity:.6;}
 
@@ -2117,6 +2171,96 @@ let productViewMode = localStorage.getItem('holoul_product_view') || 'cards'; //
 let categoriesViewMode = localStorage.getItem('holoul_categories_view') || 'cards'; // products landing page (level 1)
 let readyViewMode = localStorage.getItem('holoul_ready_view') || 'cards'; // منظومات جاهزة
 
+// ---- Level-2 category page: filter/sort/paginate state (screenshot-style catalog) ----
+let categorySearchQuery = '';       // text search scoped to the open category
+let productBrandFilter = new Set(); // selected brand facet values
+let productSort = 'default';        // 'default' | 'price_asc' | 'price_desc' | 'name_asc'
+let productsPerPage = 12;           // 12 | 24 | 48 | Infinity
+let productsCurrentPage = 1;
+
+function resetCategoryFilters(){
+  categorySearchQuery = '';
+  productBrandFilter = new Set();
+  productSort = 'default';
+  productsCurrentPage = 1;
+}
+
+// Known multi-word brand names checked before falling back to "first word",
+// so e.g. "JA Solar 625W" groups under "JA Solar" not just "JA".
+const KNOWN_PRODUCT_BRANDS = ['JA Solar','Canadian Solar','Jinko Solar','JinkoSolar','Astronergy','LONGi','AIKO','Jinko','Risen','Trina Solar','Trina','VEICHI','Huawei','Growatt','Deye','Solis','Sungrow','GoodWe'];
+function extractProductBrand(cat, ri){
+  const detail = (cat.productDetails && cat.productDetails[ri]) || {};
+  if(detail.brand) return detail.brand;
+  const name = (cat.rows[ri] && cat.rows[ri][0]) || '';
+  const hit = KNOWN_PRODUCT_BRANDS.find(b => name.toUpperCase().startsWith(b.toUpperCase()));
+  if(hit) return hit;
+  const firstWord = (name.split(/[\s\-]/)[0] || '').trim();
+  return firstWord;
+}
+
+// Builds the two facets shown in the sidebar for the open category: brand
+// (derived above) and a secondary spec facet based on the category's own
+// first spec column (e.g. wattage for panels, current rating for batteries).
+function computeCategoryFacets(cat){
+  const brandCounts = {};
+  const specCounts = {};
+  const specLabel = cat.columns[1] || 'المواصفة';
+  cat.rows.forEach((row, ri)=>{
+    const b = extractProductBrand(cat, ri);
+    if(b) brandCounts[b] = (brandCounts[b]||0) + 1;
+    const v = row[1];
+    if(v!=null && v!=='') specCounts[v] = (specCounts[v]||0) + 1;
+  });
+  return { brandCounts, specLabel, specCounts };
+}
+
+function getFilteredCategoryRowIdxs(cat){
+  const q = categorySearchQuery.trim().toLowerCase();
+  let idxs = cat.rows.map((_,ri)=>ri).filter(ri=>{
+    if(hideUnavailableProducts && !isProductAvailable(cat, ri)) return false;
+    if(productBrandFilter.size && !productBrandFilter.has(extractProductBrand(cat, ri))) return false;
+    if(productSpecFilter.size && !productSpecFilter.has(String(cat.rows[ri][1]))) return false;
+    if(q && !cat.rows[ri].join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const nCols = cat.columns.length;
+  const priceOf = ri => parseFloat(cat.rows[ri][nCols-2]) || 0;
+  if(productSort==='price_asc') idxs = idxs.sort((a,b)=>priceOf(a)-priceOf(b));
+  else if(productSort==='price_desc') idxs = idxs.sort((a,b)=>priceOf(b)-priceOf(a));
+  else if(productSort==='name_asc') idxs = idxs.sort((a,b)=>String(cat.rows[a][0]).localeCompare(String(cat.rows[b][0]),'ar'));
+  return idxs;
+}
+
+// One product card in the screenshot-style grid.
+function renderProductCardV2(cat, catIdx, ri){
+  const row = cat.rows[ri];
+  const detail = (cat.productDetails && cat.productDetails[ri]) || {};
+  const available = isProductAvailable(cat, ri);
+  const thumb = detail.image || cat.categoryImage || '';
+  const brand = extractProductBrand(cat, ri);
+  const nCols = cat.columns.length;
+  const priceVal = nCols>=2 ? row[nCols-2] : row[nCols-1];
+  const specEntries = Object.entries(detail.specs||{}).slice(0,4);
+  const fallbackSpecs = cat.columns.slice(1, Math.max(1,nCols-2)).map((c,i)=>[c, row[1+i]]);
+  const chips = (specEntries.length ? specEntries : fallbackSpecs).slice(0,4);
+  return `<div class="pcard2${available?'':' unavailable-row'}" data-search="${row.join(' ').toLowerCase()}">
+    ${!available ? `<span class="pcard2-badge unavail">غير متاح</span>` : ''}
+    <div class="pcard2-photo">${thumb ? `<img src="${thumb}" alt="${row[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}</div>
+    <div class="pcard2-body">
+      ${brand ? `<div class="pcard2-brand">${brand}</div>` : ''}
+      <div class="pcard2-name">${row[0]}</div>
+      <div class="pcard2-specs">
+        ${chips.map(([k,v])=>`<div class="pcard2-spec"><span class="k">${k}:</span> <span class="v">${v}</span></div>`).join('')}
+      </div>
+      <div class="pcard2-price">${priceVal} ﷼ <small>بدون ضريبة</small></div>
+    </div>
+    <div class="pcard2-actions">
+      <button class="btn ghost small" data-viewproduct="${catIdx}:${ri}">التفاصيل</button>
+      <button class="btn small pcard2-quote" data-requestquote="${catIdx}:${ri}">🗨️ طلب عرض سعر</button>
+    </div>
+  </div>`;
+}
+
 function isProductAvailable(cat, ri){
   const detail = (cat.productDetails && cat.productDetails[ri]) || {};
   return detail.available !== false;
@@ -2160,7 +2304,7 @@ function buildCatalogWithPanels(realCatalog){
     categoryImage: panels.find(p=>p.image)?.image || '',
     categoryInfo: '',
     productDetails: Object.fromEntries(panels.map((p,i) => [i, {
-      image: p.image, description: p.description, specs: p.specs, datasheetUrl: p.datasheetUrl,
+      image: p.image, description: p.description, specs: p.specs, datasheetUrl: p.datasheetUrl, brand: p.brand,
     }])),
   };
   return [panelsCat, ...realCatalog];
@@ -2280,11 +2424,55 @@ function renderProducts(){
     }
   }
 
-  // ---- Level 2: model list within one category ----
+  // ---- Level 2: filterable product grid within one category (screenshot-style) ----
+  let categoryFacetsHtml = '';
   if(productsNav==='category' && selectedCategoryIdx!=null){
     const cat = catalog[selectedCategoryIdx];
     if(!cat){ productsNav='categories'; }
     else {
+      const facets = computeCategoryFacets(cat);
+      const allIdxs = getFilteredCategoryRowIdxs(cat);
+      const total = allIdxs.length;
+      const perPage = productsPerPage===Infinity ? total || 1 : productsPerPage;
+      const totalPages = Math.max(1, Math.ceil(total / perPage));
+      if(productsCurrentPage > totalPages) productsCurrentPage = totalPages;
+      const start = (productsCurrentPage-1) * perPage;
+      const pageIdxs = allIdxs.slice(start, start + perPage);
+
+      const activeChips = [];
+      if(categorySearchQuery) activeChips.push({label:`"${categorySearchQuery}"`, kind:'search'});
+      productBrandFilter.forEach(b=>activeChips.push({label:b, kind:'brand', value:b}));
+      productSpecFilter.forEach(v=>activeChips.push({label:v, kind:'spec', value:v}));
+
+      // Facet panel rendered inside the persistent sidebar (below the category nav).
+      categoryFacetsHtml = `
+      <div class="facet-panel">
+        <div class="facet-panel-title">تصفية المنتجات</div>
+        ${Object.keys(facets.brandCounts).length>1 ? `
+        <div class="facet-group">
+          <div class="facet-group-title">العلامة التجارية</div>
+          ${Object.entries(facets.brandCounts).sort((a,b)=>b[1]-a[1]).map(([b,n])=>`
+            <label class="facet-check">
+              <input type="checkbox" data-brandfacet="${b}" ${productBrandFilter.has(b)?'checked':''}>
+              <span class="lbl">${b}</span><span class="cnt">(${n})</span>
+            </label>`).join('')}
+        </div>` : ''}
+        ${(Object.keys(facets.specCounts).length>1 && !/وصف/.test(facets.specLabel)) ? `
+        <div class="facet-group">
+          <div class="facet-group-title">${facets.specLabel}</div>
+          ${Object.entries(facets.specCounts).map(([v,n])=>`
+            <label class="facet-check">
+              <input type="checkbox" data-specfacet="${v}" ${productSpecFilter.has(v)?'checked':''}>
+              <span class="lbl">${v}</span><span class="cnt">(${n})</span>
+            </label>`).join('')}
+        </div>` : ''}
+        <label class="facet-check">
+          <input type="checkbox" id="hideUnavailableToggle" ${hideUnavailableProducts?'checked':''}>
+          <span class="lbl">إخفاء غير المتاح</span>
+        </label>
+        ${(productBrandFilter.size||productSpecFilter.size||categorySearchQuery||hideUnavailableProducts) ? `<button class="btn ghost small full" id="clearCategoryFiltersBtn" style="margin-top:8px">🔄 مسح كل الفلاتر</button>` : ''}
+      </div>`;
+
       innerHtml = `
       <div class="card no-print">
         <div class="crumbs" style="margin-bottom:var(--sp-2)">
@@ -2292,52 +2480,43 @@ function renderProducts(){
           <span class="sep">/</span>
           <span class="current">${cat.category}</span>
         </div>
-        <input type="text" id="productSearch" placeholder="ابحث في ${cat.category}...">
-        <div class="note" style="color:var(--bad);font-weight:600">⚠️ الأسعار بدون ضريبة القيمة المضافة (15%)</div>
-        <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="hideUnavailableToggle" ${hideUnavailableProducts?'checked':''}> إخفاء غير المتاح
-        </label>
-        <div class="viewmode-toggle" role="group" aria-label="طريقة العرض">
-          <button class="${productViewMode==='cards'?'active':''}" data-viewmode="cards">▦ كروت</button>
-          <button class="${productViewMode==='list'?'active':''}" data-viewmode="list">☰ ليستة</button>
+        <div class="note" style="color:var(--bad);font-weight:600;margin-bottom:10px">⚠️ الأسعار بدون ضريبة القيمة المضافة (15%)</div>
+        <div class="catalog-toolbar">
+          <input type="text" id="productSearch" placeholder="ابحث عن منتج..." value="${categorySearchQuery}">
+          <select id="productSortSelect">
+            <option value="default" ${productSort==='default'?'selected':''}>ترتيب حسب: الأكثر مبيعًا</option>
+            <option value="price_asc" ${productSort==='price_asc'?'selected':''}>الأقل سعرًا</option>
+            <option value="price_desc" ${productSort==='price_desc'?'selected':''}>الأعلى سعرًا</option>
+            <option value="name_asc" ${productSort==='name_asc'?'selected':''}>الاسم (أ-ي)</option>
+          </select>
+          <select id="productsPerPageSelect">
+            <option value="12" ${productsPerPage===12?'selected':''}>عرض 12</option>
+            <option value="24" ${productsPerPage===24?'selected':''}>عرض 24</option>
+            <option value="48" ${productsPerPage===48?'selected':''}>عرض 48</option>
+            <option value="all" ${productsPerPage===Infinity?'selected':''}>عرض الكل</option>
+          </select>
+          <div class="viewmode-toggle" role="group" aria-label="طريقة العرض" style="margin-top:0">
+            <button class="${productViewMode==='cards'?'active':''}" data-viewmode="cards">▦ كروت</button>
+            <button class="${productViewMode==='list'?'active':''}" data-viewmode="list">☰ ليستة</button>
+          </div>
         </div>
+        ${activeChips.length ? `
+        <div class="filter-chips">
+          ${activeChips.map(c=>`<span class="filter-chip" data-clearchip="${c.kind}" data-chipvalue="${c.value||''}">${c.label} <span class="x">✕</span></span>`).join('')}
+          <button class="filter-chip clearall" id="clearCategoryFiltersBtn2">مسح الكل 🗑</button>
+        </div>` : ''}
+        <div class="note" style="margin-top:8px">عرض ${total ? (start+1) : 0}–${Math.min(start+perPage,total)} من ${total} منتج</div>
       </div>
-      <div class="category-hero product-category" data-cat="${selectedCategoryIdx}">
-        <div class="photo">${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}">` : `<div class="noimg">📦</div>`}</div>
-        <div class="info">
-          <h2>${cat.category}</h2>
-          <span class="modelcount">${cat.rows.length} موديل</span>
-          ${cat.categoryInfo ? `<p class="note">${cat.categoryInfo}</p>` : ''}
-        </div>
-        <div class="model-list view-${productViewMode}" style="grid-column:1/-1;padding:0 var(--sp-3) var(--sp-3)">
-          ${cat.rows.map((row,ri)=>{
-            const available = isProductAvailable(cat, ri);
-            if(hideUnavailableProducts && !available) return '';
-            const detail = (cat.productDetails && cat.productDetails[ri]) || {};
-            const thumb = detail.image || '';
-            const nCols = cat.columns.length;
-            // convention (matches the rest of the app): the LAST TWO columns are
-            // the sell price (excl. VAT) and the tax-inclusive price; everything
-            // between the name (col 0) and those two is a spec, shown as a chip.
-            // Customers/reps only ever see the excl-VAT price here, with a
-            // disclaimer on the category page — VAT-inclusive is admin-only.
-            const midCols = cat.columns.slice(1, Math.max(1, nCols-2));
-            const midVals = row.slice(1, Math.max(1, nCols-2));
-            const priceVal = nCols>=2 ? row[nCols-2] : row[nCols-1];
-            return `<div class="model-card product-row${available?'':' unavailable-row'}" data-search="${row.join(' ').toLowerCase()}">
-              ${thumb ? `<img class="thumb" src="${thumb}" alt="${row[0]}">` : `<div class="thumb-noimg">📦</div>`}
-              <div class="body">
-                <div class="name">${row[0]}${!available?' <span class="unavail-chip">غير متاح</span>':''}</div>
-                <div class="specs">${midCols.map((c,i)=>`<span>${c}: ${midVals[i]}</span>`).join('')}</div>
-              </div>
-              <div class="side">
-                <div class="price">${priceVal} ﷼<small>بدون ضريبة</small></div>
-                <button class="btn ghost small" data-viewproduct="${selectedCategoryIdx}:${ri}">التفاصيل</button>
-              </div>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>`;
+      <div class="pcard2-grid view-${productViewMode}">
+        ${pageIdxs.map(ri=>renderProductCardV2(cat, selectedCategoryIdx, ri)).join('')}
+        ${!pageIdxs.length ? `<div class="card" style="grid-column:1/-1"><div class="note" style="text-align:center;padding:20px">لا توجد منتجات مطابقة لهذه الفلاتر.</div></div>` : ''}
+      </div>
+      ${totalPages>1 ? `
+      <div class="pagination">
+        <button class="pg-btn" id="pgPrevBtn" ${productsCurrentPage<=1?'disabled':''}>‹</button>
+        ${Array.from({length:totalPages},(_,i)=>i+1).map(p=>`<button class="pg-btn ${p===productsCurrentPage?'active':''}" data-pgpage="${p}">${p}</button>`).join('')}
+        <button class="pg-btn" id="pgNextBtn" ${productsCurrentPage>=totalPages?'disabled':''}>›</button>
+      </div>` : ''}`;
     }
   }
 
@@ -2429,6 +2608,7 @@ function renderProducts(){
         <span class="ic">🧰</span><span class="lbl">منظومات جاهزة</span>
       </button>
     </nav>
+    ${categoryFacetsHtml}
   </aside>`;
 
   return `<div class="catalog-shell">${sidebarHtml}<div class="catalog-main">${innerHtml}</div></div>`;
@@ -2519,6 +2699,11 @@ function renderReadySystems(){
   const systems = (cachedReadySystems || []).filter(s=>s.status !== 'اخفاء من العروض');
   return `
   <div class="card no-print">
+    <div class="crumbs" style="margin-bottom:var(--sp-2)">
+      <button id="backToProductsFromReadyBtn">قائمة المنتجات</button>
+      <span class="sep">/</span>
+      <span class="current">منظومات أوف-جريد جاهزة</span>
+    </div>
     <h3>منظومات أوف-جريد جاهزة</h3>
     <div class="note">اضغط على أي منظومة لمعرفة تفاصيل ومواصفات المكونات المستخدمة فيها.</div>
     <div class="viewmode-toggle" role="group" aria-label="طريقة العرض">
@@ -2526,22 +2711,24 @@ function renderReadySystems(){
       <button class="${readyViewMode==='list'?'active':''}" data-readyviewmode="list">☰ ليستة</button>
     </div>
   </div>
-  <div class="ready-grid view-${readyViewMode}">
+  <div class="pcard2-grid view-${readyViewMode}">
     ${systems.map(s=>`
-      <div class="ready-card" onclick="openReadySystemDetail(${s.id})">
-        <div class="visual">
-          ${s.image ? `<img src="${s.image}" alt="${s.name}">` : `<div class="noimg">🗂️</div>`}
-          <span class="${s.status==='متوفر'?'tag':'unavail-chip'} status-chip">${s.status}</span>
-        </div>
-        <div class="body">
-          <h3 class="name">${s.name}</h3>
-          <div class="price">${fmt(s.priceSar)} ﷼</div>
-          <div class="specs">
-            ${readySystemCoolingLine(s)}
-            ${s.fridgeCount ? `<span class="chip">🧊 ثلاجة ${s.fridgeHours}س</span>` : `<span class="chip chip-muted">🧊 بدون ثلاجة</span>`}
-            ${s.lampCount ? `<span class="chip">💡 ${s.lampCount}× ${s.lampPowerW}W — ${s.lampHours}س</span>` : ''}
-            ${s.otherDevices ? `<span class="chip">${s.otherDevices}</span>` : ''}
+      <div class="pcard2">
+        <span class="pcard2-badge ${s.status==='متوفر'?'avail':'unavail'}">${s.status}</span>
+        <div class="pcard2-photo">${s.image ? `<img src="${s.image}" alt="${s.name}">` : `<div class="noimg">🗂️</div>`}</div>
+        <div class="pcard2-body">
+          <div class="pcard2-name">${s.name}</div>
+          <div class="pcard2-specs">
+            <div class="pcard2-spec">${readySystemCoolingLine(s)}</div>
+            <div class="pcard2-spec">${s.fridgeCount ? `🧊 ثلاجة ${s.fridgeHours}س` : '🧊 بدون ثلاجة'}</div>
+            ${s.lampCount ? `<div class="pcard2-spec">💡 ${s.lampCount}× ${s.lampPowerW}W — ${s.lampHours}س</div>` : ''}
+            ${s.otherDevices ? `<div class="pcard2-spec">${s.otherDevices}</div>` : ''}
           </div>
+          <div class="pcard2-price">${fmt(s.priceSar)} ﷼</div>
+        </div>
+        <div class="pcard2-actions">
+          <button class="btn ghost small" data-readydetail="${s.id}">التفاصيل</button>
+          <button class="btn small pcard2-quote" data-readyquote="${s.id}">🗨️ طلب عرض سعر</button>
         </div>
       </div>`).join('')}
   </div>
@@ -3413,6 +3600,18 @@ function wire(){
       try{ localStorage.setItem('holoul_ready_view', readyViewMode); }catch(e){}
       render();
     });
+    const backToProductsBtn = document.getElementById('backToProductsFromReadyBtn');
+    if(backToProductsBtn) backToProductsBtn.onclick = ()=>{ window.goToView('products'); };
+    document.querySelectorAll('[data-readydetail]').forEach(b=>b.onclick=()=>{
+      openReadySystemDetail(+b.dataset.readydetail);
+    });
+    document.querySelectorAll('[data-readyquote]').forEach(b=>b.onclick=()=>{
+      const id = +b.dataset.readyquote;
+      const s = (cachedReadySystems||[]).find(x=>x.id===id);
+      if(!s) return;
+      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنظومة التالية:\n${s.name} — ${fmt(s.priceSar)} ﷼\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
+      window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
+    });
     return;
   }
   if(currentView==='products'){
@@ -3421,12 +3620,13 @@ function wire(){
     document.querySelectorAll('[data-opencat]').forEach(el=>el.onclick=()=>{
       selectedCategoryIdx = +el.dataset.opencat;
       productsNav = 'category';
+      resetCategoryFilters();
       render();
     });
     const sidebarAllCatsBtn = document.getElementById('sidebarAllCatsBtn');
-    if(sidebarAllCatsBtn) sidebarAllCatsBtn.onclick = ()=>{ productsNav='categories'; selectedCategoryIdx=null; selectedProduct=null; render(); };
+    if(sidebarAllCatsBtn) sidebarAllCatsBtn.onclick = ()=>{ productsNav='categories'; selectedCategoryIdx=null; selectedProduct=null; resetCategoryFilters(); render(); };
     const backCatsBtn = document.getElementById('backToCategoriesBtn');
-    if(backCatsBtn) backCatsBtn.onclick = ()=>{ productsNav='categories'; selectedCategoryIdx=null; render(); };
+    if(backCatsBtn) backCatsBtn.onclick = ()=>{ productsNav='categories'; selectedCategoryIdx=null; resetCategoryFilters(); render(); };
     document.querySelectorAll('[data-viewmode]').forEach(b=>b.onclick=()=>{
       productViewMode = b.dataset.viewmode;
       try{ localStorage.setItem('holoul_product_view', productViewMode); }catch(e){}
@@ -3460,15 +3660,65 @@ function wire(){
       window.scrollTo({top:0, behavior:'smooth'});
     });
     const searchInput = document.getElementById('productSearch');
-    if(searchInput) searchInput.oninput = e=>{
-      const q = e.target.value.trim().toLowerCase();
-      document.querySelectorAll('.product-category').forEach(catEl=>{
-        catEl.querySelectorAll('.product-row').forEach(rowEl=>{
-          const match = !q || rowEl.dataset.search.includes(q);
-          rowEl.style.display = match ? '' : 'none';
-        });
-      });
+    if(searchInput){
+      searchInput.oninput = e=>{
+        categorySearchQuery = e.target.value;
+        productsCurrentPage = 1;
+        render();
+      };
+      searchInput.focus();
+      const slen = searchInput.value.length;
+      searchInput.setSelectionRange(slen, slen);
+    }
+    const sortSelect = document.getElementById('productSortSelect');
+    if(sortSelect) sortSelect.onchange = e=>{ productSort = e.target.value; productsCurrentPage = 1; render(); };
+    const perPageSelect = document.getElementById('productsPerPageSelect');
+    if(perPageSelect) perPageSelect.onchange = e=>{
+      productsPerPage = e.target.value==='all' ? Infinity : +e.target.value;
+      productsCurrentPage = 1;
+      render();
     };
+    document.querySelectorAll('[data-brandfacet]').forEach(cb=>cb.onchange=e=>{
+      const v = cb.dataset.brandfacet;
+      if(e.target.checked) productBrandFilter.add(v); else productBrandFilter.delete(v);
+      productsCurrentPage = 1;
+      render();
+    });
+    document.querySelectorAll('[data-specfacet]').forEach(cb=>cb.onchange=e=>{
+      const v = cb.dataset.specfacet;
+      if(e.target.checked) productSpecFilter.add(v); else productSpecFilter.delete(v);
+      productsCurrentPage = 1;
+      render();
+    });
+    document.querySelectorAll('[data-clearchip]').forEach(chip=>chip.onclick=()=>{
+      const kind = chip.dataset.clearchip, val = chip.dataset.chipvalue;
+      if(kind==='search') categorySearchQuery = '';
+      else if(kind==='brand') productBrandFilter.delete(val);
+      else if(kind==='spec') productSpecFilter.delete(val);
+      productsCurrentPage = 1;
+      render();
+    });
+    ['clearCategoryFiltersBtn','clearCategoryFiltersBtn2'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.onclick = ()=>{ resetCategoryFilters(); hideUnavailableProducts=false; render(); };
+    });
+    document.querySelectorAll('[data-pgpage]').forEach(b=>b.onclick=()=>{
+      productsCurrentPage = +b.dataset.pgpage;
+      render();
+      window.scrollTo({top:0, behavior:'smooth'});
+    });
+    const pgPrevBtn = document.getElementById('pgPrevBtn');
+    if(pgPrevBtn) pgPrevBtn.onclick = ()=>{ productsCurrentPage = Math.max(1, productsCurrentPage-1); render(); window.scrollTo({top:0, behavior:'smooth'}); };
+    const pgNextBtn = document.getElementById('pgNextBtn');
+    if(pgNextBtn) pgNextBtn.onclick = ()=>{ productsCurrentPage = productsCurrentPage+1; render(); window.scrollTo({top:0, behavior:'smooth'}); };
+    document.querySelectorAll('[data-requestquote]').forEach(b=>b.onclick=()=>{
+      const [ci,ri] = b.dataset.requestquote.split(':').map(Number);
+      const cat = buildCatalogWithPanels(cachedProductCatalog || [])[ci];
+      const row = cat && cat.rows[ri];
+      if(!row) return;
+      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنتج التالي:\n${row[0]} (${cat.category})\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
+      window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
+    });
     const globalSearchInput = document.getElementById('productGlobalSearch');
     if(globalSearchInput){
       globalSearchInput.oninput = e=>{ productsGlobalSearch = e.target.value; render(); };
