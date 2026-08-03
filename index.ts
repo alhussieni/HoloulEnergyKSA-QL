@@ -233,7 +233,7 @@ function computeQuote(D: any, inp: any) {
   }
   discountTotal = Math.round(discountTotal / 10) * 10;
   const netAfterDiscount = sellTotal - discountTotal;
-  const manualDiscountAmt = Math.min(netAfterDiscount, Math.max(0, inp.specialDiscountAmt || 0));
+  const manualDiscountAmt = Math.min(netAfterDiscount, inp.specialDiscountAmt || 0);
   const netAfterManual = netAfterDiscount - manualDiscountAmt;
   const vat = netAfterManual * D.vat;
   const finalTotal = netAfterManual + vat;
@@ -426,7 +426,7 @@ function finalizeQuote(items: any[], discountFactor: number, D: any, manualDisco
   }
   discountTotal = Math.round(discountTotal / 10) * 10;
   const netAfterDiscount = sellTotal - discountTotal;
-  const manualDiscount = Math.min(netAfterDiscount, Math.max(0, manualDiscountAmt || 0));
+  const manualDiscount = Math.min(netAfterDiscount, manualDiscountAmt || 0);
   const netAfterManual = netAfterDiscount - manualDiscount;
   const vat = netAfterManual * D.vat;
   const finalTotal = netAfterManual + vat;

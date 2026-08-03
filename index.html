@@ -1398,9 +1398,9 @@ function renderIrrigationCalc(){
           </select>` : '<button class="btn ghost small" id="unlockDiscount" type="button" style="margin-top:6px">فك القفل</button>'}
 
           ${discountUnlocked ? `
-          <label>خصم خاص <span style="color:var(--muted);font-weight:400">(مبلغ صريح بالريال، يُخصم من إجمالي الفاتورة قبل الضريبة)</span></label>
+          <label>خصم خاص <span style="color:var(--muted);font-weight:400">(مبلغ صريح بالريال، يُخصم من إجمالي الفاتورة قبل الضريبة — استخدم رقمًا سالبًا مثل ‎-1000 لزيادة السعر بدلاً من خصمه)</span></label>
           <div style="display:flex;gap:8px">
-            <input type="number" id="in_specialdiscount" value="${state.specialDiscountAmt}" min="0" step="50" style="flex:1">
+            <input type="number" id="in_specialdiscount" value="${state.specialDiscountAmt}" step="50" style="flex:1">
             <button class="btn small" id="specialdiscount_confirm" type="button">تأكيد</button>
           </div>` : ''}
         </details>
@@ -1499,10 +1499,10 @@ function renderIrrigationCalc(){
               </tr>`).join('')}
           </tbody>
         </table>
-        ${((state.discountOverrideIdx !== null) || (q.manualDiscountAmt > 0)) ? `
+        ${((state.discountOverrideIdx !== null) || (q.manualDiscountAmt !== 0)) ? `
         <div class="note" style="margin-top:10px">
           <div style="display:flex;justify-content:space-between;padding:3px 0"><span>السعر الأساسي</span><span class="num" style="color:var(--ink)">${fmt(q.sellTotal)} ﷼</span></div>
-          <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--bad)"><span>الخصم</span><span class="num">- ${fmt(q.discountTotal + q.manualDiscountAmt)} ﷼</span></div>
+          ${renderPriceAdjustLine(q.discountTotal + q.manualDiscountAmt)}
           <div style="display:flex;justify-content:space-between;padding:3px 0;font-weight:600"><span>الصافي بعد الخصم (قبل الضريبة)</span><span class="num" style="color:var(--ink)">${fmt(q.netAfterManual)} ﷼</span></div>
           <div style="display:flex;justify-content:space-between;padding:3px 0"><span>ضريبة القيمة المضافة (${q.netAfterManual ? (q.vat/q.netAfterManual*100).toFixed(0) : 15}%)</span><span class="num" style="color:var(--ink)">${fmt(q.vat)} ﷼</span></div>
         </div>` : ''}
@@ -1567,6 +1567,15 @@ function renderIrrigationCalc(){
   ${renderStickyTotalBar(q.finalTotal)}`;
 }
 
+// One combined "discount" line shown between the base price and the net
+// price. A negative combined amount means the special-discount field was
+// used to RAISE the price rather than lower it, so we flip the label/sign
+// instead of showing a confusing "- -1,000 ﷼".
+function renderPriceAdjustLine(combinedAmt){
+  const isIncrease = combinedAmt < 0;
+  return `<div style="display:flex;justify-content:space-between;padding:3px 0;color:${isIncrease?'var(--teal-dark)':'var(--bad)'}"><span>${isIncrease?'زيادة':'الخصم'}</span><span class="num">${isIncrease?'+':'-'} ${fmt(Math.abs(combinedAmt))} ﷼</span></div>`;
+}
+
 function renderQuoteHeaderBanner(){
   return `<div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
     <div style="display:flex;align-items:center;gap:10px">
@@ -1625,10 +1634,10 @@ function renderQuoteBomAndTotal(q, introText){
             <td style="font-size:11.5px">${it.warranty}</td></tr>`).join('')}
       </tbody>
     </table>
-    ${((state.discountOverrideIdx !== null) || (q.manualDiscountAmt > 0)) ? `
+    ${((state.discountOverrideIdx !== null) || (q.manualDiscountAmt !== 0)) ? `
     <div class="note" style="margin-top:10px">
       <div style="display:flex;justify-content:space-between;padding:3px 0"><span>السعر الأساسي</span><span class="num" style="color:var(--ink)">${fmt(q.sellTotal)} ﷼</span></div>
-      <div style="display:flex;justify-content:space-between;padding:3px 0;color:var(--bad)"><span>الخصم</span><span class="num">- ${fmt(q.discountTotal + q.manualDiscountAmt)} ﷼</span></div>
+      ${renderPriceAdjustLine(q.discountTotal + q.manualDiscountAmt)}
       <div style="display:flex;justify-content:space-between;padding:3px 0;font-weight:600"><span>الصافي بعد الخصم (قبل الضريبة)</span><span class="num" style="color:var(--ink)">${fmt(q.netAfterManual)} ﷼</span></div>
       <div style="display:flex;justify-content:space-between;padding:3px 0"><span>ضريبة القيمة المضافة</span><span class="num" style="color:var(--ink)">${fmt(q.vat)} ﷼</span></div>
     </div>` : ''}
@@ -1843,13 +1852,18 @@ function buildFinancialsDonut(cost, profit, vat){
 function renderAdminFinancials(q){
   const onItems = q.items.filter(it=>it.on);
   const totalCost = onItems.reduce((s,it)=>s+it.costBasis,0);
-  const profit = q.netAfterDiscount - totalCost;
-  const profitPct = q.netAfterDiscount ? (profit/q.netAfterDiscount*100) : 0;
+  // Use netAfterManual (after the special discount/increase, if any) as the
+  // real sell base — this is what q.vat and q.finalTotal are actually
+  // computed from, so every group below reconciles exactly, including when
+  // a special discount (or a negative one, i.e. a price increase) is set.
+  const sellBase = q.netAfterManual != null ? q.netAfterManual : q.netAfterDiscount;
+  const profit = sellBase - totalCost;
+  const profitPct = sellBase ? (profit/sellBase*100) : 0;
   // Derive the effective VAT rate from the real server-computed VAT figure
   // (rather than hardcoding 15%), then split it proportionally across the
   // cost and profit portions — costVat + profitVat always equals q.vat
-  // exactly, since totalCost + profit = q.netAfterDiscount by definition.
-  const vatRate = q.netAfterDiscount ? (q.vat / q.netAfterDiscount) : 0.15;
+  // exactly, since totalCost + profit = sellBase by definition.
+  const vatRate = sellBase ? (q.vat / sellBase) : 0.15;
   const costVat = totalCost * vatRate;
   const profitVat = profit * vatRate;
   return `
@@ -1862,13 +1876,13 @@ function renderAdminFinancials(q){
     ${(q.discountTotal || q.manualDiscountAmt) ? `
     <div class="note" style="margin-bottom:10px">
       إجمالي سعر البيع قبل الخصم: ${fmt(q.sellTotal)} ﷼ ·
-      الخصم الممنوح: ${fmt(q.discountTotal)} ﷼${q.manualDiscountAmt ? ` (منها خصم خاص ${fmt(q.manualDiscountAmt)} ﷼)` : ''}
+      الخصم الممنوح: ${fmt(q.discountTotal)} ﷼${q.manualDiscountAmt ? (q.manualDiscountAmt > 0 ? ` (منها خصم خاص ${fmt(q.manualDiscountAmt)} ﷼)` : ` (بالإضافة إلى زيادة خاصة ${fmt(Math.abs(q.manualDiscountAmt))} ﷼)`) : ''}
     </div>` : ''}
 
     <div class="fin-groups">
       <div class="fin-group fin-group-sell">
         <div class="fin-group-title">التسعير <span class="tag">البيع</span></div>
-        <div class="fin-row"><span class="l">إجمالي سعر البيع</span><span class="v">${fmt(q.netAfterDiscount)} ﷼</span></div>
+        <div class="fin-row"><span class="l">إجمالي سعر البيع</span><span class="v">${fmt(sellBase)} ﷼</span></div>
         <div class="fin-row"><span class="l">الضريبة</span><span class="v">${fmt(q.vat)} ﷼</span></div>
         <div class="fin-row total"><span class="l">السعر شامل الضريبة</span><span class="v">${fmt(q.finalTotal)} ﷼</span></div>
       </div>
@@ -3879,7 +3893,7 @@ function wire(){
     const confirmSpecialDiscount = ()=>{
       const el = document.getElementById('in_specialdiscount');
       if(!el) return;
-      state.specialDiscountAmt = Math.max(0, +el.value || 0);
+      state.specialDiscountAmt = +el.value || 0;
       scheduleRefresh();
     };
     const specBtn = document.getElementById('specialdiscount_confirm');
