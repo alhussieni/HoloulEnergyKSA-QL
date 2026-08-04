@@ -3051,30 +3051,64 @@ function renderAdmin(){
   </div>
 
   <div class="admsubsec ${currentAdminSubSection.pricing==='otheritems'?'active':''}" data-admsub="otheritems">
+
   <div class="card">
-    <h3>أسعار البنود الأخرى (وحدة)</h3>
+    <h3>معاملات عامة</h3>
     <div class="assump">
       <div><label>نسبة السعة للحصان <span style="color:var(--muted)">(معامل تحجيم عدد السلاسل بالنسبة للحصان)</span></label><input type="number" id="a_hpratio" step="0.01" value="${adminConfig.hpCapacityRatio}"></div>
-      <div><label>خرسانة السلسلة (899/55 لكل حصان)</label><input type="number" id="a_steel" step="0.001" value="${adminConfig.steelPanelPerHP}"></div>
+      <div><label>ضريبة القيمة المضافة</label><input type="number" id="a_vat" step="0.01" value="${adminConfig.vat}"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>هوامش الربح</h3>
+    <div class="assump">
+      <div><label>هامش ربح الألواح <span style="color:var(--muted)">(﷼ ثابتة تُضاف فوق سعر الوات $/W)</span></label><input type="number" id="a_panelmargin" step="0.01" value="${adminConfig.panelMarginPerWatt||0}"></div>
+    </div>
+    <div class="note" style="margin-top:8px">هامش الانفرتر يُضبط لكل نوع/قدرة على حدة من تبويب <b>"أنواع الانفرتر"</b> المجاور (نسبة الخصم% لكل KW)، وليس رقمًا واحدًا هنا.</div>
+  </div>
+
+  <div class="card">
+    <h3>الكابلات ووصلاتها</h3>
+    <div class="assump">
       <div><label>الكابلات (﷼/متر)</label><input type="number" id="a_cable" value="${adminConfig.cablePerMeter}"></div>
       <div><label>معامل طول الكابل (قدرة ≥100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablehigh" value="${adminConfig.cableHighMultiplier}"></div>
       <div><label>معامل طول الكابل (قدرة أقل من 100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablelow" value="${adminConfig.cableLowMultiplier}"></div>
       <div><label>هامش بيع الكابلات (معامل ضرب)</label><input type="number" id="a_cablemarkup" step="0.01" value="${adminConfig.cableMarkup}"></div>
+      <div><label>MC4 (﷼/وحدة)</label><input type="number" id="a_mc4" value="${adminConfig.mc4PerUnit}"></div>
+      <div><label>الأنابيب المرنة (﷼/وحدة)</label><input type="number" id="a_flex" value="${adminConfig.flexTubePerUnit}"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>صناديق التجميع</h3>
+    <div class="assump">
       <div><label>هامش أمان صندوق التجميع <span style="color:var(--muted)">(نسبة زيادة % فوق عدد المجموعات)</span></label><input type="number" id="a_combheadroom" step="0.01" value="${adminConfig.combinerHeadroom}"></div>
       <div><label>حد أدنى خطوط إضافية بصندوق التجميع</label><input type="number" id="a_combspare" step="1" value="${adminConfig.combinerMinSpareStrings}"></div>
-      <div><label>MC4 (﷼/وحدة)</label><input type="number" id="a_mc4" value="${adminConfig.mc4PerUnit}"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>الشاسيه والخرسانة والتركيب الميداني</h3>
+    <div class="assump">
       <div><label>الشاسيه الثابت (﷼/سلسلة)</label><input type="number" id="a_stfix" value="${adminConfig.structurePriceFixed}"></div>
       <div><label>الشاسيه المتحرك (﷼/سلسلة)</label><input type="number" id="a_strot" value="${adminConfig.structurePriceRotational}"></div>
       <div><label>الخرسانة (﷼/وحدة)</label><input type="number" id="a_conc" value="${adminConfig.concretePerUnit}"></div>
-      <div><label>التأريض (﷼/وحدة)</label><input type="number" id="a_earth" value="${adminConfig.earthingPerUnit}"></div>
-      <div><label>الأنابيب المرنة (﷼/وحدة)</label><input type="number" id="a_flex" value="${adminConfig.flexTubePerUnit}"></div>
+      <div><label>التأريض / بئر أرضي (﷼/وحدة)</label><input type="number" id="a_earth" value="${adminConfig.earthingPerUnit}"></div>
+      <div><label>لوحة الحماية IP65 (﷼/حصان)</label><input type="number" id="a_steel" step="0.001" value="${adminConfig.steelPanelPerHP}"></div>
       <div><label>الأعمال الميدانية وتثبيت الألواح (﷼/لوح)</label><input type="number" id="a_mechinst" value="${adminConfig.mechInstallPerPanel}"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>التركيب الكهربائي والنقل</h3>
+    <div class="assump">
       <div><label>التركيبات والتوصيلات الكهربائية (﷼/لوح)</label><input type="number" id="a_elecinst" value="${adminConfig.elecInstallPerPanel}"></div>
       <div><label>النقل (﷼/رحلة)</label><input type="number" id="a_trans" value="${adminConfig.transportPerTrip}"></div>
       <div><label>الحد الأدنى لتكلفة النقل (﷼)</label><input type="number" id="a_transmin" value="${adminConfig.transportMinimum}"></div>
-      <div><label>ضريبة القيمة المضافة</label><input type="number" id="a_vat" step="0.01" value="${adminConfig.vat}"></div>
     </div>
   </div>
+
   </div>
 
   <div class="admsubsec ${currentAdminSubSection.pricing==='discounts'?'active':''}" data-admsub="discounts">
@@ -4074,24 +4108,25 @@ function wire(){
       const num = id => { const el=document.getElementById(id); return el ? +el.value : undefined; };
       const setIfNum = (key,id) => { const v=num(id); if(v!==undefined && !isNaN(v)) adminConfig[key]=v; };
       setIfNum('hpCapacityRatio','a_hpratio');
-      setIfNum('steelPanelPerHP','a_steel');
+      setIfNum('vat','a_vat');
+      setIfNum('panelMarginPerWatt','a_panelmargin');
       setIfNum('cablePerMeter','a_cable');
       setIfNum('cableHighMultiplier','a_cablehigh');
       setIfNum('cableLowMultiplier','a_cablelow');
       setIfNum('cableMarkup','a_cablemarkup');
+      setIfNum('mc4PerUnit','a_mc4');
+      setIfNum('flexTubePerUnit','a_flex');
       setIfNum('combinerHeadroom','a_combheadroom');
       setIfNum('combinerMinSpareStrings','a_combspare');
-      setIfNum('mc4PerUnit','a_mc4');
       setIfNum('structurePriceFixed','a_stfix');
       setIfNum('structurePriceRotational','a_strot');
       setIfNum('concretePerUnit','a_conc');
       setIfNum('earthingPerUnit','a_earth');
-      setIfNum('flexTubePerUnit','a_flex');
+      setIfNum('steelPanelPerHP','a_steel');
       setIfNum('mechInstallPerPanel','a_mechinst');
       setIfNum('elecInstallPerPanel','a_elecinst');
       setIfNum('transportPerTrip','a_trans');
       setIfNum('transportMinimum','a_transmin');
-      setIfNum('vat','a_vat');
       setIfNum('defaultDiscountIdx','a_defdisc');
       const numOG = id => { const el=document.getElementById(id); return el ? +el.value : undefined; };
       const setOG = (key,id) => { const v=numOG(id); if(v!==undefined && !isNaN(v)) adminConfig.offgrid[key]=v; };

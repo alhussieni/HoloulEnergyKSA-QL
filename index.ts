@@ -144,6 +144,10 @@ function computeQuote(D: any, inp: any) {
   const combiner = inp.combinerOverride || pickCombiner(arrays, D.combinerBoxes, D.combinerHeadroom, D.combinerMinSpareStrings);
 
   const panelCost = panel.priceW * calcKW * 1000;
+  // Panels used to be sold at cost (no margin at all — sell === costBasis).
+  // panelMarginPerWatt is a flat SAR/W markup admins can now set, added on
+  // top of the per-watt cost, so panelSell = (cost + margin) * totalWatts.
+  const panelSell = (panel.priceW + (D.panelMarginPerWatt || 0)) * calcKW * 1000;
   const steelPanelCost = D.steelPanelPerHP * hp;
   const combinerCost = combiner[1];
 
@@ -179,7 +183,7 @@ function computeQuote(D: any, inp: any) {
       type: meta.type || "-", qty: on ? (meta.qty || "-") : "لا يوجد", warranty: on ? (meta.warranty || "-") : "لا يوجد",
     });
 
-  push("panel", "ألواح الطاقة الشمسية", t.panel, panelCost, panelCost, {
+  push("panel", "ألواح الطاقة الشمسية", t.panel, panelSell, panelCost, {
     type: `${panel.brand} ${panel.power}W أو ما يعادلها`, qty: `#${totalPanels}#`,
     warranty: "12 سنة ضد عيوب الصناعة / 30 سنة ضد التناقص الإنتاجي عن %80",
   });
@@ -246,7 +250,7 @@ function computeQuote(D: any, inp: any) {
   // of included line items each time — mirrors the two preset buttons above
   // ("توريد خامات فقط" / "توريد وتركيب شامل الضمان") exactly.
   const rawItemBasis: Record<string, { sell: number; costBasis: number }> = {
-    panel: { sell: panelCost, costBasis: panelCost },
+    panel: { sell: panelSell, costBasis: panelCost },
     inverter: { sell: invList, costBasis: invCost },
     ip65: { sell: steelPanelCost * 1.25, costBasis: steelPanelCost },
     combiner: { sell: combinerCost * 1.3, costBasis: combinerCost },
@@ -304,8 +308,8 @@ function publicView(q: any) {
 function adminView(q: any) {
   const onItems = q.items.filter((it: any) => it.on);
   const totalCost = onItems.reduce((s: number, it: any) => s + it.costBasis, 0);
-  const profit = q.netAfterDiscount - totalCost;
-  const profitPct = q.netAfterDiscount ? (profit / q.netAfterDiscount) * 100 : 0;
+  const profit = q.netAfterManual - totalCost;
+  const profitPct = q.netAfterManual ? (profit / q.netAfterManual) * 100 : 0;
   return { ...q, totalCost, profit, profitPct };
 }
 
@@ -382,7 +386,7 @@ function pickCatalogBattery(D: any, nameplateKwhNeeded: number) {
 }
 
 function buildGenericItems(pushImpl: any, opts: {
-  panel: any; totalPanels: number; calcKW: number;
+  panel: any; totalPanels: number; calcKW: number; panelMarginPerWatt: number;
   inverterLabel: string; inverterType: string; inverterCostBasis: number; inverterSell: number;
   structureCost: number; structureSell: number;
   cablingCost: number; cablingSell: number;
@@ -390,7 +394,8 @@ function buildGenericItems(pushImpl: any, opts: {
   battery?: { unit: any; count: number; totalKwh: number; markupPct: number };
 }) {
   const panelCost = opts.panel.priceW * opts.calcKW * 1000;
-  pushImpl("panel", "ألواح الطاقة الشمسية", panelCost, panelCost, {
+  const panelSell = (opts.panel.priceW + (opts.panelMarginPerWatt || 0)) * opts.calcKW * 1000;
+  pushImpl("panel", "ألواح الطاقة الشمسية", panelSell, panelCost, {
     type: `${opts.panel.brand} ${opts.panel.power}W أو ما يعادلها`, qty: `#${opts.totalPanels}#`,
     warranty: "12 سنة ضد عيوب الصناعة / 30 سنة ضد التناقص الإنتاجي عن %80",
   });
@@ -471,7 +476,7 @@ function computeOffgridQuote(D: any, inp: any) {
     items.push({ key, label, on: true, sell, costBasis, type: meta.type || "-", qty: meta.qty || "-", warranty: meta.warranty || "-" });
 
   buildGenericItems(push, {
-    panel, totalPanels, calcKW,
+    panel, totalPanels, calcKW, panelMarginPerWatt: D.panelMarginPerWatt || 0,
     inverterLabel: "شاحن/انفرتر هجين MPPT", inverterType: `${inv.model} أو ما يعادله`,
     inverterCostBasis: inv.costBasis, inverterSell: invSell,
     structureCost: totalPanels * og.structurePerPanelCost, structureSell: totalPanels * og.structurePerPanelSell,
@@ -517,7 +522,7 @@ function computeOngridQuote(D: any, inp: any) {
     items.push({ key, label, on: true, sell, costBasis, type: meta.type || "-", qty: meta.qty || "-", warranty: meta.warranty || "-" });
 
   buildGenericItems(push, {
-    panel, totalPanels, calcKW,
+    panel, totalPanels, calcKW, panelMarginPerWatt: D.panelMarginPerWatt || 0,
     inverterLabel: "الانفرتر", inverterType: `${inv.model} أو ما يعادله`,
     inverterCostBasis: inv.costBasis, inverterSell: invSell,
     structureCost: totalPanels * ng.structurePerPanelCost, structureSell: totalPanels * ng.structurePerPanelSell,
@@ -563,6 +568,7 @@ function computeReadySystemPrice(D: any, inp: {
   const panel = D.panels[inp.panelIdx ?? og.panelIdx ?? 0];
   if (!panel) throw new Error("invalid panelIdx");
   const panelCost = inp.panelCount * panel.power * panel.priceW;
+  const panelSell = inp.panelCount * panel.power * (panel.priceW + (D.panelMarginPerWatt || 0));
 
   let inverterCostBasis = 0, inverterSell = 0;
   if (inp.inverterModel) {
@@ -576,7 +582,7 @@ function computeReadySystemPrice(D: any, inp: {
   const batterySell = batteryCostBasis * (1 + og.batteryMarkupPct / 100);
 
   const cablingSell = og.cablingFixedSell; // materials-only estimate; no install/structure line items
-  const sellTotal = panelCost + inverterSell + batterySell + cablingSell;
+  const sellTotal = panelSell + inverterSell + batterySell + cablingSell;
   const priceSar = Math.round(sellTotal * (1 + D.vat));
 
   return {
@@ -664,7 +670,7 @@ Deno.serve(async (req: Request) => {
     pricing: ["cableHighMultiplier", "cableLowMultiplier", "cableMarkup", "cablePerMeter", "combinerHeadroom",
       "combinerMinSpareStrings", "concretePerUnit", "defaultDiscountIdx", "discountTiers", "earthingPerUnit",
       "elecInstallPerPanel", "flexTubePerUnit", "hpCapacityRatio", "inverterBrands", "mc4PerUnit",
-      "mechInstallPerPanel", "panels", "steelPanelPerHP", "structurePriceFixed", "structurePriceRotational",
+      "mechInstallPerPanel", "panelMarginPerWatt", "panels", "steelPanelPerHP", "structurePriceFixed", "structurePriceRotational",
       "transportMinimum", "transportPerTrip", "vat"],
     calcs: ["offgrid", "ongrid"],
     products: ["bomItemImages", "productCatalog", "readyOffgridSystems", "readyOngridSystems"],
