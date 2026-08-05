@@ -166,6 +166,10 @@ function computeQuote(D: any, inp: any) {
   const earthQty = Math.round(calcKW / 40);
   const earthCost = earthQty * D.earthingPerUnit;
   const reactorCost = reactorPrice;
+  // reactorMarkupPct is a % margin admins can set (was hardcoded at 0% —
+  // sell === cost — before this), same pattern as the other %-markup items
+  // (IP65 ×1.25, combiner ×1.3, etc.) but exposed in the admin panel.
+  const reactorSell = reactorCost * (1 + (D.reactorMarkupPct || 0) / 100);
   const flexQty = Math.round(cablesLen / 40);
   const flexCost = flexQty * D.flexTubePerUnit;
   const mechInstallQty = totalPanels;
@@ -211,7 +215,7 @@ function computeQuote(D: any, inp: any) {
   push("earth", "التأريض (بئر أرضي)", t.earth, earthCost, earthCost, {
     type: "-", qty: `#${earthQty}#`, warranty: "سنة واحدة",
   });
-  push("reactor", "الريأكتور", t.reactor, reactorCost, reactorCost, {
+  push("reactor", "الريأكتور", t.reactor, reactorSell, reactorCost, {
     type: `${reactorModel}A`, qty: "#1#", warranty: "سنة واحدة",
   });
   push("install_mech", "الأعمال الميدانية وتثبيت الألواح", t.civilworks, mechInstallCost, mechInstallCost, {
@@ -259,7 +263,7 @@ function computeQuote(D: any, inp: any) {
     structure: { sell: structureCost * 1.1, costBasis: structureCost },
     concrete: { sell: concreteCost * 1.1, costBasis: concreteCost },
     earth: { sell: earthCost, costBasis: earthCost },
-    reactor: { sell: reactorCost, costBasis: reactorCost },
+    reactor: { sell: reactorSell, costBasis: reactorCost },
     install_mech: { sell: mechInstallCost, costBasis: mechInstallCost },
     install_elec: { sell: elecInstallCost, costBasis: elecInstallCost },
     transport: { sell: transportCost, costBasis: transportCost },
@@ -670,7 +674,7 @@ Deno.serve(async (req: Request) => {
     pricing: ["cableHighMultiplier", "cableLowMultiplier", "cableMarkup", "cablePerMeter", "combinerHeadroom",
       "combinerMinSpareStrings", "concretePerUnit", "defaultDiscountIdx", "discountTiers", "earthingPerUnit",
       "elecInstallPerPanel", "flexTubePerUnit", "hpCapacityRatio", "inverterBrands", "mc4PerUnit",
-      "mechInstallPerPanel", "panelMarginPerWatt", "panels", "steelPanelPerHP", "structurePriceFixed", "structurePriceRotational",
+      "mechInstallPerPanel", "panelMarginPerWatt", "panels", "reactorMarkupPct", "steelPanelPerHP", "structurePriceFixed", "structurePriceRotational",
       "transportMinimum", "transportPerTrip", "vat"],
     calcs: ["offgrid", "ongrid"],
     products: ["bomItemImages", "productCatalog", "readyOffgridSystems", "readyOngridSystems"],

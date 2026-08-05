@@ -3064,6 +3064,7 @@ function renderAdmin(){
     <h3>هوامش الربح</h3>
     <div class="assump">
       <div><label>هامش ربح الألواح <span style="color:var(--muted)">(﷼ ثابتة تُضاف فوق سعر الوات $/W)</span></label><input type="number" id="a_panelmargin" step="0.01" value="${adminConfig.panelMarginPerWatt||0}"></div>
+      <div><label>هامش ربح الرياكتور <span style="color:var(--muted)">(% فوق سعر التكلفة)</span></label><input type="number" id="a_reactormargin" step="1" value="${adminConfig.reactorMarkupPct||0}"></div>
     </div>
     <div class="note" style="margin-top:8px">هامش الانفرتر يُضبط لكل نوع/قدرة على حدة من تبويب <b>"أنواع الانفرتر"</b> المجاور (نسبة الخصم% لكل KW)، وليس رقمًا واحدًا هنا.</div>
   </div>
@@ -4110,6 +4111,7 @@ function wire(){
       setIfNum('hpCapacityRatio','a_hpratio');
       setIfNum('vat','a_vat');
       setIfNum('panelMarginPerWatt','a_panelmargin');
+      setIfNum('reactorMarkupPct','a_reactormargin');
       setIfNum('cablePerMeter','a_cable');
       setIfNum('cableHighMultiplier','a_cablehigh');
       setIfNum('cableLowMultiplier','a_cablelow');
