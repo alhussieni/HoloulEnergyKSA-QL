@@ -1499,7 +1499,7 @@ function renderIrrigationCalc(){
               </tr>`).join('')}
           </tbody>
         </table>
-        ${((state.discountOverrideIdx !== null) || (q.manualDiscountAmt !== 0)) ? `
+        ${((q.discountTotal + q.manualDiscountAmt) > 0) ? `
         <div class="note" style="margin-top:10px">
           <div style="display:flex;justify-content:space-between;padding:3px 0"><span>السعر الأساسي</span><span class="num" style="color:var(--ink)">${fmt(q.sellTotal)} ﷼</span></div>
           ${renderPriceAdjustLine(q.discountTotal + q.manualDiscountAmt)}
@@ -1634,7 +1634,7 @@ function renderQuoteBomAndTotal(q, introText){
             <td style="font-size:11.5px">${it.warranty}</td></tr>`).join('')}
       </tbody>
     </table>
-    ${((state.discountOverrideIdx !== null) || (q.manualDiscountAmt !== 0)) ? `
+    ${((q.discountTotal + q.manualDiscountAmt) > 0) ? `
     <div class="note" style="margin-top:10px">
       <div style="display:flex;justify-content:space-between;padding:3px 0"><span>السعر الأساسي</span><span class="num" style="color:var(--ink)">${fmt(q.sellTotal)} ﷼</span></div>
       ${renderPriceAdjustLine(q.discountTotal + q.manualDiscountAmt)}
