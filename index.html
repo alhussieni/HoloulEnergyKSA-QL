@@ -384,6 +384,30 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .pg-btn.active{background:var(--night);border-color:var(--night);color:#fff;}
 .pg-btn:disabled{opacity:.4;cursor:default;}
 .pg-btn:not(.active):not(:disabled):hover{border-color:var(--teal);}
+
+.pcard2-cartcheck{position:absolute;top:10px;inset-inline-end:10px;z-index:2;display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:20px;padding:4px 9px;font-size:10.5px;font-weight:700;color:var(--muted);cursor:pointer;box-shadow:0 2px 6px rgba(13,52,82,.08);}
+.pcard2-cartcheck input{margin:0;accent-color:var(--teal);}
+.pcard2-cartcheck:has(input:checked){background:var(--teal-tint);color:var(--teal-dark);border-color:var(--teal);}
+
+.cart-panel-wrap{position:fixed;inset-inline:0;bottom:0;z-index:450;display:flex;flex-direction:column;align-items:center;}
+.cart-bar{width:100%;max-width:520px;margin:0 auto 0;display:flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,var(--night) 0%,var(--night-2) 100%);color:#fff;border:none;border-radius:14px 14px 0 0;padding:13px 18px;font-family:'Cairo';font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 -6px 20px rgba(13,52,82,.28);}
+.cart-bar-ic{font-size:16px;}
+.cart-bar-chevron{opacity:.7;margin-inline-start:4px;}
+.cart-panel{width:100%;max-width:520px;background:var(--card);border:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -10px 30px rgba(13,52,82,.18);padding:14px 16px 10px;max-height:60vh;display:flex;flex-direction:column;}
+.cart-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.cart-panel-title{font-family:'Cairo';font-weight:800;font-size:14px;color:var(--night);}
+.cart-panel-close{background:none;border:none;font-size:16px;color:var(--muted);cursor:pointer;padding:2px 6px;}
+.cart-panel-list{overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:6px;margin-bottom:8px;}
+.cart-panel-row{display:flex;align-items:center;gap:10px;padding:7px 8px;background:var(--sand);border-radius:10px;}
+.cart-panel-row .info{flex:1;min-width:0;}
+.cart-panel-row .name{font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.cart-panel-row .cat{font-size:10.5px;color:var(--muted);}
+.cart-panel-row .price{font-family:'Cairo';font-weight:700;font-size:12px;color:var(--teal-dark);white-space:nowrap;}
+.cart-panel-row .rm{background:none;border:none;color:var(--bad);font-size:14px;cursor:pointer;padding:2px 4px;}
+.cart-panel-total{display:flex;justify-content:space-between;font-family:'Cairo';font-weight:800;font-size:13.5px;color:var(--night);padding:8px 4px;border-top:1px solid var(--line);}
+.cart-panel-actions{display:flex;gap:8px;padding-top:4px;}
+.cart-panel-actions .btn{flex:1;padding:10px;font-size:12.5px;justify-content:center;}
+@media print{.cart-panel-wrap{display:none;}}
 .chip{background:var(--panel-2,#F0F4F8);color:var(--ink);padding:3px 9px;border-radius:20px;white-space:nowrap;border:1px solid var(--line);}
 .chip-muted{opacity:.6;}
 
@@ -1001,8 +1025,8 @@ const state = {
   inverterPowerIncrease: 0,
   discountOverrideIdx: null,
   specialDiscountAmt: 0,
-  toggles: {panel:true, inverter:true, ip65:true, combiner:true, cables:true, mc4:true,
-            structure:true, concrete:true, earth:false, reactor:false, civilworks:true, elecworks:true, supply:true},
+  toggles: {panel:true, inverter:true, ip65:false, combiner:true, cables:true, mc4:true,
+            structure:false, concrete:false, earth:false, reactor:false, civilworks:false, elecworks:false, supply:false},
   client: '',
   clientPhone: '',
   calcSystem: 'irrigation', // 'irrigation' | 'offgrid' | 'ongrid'
@@ -2285,6 +2309,23 @@ function resetCategoryFilters(){
   productsCurrentPage = 1;
 }
 
+// ---- Product cart: pick items across categories, then send one consolidated
+// quote request instead of one WhatsApp message per product. ----
+let productCart = [];     // [{catIdx, ri, name, category, price}]
+let cartPanelOpen = false;
+function cartKey(catIdx, ri){ return `${catIdx}:${ri}`; }
+function cartHas(catIdx, ri){ return productCart.some(c=>c.catIdx===catIdx && c.ri===ri); }
+function cartToggle(cat, catIdx, ri){
+  if(cartHas(catIdx, ri)){
+    productCart = productCart.filter(c=>!(c.catIdx===catIdx && c.ri===ri));
+  } else {
+    const row = cat.rows[ri];
+    const nCols = cat.columns.length;
+    const price = nCols>=2 ? row[nCols-2] : row[nCols-1];
+    productCart.push({ catIdx, ri, name: row[0], category: cat.category, price });
+  }
+}
+
 // Known multi-word brand names checked before falling back to "first word",
 // so e.g. "JA Solar 625W" groups under "JA Solar" not just "JA".
 const KNOWN_PRODUCT_BRANDS = ['JA Solar','Canadian Solar','Jinko Solar','JinkoSolar','Astronergy','LONGi','AIKO','Jinko','Risen','Trina Solar','Trina','VEICHI','Huawei','Growatt','Deye','Solis','Sungrow','GoodWe'];
@@ -2332,6 +2373,45 @@ function getFilteredCategoryRowIdxs(cat){
   return idxs;
 }
 
+// Sticky cart bar (bottom) + expandable panel — lets someone pick several
+// products across categories, then send ONE consolidated WhatsApp quote
+// request instead of one message per product.
+function renderProductCartBar(){
+  if(!productCart.length) return '';
+  const total = productCart.reduce((s,c)=>s + (parseFloat(c.price)||0), 0);
+  return `
+  <div class="cart-panel-wrap no-print">
+    ${cartPanelOpen ? `
+    <div class="cart-panel">
+      <div class="cart-panel-head">
+        <div class="cart-panel-title">🛒 سلة المنتجات (${productCart.length})</div>
+        <button class="cart-panel-close" id="cartPanelCloseBtn" type="button">✕</button>
+      </div>
+      <div class="cart-panel-list">
+        ${productCart.map((c,idx)=>`
+        <div class="cart-panel-row">
+          <div class="info">
+            <div class="name">${c.name}</div>
+            <div class="cat">${c.category}</div>
+          </div>
+          <div class="price">${c.price} ﷼</div>
+          <button class="rm" data-cartremove="${idx}" title="إزالة">✕</button>
+        </div>`).join('')}
+      </div>
+      <div class="cart-panel-total"><span>الإجمالي (بدون ضريبة)</span><span>${total.toLocaleString('en-US')} ﷼</span></div>
+      <div class="cart-panel-actions">
+        <button class="btn ghost small" id="cartClearBtn" type="button">🗑 إفراغ السلة</button>
+        <button class="btn small pcard2-quote" id="cartRequestQuoteBtn" type="button">🗨️ طلب عرض سعر للسلة</button>
+      </div>
+    </div>` : ''}
+    <button class="cart-bar" id="cartBarToggleBtn" type="button">
+      <span class="cart-bar-ic">🛒</span>
+      <span class="cart-bar-txt">السلة: ${productCart.length} منتج — ${total.toLocaleString('en-US')} ﷼</span>
+      <span class="cart-bar-chevron">${cartPanelOpen ? '▾' : '▴'}</span>
+    </button>
+  </div>`;
+}
+
 // One product card in the screenshot-style grid.
 function renderProductCardV2(cat, catIdx, ri){
   const row = cat.rows[ri];
@@ -2346,6 +2426,10 @@ function renderProductCardV2(cat, catIdx, ri){
   const chips = (specEntries.length ? specEntries : fallbackSpecs).slice(0,4);
   return `<div class="pcard2${available?'':' unavailable-row'}" data-search="${row.join(' ').toLowerCase()}">
     ${!available ? `<span class="pcard2-badge unavail">غير متاح</span>` : ''}
+    <label class="pcard2-cartcheck" title="أضف للسلة">
+      <input type="checkbox" data-carttoggle="${catIdx}:${ri}" ${cartHas(catIdx,ri)?'checked':''}>
+      <span>🛒 أضف للسلة</span>
+    </label>
     <div class="pcard2-photo">${thumb ? `<img src="${thumb}" alt="${row[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}</div>
     <div class="pcard2-body">
       ${brand ? `<div class="pcard2-brand">${brand}</div>` : ''}
@@ -2712,7 +2796,7 @@ function renderProducts(){
     ${categoryFacetsHtml}
   </aside>`;
 
-  return `<div class="catalog-shell">${sidebarHtml}<div class="catalog-main">${innerHtml}</div></div>`;
+  return `<div class="catalog-shell">${sidebarHtml}<div class="catalog-main">${innerHtml}</div></div>${renderProductCartBar()}`;
 }
 
 
@@ -3855,6 +3939,31 @@ function wire(){
       const msg = `مرحبًا، أرغب في طلب عرض سعر للمنتج التالي:\n${row[0]} (${cat.category})\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
       window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
     });
+    document.querySelectorAll('[data-carttoggle]').forEach(cb=>cb.onchange=()=>{
+      const [ci,ri] = cb.dataset.carttoggle.split(':').map(Number);
+      const cat = buildCatalogWithPanels(cachedProductCatalog || [])[ci];
+      if(!cat) return;
+      cartToggle(cat, ci, ri);
+      render();
+    });
+    const cartBarToggleBtn = document.getElementById('cartBarToggleBtn');
+    if(cartBarToggleBtn) cartBarToggleBtn.onclick = ()=>{ cartPanelOpen = !cartPanelOpen; render(); };
+    const cartPanelCloseBtn = document.getElementById('cartPanelCloseBtn');
+    if(cartPanelCloseBtn) cartPanelCloseBtn.onclick = ()=>{ cartPanelOpen = false; render(); };
+    document.querySelectorAll('[data-cartremove]').forEach(b=>b.onclick=()=>{
+      productCart.splice(+b.dataset.cartremove, 1);
+      if(!productCart.length) cartPanelOpen = false;
+      render();
+    });
+    const cartClearBtn = document.getElementById('cartClearBtn');
+    if(cartClearBtn) cartClearBtn.onclick = ()=>{ productCart = []; cartPanelOpen = false; render(); };
+    const cartRequestQuoteBtn = document.getElementById('cartRequestQuoteBtn');
+    if(cartRequestQuoteBtn) cartRequestQuoteBtn.onclick = ()=>{
+      const total = productCart.reduce((s,c)=>s + (parseFloat(c.price)||0), 0);
+      const lines = productCart.map((c,i)=>`${i+1}. ${c.name} (${c.category}) — ${c.price} ﷼`).join('\n');
+      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنتجات التالية:\n\n${lines}\n\nالإجمالي (بدون ضريبة): ${total.toLocaleString('en-US')} ﷼\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
+      window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
+    };
     const globalSearchInput = document.getElementById('productGlobalSearch');
     if(globalSearchInput){
       globalSearchInput.oninput = e=>{ productsGlobalSearch = e.target.value; render(); };
