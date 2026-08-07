@@ -988,6 +988,27 @@ Deno.serve(async (req: Request) => {
     return json({ productCatalog: D.productCatalog || [] });
   }
 
+  // ---- public: panels shown as a category on the products page. This was
+  // missing entirely before — the client called this action, got a 404-style
+  // error from the fallback handler, and silently gave up (empty panels
+  // list), which is why "الألواح الشمسية" never appeared in "قائمة المنتجات". ----
+  if (body.action === "get-panels-public") {
+    const panels = (D.panels || [])
+      .filter((p: any) => p.visible !== false && p.priceW)
+      .map((p: any) => ({
+        brand: p.brand,
+        power: p.power,
+        // Sell price (cost + the admin-set margin), never the raw cost —
+        // same convention as every other public/customer-facing price.
+        priceExclVat: Math.round((p.priceW + (D.panelMarginPerWatt || 0)) * p.power),
+        image: p.image || "",
+        description: p.description || "",
+        specs: p.specs || {},
+        datasheetUrl: p.datasheetUrl || "",
+      }));
+    return json({ panels });
+  }
+
   if (body.action === "get-portfolio") {
     return json({ portfolio: D.portfolio || null });
   }

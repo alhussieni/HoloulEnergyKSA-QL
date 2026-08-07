@@ -388,6 +388,9 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .pcard2-cartcheck{position:absolute;top:10px;inset-inline-end:10px;z-index:2;display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:20px;padding:4px 9px;font-size:10.5px;font-weight:700;color:var(--muted);cursor:pointer;box-shadow:0 2px 6px rgba(13,52,82,.08);}
 .pcard2-cartcheck input{margin:0;accent-color:var(--teal);}
 .pcard2-cartcheck:has(input:checked){background:var(--teal-tint);color:var(--teal-dark);border-color:var(--teal);}
+.detail-actions-row{display:flex;gap:8px;align-items:stretch;margin-bottom:var(--sp-2);}
+.detail-actions-row .detail-cartcheck{position:static;box-shadow:none;flex:1;justify-content:center;padding:10px;font-size:12.5px;}
+.detail-actions-row .pcard2-quote{flex:1;padding:10px;font-size:12.5px;}
 
 .cart-panel-wrap{position:fixed;inset-inline:0;bottom:0;z-index:450;display:flex;flex-direction:column;align-items:center;}
 .cart-bar{width:100%;max-width:520px;margin:0 auto 0;display:flex;align-items:center;justify-content:center;gap:10px;background:linear-gradient(135deg,var(--night) 0%,var(--night-2) 100%);color:#fff;border:none;border-radius:14px 14px 0 0;padding:13px 18px;font-family:'Cairo';font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 -6px 20px rgba(13,52,82,.28);}
@@ -2578,6 +2581,13 @@ function renderProducts(){
               <div class="note" style="display:inline-block;margin-top:4px">* السعر بدون ضريبة القيمة المضافة</div>
             </div>
             ${detail.datasheetUrl ? `<a href="${detail.datasheetUrl}" target="_blank" rel="noopener" class="btn ghost full" style="margin-bottom:var(--sp-2)">📄 تحميل الداتا شيت</a>` : ''}
+            <div class="detail-actions-row no-print">
+              <label class="pcard2-cartcheck detail-cartcheck" title="أضف للسلة">
+                <input type="checkbox" data-carttoggle="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" ${cartHas(selectedProduct.catIdx,selectedProduct.rowIdx)?'checked':''}>
+                <span>🛒 ${cartHas(selectedProduct.catIdx,selectedProduct.rowIdx)?'في السلة':'أضف للسلة'}</span>
+              </label>
+              <button type="button" class="btn small pcard2-quote" data-requestquote="${selectedProduct.catIdx}:${selectedProduct.rowIdx}">🗨️ طلب عرض سعر</button>
+            </div>
             <button type="button" class="btn ghost full no-print" id="shareProductLinkBtn" data-shareproduct="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" style="margin-bottom:var(--sp-2)">🔗 نسخ رابط المنتج</button>
             <div class="detail-meta-line">رقم المنتج: ${row[0]} &nbsp;|&nbsp; التصنيف: ${cat.category}</div>
           </div>
