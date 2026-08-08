@@ -138,6 +138,26 @@ function computeQuote(D: any, inp: any) {
   const inv = pickInverter(inverterCalcKW, invBrand.tiers);
   const invKW = inv[0], invCost = inv[1], invList = inv[2];
 
+  // Max PV array power the selected inverter can actually accept (from the
+  // manufacturer datasheet's "Max solar power input" column) — a 4th tier
+  // field, only present for brands/tiers where we have that exact figure.
+  // If the panel/string configuration produces a bigger array than the
+  // selected inverter tolerates, flag it and point to the next tier up
+  // that can handle it, rather than silently quoting a mismatched combo.
+  const invMaxSolarKw: number | undefined = inv[3];
+  let inverterOversizeWarning: { message: string; recommendedInvKW: number | null } | null = null;
+  if (invMaxSolarKw != null && calcKW > invMaxSolarKw) {
+    const idx = invBrand.tiers.indexOf(inv);
+    const nextTier = invBrand.tiers.slice(idx + 1).find((t: any[]) => t[3] == null || calcKW <= t[3]);
+    const recommendedInvKW = nextTier ? nextTier[0] : null;
+    inverterOversizeWarning = {
+      recommendedInvKW,
+      message: recommendedInvKW
+        ? `⚠️ قدرة الألواح المُدخلة (${calcKW.toFixed(1)} كيلوواط) تتجاوز الحد الأقصى الذي يتحمله انفرتر ${invKW} كيلوواط (${invMaxSolarKw} كيلوواط كحد أقصى) — يلزم رفع قدرة الانفرتر إلى ${recommendedInvKW} كيلوواط على الأقل.`
+        : `⚠️ قدرة الألواح المُدخلة (${calcKW.toFixed(1)} كيلوواط) تتجاوز الحد الأقصى الذي يتحمله انفرتر ${invKW} كيلوواط (${invMaxSolarKw} كيلوواط كحد أقصى) — لا يوجد طراز أعلى متاح حاليًا في قائمة الانفرتر، راجع الإعداد يدويًا.`,
+    };
+  }
+
   const reactorModel = pickLadder(D.reactorLadder, Iimp);
   const reactorPrice = D.reactorPrices[String(reactorModel)];
   const cbSize = pickLadder(D.cbLadder, IscCalc);
@@ -291,7 +311,8 @@ function computeQuote(D: any, inp: any) {
     panelsPerString, arrays, totalPanels, calcKW, efficiencyRatio,
     Iimp, Vimp, Voc, Isc, IscCalc, expectedVAC,
     invBrandName: invBrand.brand,
-    inverterCalcKW, invKW, reactorModel, reactorPrice, cbSize, combiner,
+    inverterCalcKW, invKW, invMaxSolarKw: invMaxSolarKw ?? null, inverterOversizeWarning,
+    reactorModel, reactorPrice, cbSize, combiner,
     items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt,
     netAfterManual, vat, finalTotal, sarPerKW: finalTotal / calcKW,
     supplyOnlyTotal, supplyPlusInstallTotal,

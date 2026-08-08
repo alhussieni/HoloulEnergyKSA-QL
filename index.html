@@ -369,6 +369,7 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .pcard2-spec .k{color:var(--ink);font-weight:600;}
 .pcard2-price{font-family:'Cairo';font-weight:800;font-size:14.5px;color:var(--teal-dark);margin-bottom:10px;}
 .pcard2-price small{font-weight:600;font-size:9.5px;color:var(--muted);margin-inline-start:4px;}
+.pcard2-price .price-tbd{font-family:'Cairo';font-weight:700;font-size:12px;color:var(--muted);}
 .pcard2-actions{display:flex;gap:6px;padding:0 14px 14px;}
 .pcard2-actions .btn{flex:1;padding:9px 8px;font-size:12px;justify-content:center;}
 .pcard2-quote{background:linear-gradient(135deg,var(--sun-2),var(--sun));color:var(--night);}
@@ -1472,6 +1473,11 @@ function renderIrrigationCalc(){
           <div class="num" style="font-size:14px;font-weight:700;margin-top:1px">${new Date().toLocaleDateString('en-GB')}</div>
         </div>
       </div>
+      ${q.inverterOversizeWarning ? `
+      <div class="card no-print" style="background:#FEECEA;border-color:#F3B0A3;display:flex;align-items:center;gap:10px;padding:14px 16px">
+        <span style="font-size:22px;flex:0 0 auto">⚠️</span>
+        <div style="font-weight:700;font-size:13px;color:#8A2E1D;line-height:1.6">${q.inverterOversizeWarning.message}</div>
+      </div>` : ''}
       <div class="card summary-card no-print">
         <h3 style="margin-bottom:6px">ملخص المنظومة <span class="tag">${q.invBrandName||'VEICHI'} ${q.invKW} KW</span></h3>
         <div class="stats summary-stats" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-top:10px">
@@ -1493,6 +1499,7 @@ function renderIrrigationCalc(){
           <div class="stat"><div class="v">${fmt1(q.Iimp)}A</div><div class="l">Iimp الكلي</div></div>
           <div class="stat"><div class="v">${fmt1(q.IscCalc)}A</div><div class="l">Isc (مع أمان 25%)</div></div>
           <div class="stat"><div class="v">${q.invKW} KW</div><div class="l">موديل الانفرتر</div></div>
+          ${q.invMaxSolarKw!=null ? `<div class="stat"><div class="v">${fmt1(q.invMaxSolarKw)} KW</div><div class="l">أقصى قدرة ألواح يتحملها الانفرتر</div></div>` : ''}
           <div class="stat"><div class="v">${q.reactorModel}A</div><div class="l">الريأكتور</div></div>
           <div class="stat"><div class="v">${q.cbSize}A</div><div class="l">قاطع الحماية C.B</div></div>
           <div class="stat"><div class="v">×${fmt2(q.efficiencyRatio)}</div><div class="l">نسبة السعة للحصان</div></div>
@@ -2107,13 +2114,6 @@ function renderCustomersSection(){
     return (c.name||'').toLowerCase().includes(q) || (c.phone||'').includes(q);
   });
   return `
-  <div class="card" style="background:linear-gradient(135deg,var(--night),var(--night-2));color:#fff;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;">
-    <div>
-      <div style="font-weight:800;font-size:15px;">🎯 نظام متابعة العملاء (CRM)</div>
-      <div style="font-size:12px;color:#BFE3D6;margin-top:3px;">تابع حالة كل عميل، سجّل سبب توقف التنفيذ، وحدد مواعيد المتابعة — بيانات كل العملاء أعلاه متاحة فيه أوتوماتيك.</div>
-    </div>
-    <a class="btn" href="crm.html" target="_blank" rel="noopener" style="text-decoration:none;flex:0 0 auto;">افتح CRM ↗</a>
-  </div>
   <div class="card">
     <h3>قاعدة بيانات العملاء <span class="tag">${cachedCustomers?cachedCustomers.length:'…'} عميل مسجّل — مركزية، من أي مندوب وأي جهاز</span></h3>
     <input type="text" id="customerSearch" placeholder="ابحث بالاسم أو الهاتف..." value="${customerSearchQuery}">
@@ -2447,7 +2447,7 @@ function renderProductCardV2(cat, catIdx, ri){
       <div class="pcard2-specs">
         ${chips.map(([k,v])=>`<div class="pcard2-spec"><span class="k">${k}:</span> <span class="v">${v}</span></div>`).join('')}
       </div>
-      <div class="pcard2-price">${priceVal} ﷼ <small>بدون ضريبة</small></div>
+      <div class="pcard2-price">${(priceVal!=null && priceVal!=='') ? `${priceVal} ﷼ <small>بدون ضريبة</small>` : `<span class="price-tbd">السعر عند الطلب</span>`}</div>
     </div>
     <div class="pcard2-actions">
       <button class="btn ghost small" data-viewproduct="${catIdx}:${ri}">التفاصيل</button>
@@ -2458,7 +2458,14 @@ function renderProductCardV2(cat, catIdx, ri){
 
 function isProductAvailable(cat, ri){
   const detail = (cat.productDetails && cat.productDetails[ri]) || {};
-  return detail.available !== false;
+  if(detail.available === false) return false;
+  const row = cat.rows[ri];
+  const nCols = cat.columns.length;
+  const price = row ? row[nCols-2] : null;
+  if(price === '' || price === null || price === undefined) return false;
+  const n = parseFloat(price);
+  if(isNaN(n) || n <= 0) return false;
+  return true;
 }
 
 // Small heuristic so the icon spec-strip (temperature/weight/protection/etc.)
@@ -3054,7 +3061,6 @@ function renderAdmin(){
       <button class="admin-nav-btn ${currentAdminSection==='products'?'active':''}" data-admsec="products" type="button"><span class="ic">📦</span><span class="lbl">المنتجات والكتالوج</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='portfolio'?'active':''}" data-admsec="portfolio" type="button"><span class="ic">🖼️</span><span class="lbl">البورتفوليو</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='leads'?'active':''}" data-admsec="leads" type="button"><span class="ic">📋</span><span class="lbl">قاعدة العملاء</span></button>
-      <a class="admin-nav-btn" href="crm.html" target="_blank" rel="noopener" style="text-decoration:none;"><span class="ic">🎯</span><span class="lbl">متابعة العملاء (CRM)</span></a>
       <button class="admin-nav-btn ${currentAdminSection==='reps'?'active':''}" data-admsec="reps" type="button"><span class="ic">👥</span><span class="lbl">إدارة المناديب</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='security'?'active':''}" data-admsec="security" type="button"><span class="ic">🔒</span><span class="lbl">الحماية والنظام</span></button>
     </nav>
