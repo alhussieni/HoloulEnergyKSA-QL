@@ -369,6 +369,7 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .pcard2-spec .k{color:var(--ink);font-weight:600;}
 .pcard2-price{font-family:'Cairo';font-weight:800;font-size:14.5px;color:var(--teal-dark);margin-bottom:10px;}
 .pcard2-price small{font-weight:600;font-size:9.5px;color:var(--muted);margin-inline-start:4px;}
+.pcard2-price .price-tbd{font-family:'Cairo';font-weight:700;font-size:12px;color:var(--muted);}
 .pcard2-actions{display:flex;gap:6px;padding:0 14px 14px;}
 .pcard2-actions .btn{flex:1;padding:9px 8px;font-size:12px;justify-content:center;}
 .pcard2-quote{background:linear-gradient(135deg,var(--sun-2),var(--sun));color:var(--night);}
@@ -2440,7 +2441,7 @@ function renderProductCardV2(cat, catIdx, ri){
       <div class="pcard2-specs">
         ${chips.map(([k,v])=>`<div class="pcard2-spec"><span class="k">${k}:</span> <span class="v">${v}</span></div>`).join('')}
       </div>
-      <div class="pcard2-price">${priceVal} ﷼ <small>بدون ضريبة</small></div>
+      <div class="pcard2-price">${(priceVal!=null && priceVal!=='') ? `${priceVal} ﷼ <small>بدون ضريبة</small>` : `<span class="price-tbd">السعر عند الطلب</span>`}</div>
     </div>
     <div class="pcard2-actions">
       <button class="btn ghost small" data-viewproduct="${catIdx}:${ri}">التفاصيل</button>
@@ -2451,7 +2452,14 @@ function renderProductCardV2(cat, catIdx, ri){
 
 function isProductAvailable(cat, ri){
   const detail = (cat.productDetails && cat.productDetails[ri]) || {};
-  return detail.available !== false;
+  if(detail.available === false) return false;
+  const row = cat.rows[ri];
+  const nCols = cat.columns.length;
+  const price = row ? row[nCols-2] : null;
+  if(price === '' || price === null || price === undefined) return false;
+  const n = parseFloat(price);
+  if(isNaN(n) || n <= 0) return false;
+  return true;
 }
 
 // Small heuristic so the icon spec-strip (temperature/weight/protection/etc.)
