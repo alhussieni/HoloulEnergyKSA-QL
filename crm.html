@@ -175,6 +175,7 @@ table.admtable tbody tr:hover td{background:var(--sand);}
       <nav class="tabs" id="tabsNav">
         <button class="active" data-tab="dashboard">لوحة المتابعة</button>
         <button data-tab="customers">العملاء</button>
+        <button data-tab="sites">المزارع</button>
         <button data-tab="settings" id="settingsTabBtn" class="hidden">الإعدادات</button>
       </nav>
       <div class="userChip">
@@ -214,6 +215,13 @@ table.admtable tbody tr:hover td{background:var(--sand);}
       <div class="card" style="padding:0;overflow:auto;"><div id="customersTableWrap"><div class="loadingNote">بيحمّل العملاء...</div></div></div>
     </section>
 
+    <section id="view-sites" class="view">
+      <div class="filterBar">
+        <select id="siteRegionFilter"><option value="">كل المناطق</option></select>
+      </div>
+      <div class="card" style="padding:0;overflow:auto;"><div id="sitesTableWrap"><div class="loadingNote">بيحمّل المزارع...</div></div></div>
+    </section>
+
     <section id="view-settings" class="view">
       <div class="card">
         <h3><span class="lbl">إعدادات قوائم الـCRM</span></h3>
@@ -239,6 +247,8 @@ table.admtable tbody tr:hover td{background:var(--sand);}
   </div>
 </div>
 
+<div class="overlay" id="siteOverlay"><div class="modal" id="siteModal" style="max-width:640px;"></div></div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -248,7 +258,8 @@ const SUPABASE_ANON_KEY = 'sb_publishable_4qWmgl6fWMpoU6F_o__ykg_Z0Xy_aJY';
 const ENGINE_FN = SUPABASE_URL + '/functions/v1/compute-quote'; // login only
 const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything else
 
-let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[] };
+let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[],
+  customerTypes:[], classifications:[], regions:[], energySources:[], contactMethods:[], decisionPowerLevels:[] };
 let SESSION = null; // { role, token, displayName }
 let loginRole = 'rep';
 
@@ -329,6 +340,8 @@ async function enterApp(){
   }catch(err){ toast('تعذر تحميل إعدادات القوائم: '+err.message); }
   document.getElementById('statusFilter').innerHTML = '<option value="">كل الحالات</option>' +
     SETTINGS.statuses.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  document.getElementById('siteRegionFilter').innerHTML = '<option value="">كل المناطق</option>' +
+    SETTINGS.regions.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   loadDashboard();
   loadCustomers();
 }
@@ -349,6 +362,7 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   document.getElementById('view-'+tab).classList.add('active');
   if(tab==='dashboard') loadDashboard();
   if(tab==='customers') loadCustomers();
+  if(tab==='sites') loadSites();
   if(tab==='settings') loadSettingsScreen();
 });
 
@@ -442,11 +456,11 @@ async function openCustomer(id){
   document.getElementById('custModal').innerHTML = '<div class="loadingNote">بيحمّل بيانات العميل...</div>';
   try{
     const d = await crmApi('admin-crm-customer-detail', {customerId:id});
-    renderCustomerModal(d.customer, d.quotes, d.interactions);
+    renderCustomerModal(d.customer, d.quotes, d.interactions, d.contacts||[], d.sites||[]);
   }catch(err){ document.getElementById('custModal').innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
 }
 
-function renderCustomerModal(c, quotes, interactions){
+function renderCustomerModal(c, quotes, interactions, contacts, sites){
   const m = document.getElementById('custModal');
   const canDelete = SESSION.role === 'admin';
   m.innerHTML = `
@@ -454,18 +468,58 @@ function renderCustomerModal(c, quotes, interactions){
     <div class="grid2">
       <div><label>الاسم</label><input type="text" id="f_name" value="${c.name||''}"></div>
       <div><label>رقم الهاتف</label><input type="text" id="f_phone" value="${c.phone||''}"></div>
+      <div><label>نوع العميل</label><select id="f_ctype">${optHtml(SETTINGS.customerTypes, c.customer_type)}</select></div>
+      <div><label>التصنيف</label><select id="f_classif">${optHtml(SETTINGS.classifications, c.classification)}</select></div>
       <div><label>المدينة</label><input type="text" id="f_city" value="${c.city||''}"></div>
+      <div><label>المنطقة</label><select id="f_region">${optHtml(SETTINGS.regions, c.region)}</select></div>
       <div><label>المندوب المسؤول</label><input type="text" id="f_rep" value="${c.assigned_rep||''}"></div>
       <div><label>الحالة</label><select id="f_status">${optHtml(SETTINGS.statuses, c.status)}</select></div>
       <div><label>الأولوية</label><select id="f_priority">${optHtml(SETTINGS.priorities, c.priority)}</select></div>
       <div><label>رأيه في السعر</label><select id="f_price">${optHtml(SETTINGS.priceFeedback, c.price_feedback)}</select></div>
       <div><label>سبب توقف التنفيذ</label><select id="f_blocker">${optHtml(SETTINGS.blockerReasons, c.blocker_reason)}</select></div>
-      <div style="grid-column:1/-1;"><label>موعد المتابعة القادمة</label><input type="date" id="f_followup" value="${c.next_follow_up_date||''}"></div>
+      <div><label>موعد المتابعة القادمة</label><input type="date" id="f_followup" value="${c.next_follow_up_date||''}"></div>
+      <div><label>السجل التجاري</label><input type="text" id="f_cr" value="${c.commercial_registration||''}"></div>
+      <div><label>الرقم الضريبي (VAT)</label><input type="text" id="f_vat" value="${c.vat_number||''}"></div>
+      <div style="grid-column:1/-1;"><label>الرقم الموحد</label><input type="text" id="f_unified" value="${c.unified_number||''}"></div>
     </div>
     <label>ملاحظات عن المشكلة / السبب</label><textarea id="f_notes">${c.blocker_notes||''}</textarea>
     <div class="saveBar">
       <div>${canDelete ? '<button class="btn danger small" id="delCustBtn">🗑 حذف العميل</button>' : ''}</div>
       <div class="right"><button class="btn" id="saveCustBtn">حفظ بيانات المتابعة</button></div>
+    </div>
+
+    <div class="section">
+      <h4>جهات الاتصال (${contacts.length})</h4>
+      <div id="contactsList">
+        ${contacts.length ? contacts.map(ct=>`
+          <div class="quoteRow" data-contact-id="${ct.id}">
+            <div class="top"><span>${ct.name}${ct.position?' · '+escapeHtml(ct.position):''}</span>
+              <button class="btn danger small delContactBtn" style="padding:3px 8px;">×</button></div>
+            <div>${ct.mobile?'📱 '+ct.mobile+' ':''}${ct.whatsapp?'· واتساب '+ct.whatsapp+' ':''}${ct.email?'· '+ct.email:''}</div>
+            ${ct.decision_power?`<div style="color:var(--muted);font-size:11px;">${labelOf(SETTINGS.decisionPowerLevels, ct.decision_power)}</div>`:''}
+          </div>`).join('') : '<div class="emptyNote">مفيش جهات اتصال مسجلة</div>'}
+      </div>
+      <div class="grid2" style="margin-top:10px;">
+        <div><label>الاسم</label><input type="text" id="nc_name" placeholder="اسم جهة الاتصال"></div>
+        <div><label>الوظيفة</label><input type="text" id="nc_position" placeholder="مثال: مدير المزرعة"></div>
+        <div><label>الموبايل</label><input type="text" id="nc_mobile"></div>
+        <div><label>واتساب</label><input type="text" id="nc_whatsapp"></div>
+        <div><label>الإيميل</label><input type="text" id="nc_email"></div>
+        <div><label>قوة القرار</label><select id="nc_decision"><option value="">-- اختر --</option>${SETTINGS.decisionPowerLevels.map(o=>`<option value="${o.value}">${o.label}</option>`).join('')}</select></div>
+      </div>
+      <div class="saveBar" style="margin-top:10px;"><div></div><div class="right"><button class="btn ghost small" id="addContactBtn">+ إضافة جهة اتصال</button></div></div>
+    </div>
+
+    <div class="section">
+      <h4>المزارع / المواقع (${sites.length})</h4>
+      <div id="sitesMiniList">
+        ${sites.length ? sites.map(s=>`
+          <div class="quoteRow" data-site-id="${s.id}" style="cursor:pointer;">
+            <div class="top"><span>${s.name}</span><span>${labelOf(SETTINGS.regions, s.region, s.region)}</span></div>
+            <div>آبار: ${s.number_of_wells??'-'} · مضخات: ${s.number_of_pumps??'-'} · مصدر الطاقة الحالي: ${labelOf(SETTINGS.energySources, s.current_energy_source, '-')}</div>
+          </div>`).join('') : '<div class="emptyNote">مفيش مزارع مسجلة لهذا العميل</div>'}
+      </div>
+      <div class="saveBar" style="margin-top:10px;"><div></div><div class="right"><button class="btn ghost small" id="addSiteBtn">+ إضافة مزرعة/موقع</button></div></div>
     </div>
 
     <div class="section">
@@ -500,6 +554,12 @@ function renderCustomerModal(c, quotes, interactions){
         name: m.querySelector('#f_name').value.trim(),
         phone: m.querySelector('#f_phone').value.trim(),
         city: m.querySelector('#f_city').value.trim(),
+        region: m.querySelector('#f_region').value || null,
+        customer_type: m.querySelector('#f_ctype').value || null,
+        classification: m.querySelector('#f_classif').value || null,
+        commercial_registration: m.querySelector('#f_cr').value.trim(),
+        vat_number: m.querySelector('#f_vat').value.trim(),
+        unified_number: m.querySelector('#f_unified').value.trim(),
         status: m.querySelector('#f_status').value,
         priority: m.querySelector('#f_priority').value,
         price_feedback: m.querySelector('#f_price').value || null,
@@ -515,7 +575,7 @@ function renderCustomerModal(c, quotes, interactions){
   });
   const delBtn = m.querySelector('#delCustBtn');
   if(delBtn) delBtn.addEventListener('click', async ()=>{
-    if(!confirm('متأكد إنك عايز تحذف العميل ده؟ سجل عروض الأسعار هيفضل موجود، بس بيانات المتابعة هتتمسح ومش هترجع.')) return;
+    if(!confirm('متأكد إنك عايز تحذف العميل ده؟ سجل عروض الأسعار هيفضل موجود، بس بيانات المتابعة وجهات الاتصال والمزارع المرتبطة هتتمسح ومش هترجع.')) return;
     try{
       await crmApi('admin-crm-delete-customer', {customerId:c.id});
       toast('اتمسح العميل');
@@ -533,6 +593,35 @@ function renderCustomerModal(c, quotes, interactions){
       toast('اتسجلت المتابعة ✅');
       openCustomer(c.id); loadCustomers();
     }catch(err){ toast('خطأ: '+err.message); }
+  });
+  m.querySelector('#addContactBtn').addEventListener('click', async ()=>{
+    const name = m.querySelector('#nc_name').value.trim();
+    if(!name){ toast('اكتب اسم جهة الاتصال الأول'); return; }
+    try{
+      await crmApi('admin-crm-add-contact', {
+        customerId:c.id, name,
+        position: m.querySelector('#nc_position').value.trim(),
+        mobile: m.querySelector('#nc_mobile').value.trim(),
+        whatsapp: m.querySelector('#nc_whatsapp').value.trim(),
+        email: m.querySelector('#nc_email').value.trim(),
+        decisionPower: m.querySelector('#nc_decision').value,
+      });
+      toast('اتضافت جهة الاتصال ✅');
+      openCustomer(c.id);
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+  m.querySelectorAll('.delContactBtn').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const row = btn.closest('[data-contact-id]');
+      if(!confirm('تحذف جهة الاتصال دي؟')) return;
+      try{ await crmApi('admin-crm-delete-contact', {contactId: row.dataset.contactId}); openCustomer(c.id); }
+      catch(err){ toast('خطأ: '+err.message); }
+    });
+  });
+  m.querySelector('#addSiteBtn').addEventListener('click', ()=>openSiteEditor(null, c.id));
+  m.querySelectorAll('#sitesMiniList [data-site-id]').forEach(row=>{
+    row.addEventListener('click', ()=>openSiteEditor(row.dataset.siteId, c.id));
   });
 }
 
@@ -564,13 +653,123 @@ document.getElementById('newSaveBtn').addEventListener('click', async ()=>{
   }catch(err){ errEl.textContent = err.message; }
 });
 
-/* ============ SETTINGS (admin only) ============ */
+/* ============ SITES (flat, all customers) ============ */
+document.getElementById('siteRegionFilter').addEventListener('change', loadSites);
+async function loadSites(){
+  const wrap = document.getElementById('sitesTableWrap');
+  wrap.innerHTML = '<div class="loadingNote">بيحمّل المزارع...</div>';
+  try{
+    const region = document.getElementById('siteRegionFilter').value;
+    const d = await crmApi('admin-crm-list-sites', region ? {region} : {});
+    if(!d.sites.length){ wrap.innerHTML = '<div class="loadingNote">مفيش مزارع مسجلة</div>'; return; }
+    wrap.innerHTML = `<table class="admtable"><thead><tr>
+      <th>المزرعة</th><th>العميل</th><th>المنطقة</th><th>المدينة</th><th>آبار</th><th>مضخات</th><th>مصدر الطاقة الحالي</th>
+      </tr></thead><tbody>
+      ${d.sites.map(s=>`<tr data-site-id="${s.id}" data-customer-id="${s.customer_id}">
+          <td>${s.name}</td>
+          <td>${s.customers ? (s.customers.name||s.customers.phone) : '-'}</td>
+          <td>${labelOf(SETTINGS.regions, s.region, s.region)}</td>
+          <td>${s.city||'-'}</td>
+          <td>${s.number_of_wells??'-'}</td>
+          <td>${s.number_of_pumps??'-'}</td>
+          <td>${labelOf(SETTINGS.energySources, s.current_energy_source, '-')}</td>
+        </tr>`).join('')}
+      </tbody></table>`;
+    wrap.querySelectorAll('tbody tr').forEach(r=>r.addEventListener('click', ()=>openSiteEditor(r.dataset.siteId, r.dataset.customerId)));
+  }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
+}
+
+const siteOverlay = document.getElementById('siteOverlay');
+siteOverlay.addEventListener('click', (e)=>{ if(e.target===siteOverlay) siteOverlay.classList.remove('show'); });
+
+const SITE_FIELDS = [
+  ['name','اسم المزرعة/الموقع','text'], ['region','المنطقة','select:regions'], ['city','المدينة','text'],
+  ['location_address','العنوان التفصيلي','text'], ['gps_lat','خط العرض (GPS Lat)','text'], ['gps_lng','خط الطول (GPS Lng)','text'],
+  ['google_maps_link','رابط جوجل مابس','text'], ['farm_area','مساحة المزرعة','text'], ['agricultural_activity','النشاط الزراعي','text'],
+  ['number_of_wells','عدد الآبار','number'], ['number_of_pumps','عدد المضخات','number'], ['water_source','مصدر المياه','text'],
+  ['well_depth','عمق البئر','text'], ['required_water_flow','التصرف المطلوب (Flow)','text'], ['required_operating_hours','ساعات التشغيل المطلوبة','text'],
+  ['current_energy_source','مصدر الطاقة الحالي','select:energySources'], ['diesel_consumption','استهلاك الديزل الحالي','text'],
+  ['electricity_consumption','استهلاك الكهرباء الحالي','text'], ['existing_system','النظام الحالي (إن وجد)','text'],
+];
+
+async function openSiteEditor(siteId, customerId){
+  siteOverlay.classList.add('show');
+  const m = document.getElementById('siteModal');
+  let site = {};
+  if(siteId){
+    m.innerHTML = '<div class="loadingNote">بيحمّل بيانات المزرعة...</div>';
+    try{
+      const all = await crmApi('admin-crm-list-sites', {});
+      site = (all.sites||[]).find(s=>String(s.id)===String(siteId)) || {};
+    }catch(e){}
+  }
+  const fieldsHtml = SITE_FIELDS.map(([key,label,type])=>{
+    const val = site[key] ?? '';
+    if(type.startsWith('select:')){
+      const listKey = type.split(':')[1];
+      return `<div><label>${label}</label><select id="sf_${key}">${optHtml(SETTINGS[listKey], val)}</select></div>`;
+    }
+    return `<div><label>${label}</label><input type="${type}" id="sf_${key}" value="${escapeHtml(String(val))}"></div>`;
+  }).join('');
+  m.innerHTML = `
+    <div class="mhead"><h2>${siteId ? 'تعديل مزرعة' : 'إضافة مزرعة جديدة'}</h2><button class="closeX" data-close-site>×</button></div>
+    <div class="grid2">${fieldsHtml}</div>
+    <label>ملاحظات فنية</label><textarea id="sf_technical_notes">${escapeHtml(site.technical_notes||'')}</textarea>
+    <div class="saveBar">
+      <div>${siteId && SESSION.role==='admin' ? '<button class="btn danger small" id="delSiteBtn">🗑 حذف المزرعة</button>' : ''}</div>
+      <div class="right"><button class="btn" id="saveSiteBtn">حفظ</button></div>
+    </div>
+  `;
+  m.querySelector('[data-close-site]').addEventListener('click', ()=>siteOverlay.classList.remove('show'));
+  m.querySelector('#saveSiteBtn').addEventListener('click', async ()=>{
+    const fields = {};
+    SITE_FIELDS.forEach(([key])=>{
+      if(key==='name') return;
+      const el = m.querySelector('#sf_'+key);
+      let v = el.value;
+      if(el.tagName==='SELECT' && !v) v = null;
+      fields[key] = v;
+    });
+    fields.technical_notes = m.querySelector('#sf_technical_notes').value.trim();
+    const name = m.querySelector('#sf_name').value.trim();
+    if(!name){ toast('اكتب اسم المزرعة'); return; }
+    try{
+      if(siteId){
+        await crmApi('admin-crm-update-site', {siteId, fields: Object.assign({name}, fields)});
+      } else {
+        await crmApi('admin-crm-add-site', {customerId, name, fields});
+      }
+      toast('اتحفظت المزرعة ✅');
+      siteOverlay.classList.remove('show');
+      loadSites();
+      if(document.getElementById('custOverlay').classList.contains('show')) openCustomer(customerId);
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+  const delSiteBtn = m.querySelector('#delSiteBtn');
+  if(delSiteBtn) delSiteBtn.addEventListener('click', async ()=>{
+    if(!confirm('تحذف المزرعة دي؟')) return;
+    try{
+      await crmApi('admin-crm-delete-site', {siteId});
+      toast('اتمسحت المزرعة');
+      siteOverlay.classList.remove('show');
+      loadSites();
+      if(document.getElementById('custOverlay').classList.contains('show')) openCustomer(customerId);
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+}
+
 const SETTINGS_GROUPS = [
   {key:'statuses', title:'حالات العميل', hasColor:true},
   {key:'blockerReasons', title:'أسباب توقف التنفيذ', hasColor:false},
   {key:'priceFeedback', title:'رأي العميل في السعر', hasColor:false},
   {key:'priorities', title:'مستوى الأولوية', hasColor:false},
   {key:'interactionTypes', title:'أنواع التواصل', hasColor:false},
+  {key:'customerTypes', title:'نوع العميل', hasColor:false},
+  {key:'classifications', title:'تصنيف العميل', hasColor:false},
+  {key:'regions', title:'المناطق', hasColor:false},
+  {key:'energySources', title:'مصادر الطاقة الحالية', hasColor:false},
+  {key:'contactMethods', title:'طرق التواصل المفضلة', hasColor:false},
+  {key:'decisionPowerLevels', title:'مستوى قوة القرار (جهات الاتصال)', hasColor:false},
 ];
 function loadSettingsScreen(){
   const wrap = document.getElementById('settingsGroups');
