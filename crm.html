@@ -3,127 +3,140 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>متابعة العملاء · HoloulEnergy</title>
+<title>متابعة العملاء (CRM) | HoloulEnergy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;700;800&family=Tajawal:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#0f1713; --surface:#161f1a; --surface2:#1c2820;
-  --border:#2a362f; --text:#eef2ee; --muted:#93a89c; --muted2:#6c7d72;
-  --gold:#e8a33d; --gold-dim:#4a3a1e; --teal:#2bb673; --teal-dim:#123324;
-  --red:#e0553f; --red-dim:#3a1f1a; --blue:#5b8ef2; --amber:#f0c14b;
-  --radius:12px; --radius-sm:8px;
+  --ink:#122436; --night:#0D3452; --night-2:#155E85;
+  --teal:#0FA98D; --teal-dark:#0B7A66; --teal-tint:#E7F8F4;
+  --sun:#E7AC12; --sun-2:#F3CB56; --sun-tint:#FCF3DE;
+  --sand:#F6F8F7; --card:#FFFFFF; --line:#DEE7E4; --muted:#63736F;
+  --good:#0FA98D; --bad:#B0432C; --bad-tint:#F4E4E0;
+  --shadow:0 10px 30px rgba(13,52,82,.07), 0 1px 3px rgba(13,52,82,.05);
+  --shadow-soft:0 1px 2px rgba(13,52,82,.05);
+  --radius:12px;
 }
 *{box-sizing:border-box;}
-html,body{margin:0;padding:0;}
-body{
-  background:
-    radial-gradient(1200px 600px at 15% -10%, rgba(232,163,61,.10), transparent 60%),
-    var(--bg);
-  color:var(--text);
-  font-family:'Tajawal',sans-serif;
-  min-height:100vh;
-}
+html{scroll-behavior:smooth;}
+body{margin:0;background:linear-gradient(180deg,#FFFFFF 0,#F7FAF9 260px,var(--sand) 100%);color:var(--ink);font-family:'Cairo',sans-serif;min-height:100vh;}
 h1,h2,h3,.disp{font-family:'Cairo',sans-serif;}
-.mono{font-family:'IBM Plex Mono',monospace;}
-button,input,select,textarea{font-family:inherit;}
-a{color:var(--gold);}
-::selection{background:var(--gold);color:#1a1204;}
-:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+.num{font-variant-numeric:tabular-nums;font-weight:600;}
+a{color:var(--night-2);}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}
+
+header.top{background:rgba(255,255,255,.94);padding:14px 28px;position:sticky;top:0;z-index:50;border-bottom:1px solid var(--line);box-shadow:var(--shadow-soft);backdrop-filter:blur(10px);}
+.brandrow{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;}
+.brand{display:flex;align-items:center;gap:12px;}
+.brand .mark{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sun-2),var(--sun));display:flex;align-items:center;justify-content:center;font-size:19px;box-shadow:var(--shadow-soft);}
+.brand .name{font-weight:800;font-size:18px;color:var(--night);}
+.brand .sub{font-size:11.5px;color:var(--muted);margin-top:1px;}
+nav.tabs{display:flex;gap:6px;background:var(--sand);padding:5px;border-radius:12px;border:1px solid var(--line);}
+nav.tabs button{background:transparent;border:0;color:var(--ink);padding:9px 16px;border-radius:9px;font-family:'Cairo';font-weight:600;font-size:13.5px;cursor:pointer;transition:.15s;}
+nav.tabs button.active{background:var(--sun);color:var(--night);}
+nav.tabs button:not(.active):hover{background:#fff;}
+.userChip{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;}
+
+main{max-width:1240px;margin:0 auto;padding:22px 20px 70px;}
+section.view{display:none;}
+section.view.active{display:block;}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:14px;box-shadow:var(--shadow-soft);}
+.card h3{margin:0 0 14px;font-size:15.5px;display:flex;align-items:center;gap:9px;justify-content:space-between;}
+.card h3 .lbl{display:flex;align-items:center;gap:9px;}
+.card h3 .lbl::before{content:"";width:4px;height:16px;border-radius:3px;background:linear-gradient(180deg,var(--teal),var(--sun));display:inline-block;}
+
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 5px;font-weight:500;}
+label:first-child{margin-top:0;}
+input:not([type=checkbox]):not([type=radio]),select,textarea{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:9px;font-size:14px;
+  font-family:'Cairo';background:#fff;color:var(--ink);transition:border-color .15s,box-shadow .15s;
+}
+textarea{resize:vertical;min-height:70px;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px var(--teal-tint);}
+
+.btn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,var(--sun-2),var(--sun));color:var(--night);border:0;padding:10px 18px;border-radius:10px;font-family:'Cairo';font-weight:700;font-size:13.5px;cursor:pointer;box-shadow:0 2px 6px rgba(231,172,18,.3);transition:transform .1s,box-shadow .15s;}
+.btn:hover{box-shadow:0 3px 10px rgba(231,172,18,.4);transform:translateY(-1px);}
+.btn.ghost{background:transparent;border:1px solid var(--teal);color:var(--teal-dark);box-shadow:none;}
+.btn.ghost:hover{background:var(--teal-tint);transform:none;}
+.btn.teal{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#fff;box-shadow:0 2px 6px rgba(15,169,141,.35);}
+.btn.danger{background:var(--bad-tint);color:var(--bad);box-shadow:none;}
+.btn.danger:hover{background:#EBCFC8;}
+.btn.small{padding:7px 12px;font-size:12px;}
+.btn.block{width:100%;justify-content:center;}
+.errMsg{color:var(--bad);font-size:13px;margin-top:8px;min-height:16px;}
 
 /* ---------- login ---------- */
-#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
-.loginCard{width:100%;max-width:380px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:32px 28px;box-shadow:0 20px 60px rgba(0,0,0,.4);}
-.loginCard .sun{width:44px;height:44px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #ffd98a, var(--gold) 60%, #a86e1c 100%);box-shadow:0 0 30px rgba(232,163,61,.5);margin-bottom:14px;}
-.loginCard h1{font-size:20px;margin:0 0 4px;}
-.loginCard p{color:var(--muted);font-size:13.5px;margin:0 0 18px;}
-.roleTabs{display:flex;gap:6px;margin-bottom:18px;background:var(--surface2);border-radius:var(--radius-sm);padding:4px;}
-.roleTab{flex:1;text-align:center;padding:8px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;color:var(--muted);}
-.roleTab.active{background:var(--gold);color:#1a1204;}
-.field{margin-bottom:14px;}
-.field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;}
-.field input,.field select,.field textarea{width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:10px 12px;font-size:14.5px;}
-.field textarea{resize:vertical;min-height:70px;}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;background:var(--gold);color:#1a1204;border:none;border-radius:var(--radius-sm);padding:10px 18px;font-weight:700;font-size:14px;cursor:pointer;transition:transform .12s,filter .12s;}
-.btn:hover{filter:brightness(1.08);}
-.btn:active{transform:scale(.98);}
-.btn.block{width:100%;}
-.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--border);}
-.btn.ghost:hover{border-color:var(--gold);color:var(--gold);}
-.btn.sm{padding:6px 12px;font-size:12.5px;}
-.errMsg{color:var(--red);font-size:13px;margin-top:10px;min-height:16px;}
-
-/* ---------- app shell ---------- */
-#app{display:none;}
-header.top{position:sticky;top:0;z-index:20;background:rgba(15,23,19,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;}
-.brand{display:flex;align-items:center;gap:10px;}
-.brand .sun{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #ffd98a, var(--gold) 60%, #a86e1c 100%);}
-.brand b{font-family:'Cairo',sans-serif;font-size:15.5px;}
-.brand span{color:var(--muted);font-size:12px;}
-.tabs{display:flex;gap:6px;}
-.tab{padding:8px 16px;border-radius:999px;font-size:13.5px;font-weight:700;cursor:pointer;color:var(--muted);border:1px solid transparent;}
-.tab.active{background:var(--surface2);color:var(--gold);border-color:var(--border);}
-.userChip{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;}
-main{padding:20px;max-width:1180px;margin:0 auto;}
+#loginScreen{min-height:calc(100vh - 0px);display:flex;align-items:center;justify-content:center;padding:20px;}
+.loginCard{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:32px 28px;box-shadow:var(--shadow);}
+.loginCard .mark{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--sun-2),var(--sun));display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px;}
+.loginCard h1{font-size:19px;margin:0 0 4px;color:var(--night);}
+.loginCard p{color:var(--muted);font-size:13px;margin:0 0 18px;}
+.roleTabs{display:flex;gap:6px;margin-bottom:18px;background:var(--sand);border-radius:9px;padding:4px;border:1px solid var(--line);}
+.roleTab{flex:1;text-align:center;padding:8px;border-radius:7px;font-size:12.5px;font-weight:700;cursor:pointer;color:var(--muted);}
+.roleTab.active{background:var(--night);color:#fff;}
 
 /* ---------- dashboard ---------- */
-.kpiGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px;}
-.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;position:relative;overflow:hidden;}
-.kpi:before{content:"";position:absolute;inset:0;background:radial-gradient(120px 80px at 90% -10%, rgba(232,163,61,.12), transparent);}
-.kpi .n{font-family:'IBM Plex Mono',monospace;font-size:26px;font-weight:600;position:relative;}
-.kpi .l{color:var(--muted);font-size:12.5px;margin-top:4px;position:relative;}
-.kpi.gold .n{color:var(--gold);}
-.kpi.teal .n{color:var(--teal);}
-.kpi.red .n{color:var(--red);}
+.kpiGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;}
+.stat{background:#fff;border:1px solid var(--line);border-inline-end:3px solid var(--teal);border-radius:10px;padding:12px 14px;}
+.stat.sun{border-inline-end-color:var(--sun);}
+.stat.bad{border-inline-end-color:var(--bad);}
+.stat .v{font-size:22px;font-weight:800;color:var(--night);}
+.stat .l{font-size:11.5px;color:var(--muted);margin-top:3px;}
 .panels{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;}
 @media(max-width:860px){.panels{grid-template-columns:1fr;}}
-.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px;margin-bottom:14px;}
-.panel h3{margin:0 0 14px;font-size:15px;display:flex;align-items:center;justify-content:space-between;}
-.barRow{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:13px;}
-.barRow .lbl{width:130px;flex:none;color:var(--muted);}
-.barRow .track{flex:1;height:8px;background:var(--surface2);border-radius:6px;overflow:hidden;}
-.barRow .fill{height:100%;background:linear-gradient(90deg,var(--gold),#c97f22);}
-.barRow .val{width:34px;text-align:left;font-family:'IBM Plex Mono',monospace;color:var(--muted);flex:none;}
-.followRow{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:13.5px;cursor:pointer;}
+.barRow{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:12.5px;}
+.barRow .l{width:150px;flex:none;color:var(--muted);}
+.barRow .track{flex:1;height:8px;background:var(--sand);border:1px solid var(--line);border-radius:6px;overflow:hidden;}
+.barRow .fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-dark));}
+.barRow .v{width:28px;text-align:left;color:var(--muted);flex:none;}
+.followRow{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px;cursor:pointer;}
 .followRow:last-child{border-bottom:none;}
-.followRow:hover{color:var(--gold);}
-.followRow .d{color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:12px;}
-.emptyNote{color:var(--muted2);font-size:13px;padding:6px 0;}
+.followRow:hover{color:var(--night-2);}
+.followRow .d{color:var(--bad);font-size:11.5px;font-weight:700;}
+.emptyNote{color:var(--muted);font-size:12.5px;padding:6px 0;}
+.loadingNote{color:var(--muted);font-size:13px;padding:20px;text-align:center;}
 
 /* ---------- customers ---------- */
 .filterBar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
-.filterBar input,.filterBar select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:var(--radius-sm);padding:9px 12px;font-size:13.5px;}
-.filterBar input[type=text]{flex:1;min-width:180px;}
-table.list{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
-table.list th{text-align:right;font-size:12px;color:var(--muted);padding:10px 12px;background:var(--surface2);border-bottom:1px solid var(--border);}
-table.list td{padding:11px 12px;border-bottom:1px solid var(--border);font-size:13.5px;}
-table.list tr:last-child td{border-bottom:none;}
-table.list tbody tr{cursor:pointer;}
-table.list tbody tr:hover{background:var(--surface2);}
-.badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;}
-.od{color:var(--red);font-weight:700;}
+.filterBar input,.filterBar select{max-width:220px;}
+.filterBar input[type=text]{flex:1;min-width:180px;max-width:none;}
+table.admtable{width:100%;border-collapse:collapse;font-size:13px;}
+table.admtable th{text-align:right;font-size:11.5px;color:var(--muted);font-weight:700;padding:8px 8px;border-bottom:2px solid var(--night);}
+table.admtable td{padding:9px 8px;border-bottom:1px solid var(--line);}
+table.admtable tbody tr{cursor:pointer;}
+table.admtable tbody tr:hover td{background:var(--sand);}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;}
+.od{color:var(--bad);font-weight:700;}
 
 /* ---------- modal ---------- */
-.overlay{position:fixed;inset:0;background:rgba(6,10,8,.65);display:none;align-items:flex-start;justify-content:center;padding:30px 16px;z-index:50;overflow:auto;}
+.overlay{position:fixed;inset:0;background:rgba(13,52,82,.45);display:none;align-items:flex-start;justify-content:center;padding:30px 16px;z-index:60;overflow:auto;}
 .overlay.show{display:flex;}
-.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);width:100%;max-width:760px;padding:22px;margin-top:10px;}
-.modal .head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;}
-.modal .head h2{margin:0;font-size:18px;}
-.modal .head .phone{color:var(--muted);font-size:13px;font-family:'IBM Plex Mono',monospace;}
-.closeX{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;}
+.modal{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);width:100%;max-width:760px;padding:22px;margin-top:10px;box-shadow:var(--shadow);}
+.modal .mhead{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;}
+.modal .mhead h2{margin:0;font-size:18px;color:var(--night);}
+.modal .mhead .phone{color:var(--muted);font-size:12.5px;}
+.closeX{background:none;border:0;color:var(--muted);font-size:20px;cursor:pointer;line-height:1;}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
 @media(max-width:560px){.grid2{grid-template-columns:1fr;}}
-.section{margin-top:18px;padding-top:16px;border-top:1px solid var(--border);}
-.section h4{margin:0 0 10px;font-size:13.5px;color:var(--gold);}
-.quoteRow,.intRow{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;font-size:13px;}
-.quoteRow .top,.intRow .top{display:flex;justify-content:space-between;color:var(--muted);font-size:11.5px;margin-bottom:4px;}
-.intRow .note{color:var(--text);}
-.saveBar{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
-.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:999px;font-size:13.5px;z-index:100;opacity:0;transition:opacity .25s;pointer-events:none;}
+.section{margin-top:18px;padding-top:16px;border-top:1px dashed var(--line);}
+.section h4{margin:0 0 10px;font-size:13px;color:var(--night-2);}
+.quoteRow,.intRow{background:var(--sand);border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px;font-size:12.5px;}
+.quoteRow .top,.intRow .top{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-bottom:4px;}
+.saveBar{display:flex;justify-content:space-between;gap:10px;margin-top:18px;align-items:center;}
+.saveBar .right{display:flex;gap:8px;}
+
+/* ---------- settings ---------- */
+.settingsGroup{margin-bottom:22px;}
+.settingsGroup h4{font-size:13.5px;color:var(--night);margin:0 0 10px;}
+.optRow{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
+.optRow input{flex:1;}
+.optRow input.mini{flex:0 0 90px;}
+
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--night);color:#fff;padding:10px 18px;border-radius:999px;font-size:13px;z-index:100;opacity:0;transition:opacity .25s;pointer-events:none;box-shadow:var(--shadow);}
 .toast.show{opacity:1;}
 .hidden{display:none !important;}
-.loadingNote{color:var(--muted);font-size:13px;padding:20px;text-align:center;}
 </style>
 </head>
 <body>
@@ -131,7 +144,7 @@ table.list tbody tr:hover{background:var(--surface2);}
 <!-- ================= LOGIN ================= -->
 <div id="loginScreen">
   <div class="loginCard">
-    <div class="sun"></div>
+    <div class="mark">☀️</div>
     <h1>متابعة العملاء (CRM)</h1>
     <p>HoloulEnergy · سجّل دخولك بنفس بيانات لوحة التحكم</p>
     <div class="roleTabs">
@@ -139,53 +152,55 @@ table.list tbody tr:hover{background:var(--surface2);}
       <div class="roleTab" data-role="admin">دخول كأدمن</div>
     </div>
     <form id="loginForm">
-      <div class="field" id="userField">
+      <div id="userField">
         <label>اسم المستخدم</label>
         <input type="text" id="loginUser" autocomplete="username">
       </div>
-      <div class="field">
-        <label>كلمة المرور</label>
-        <input type="password" id="loginPass" autocomplete="current-password" required>
-      </div>
-      <button class="btn block" type="submit">دخول</button>
+      <label>كلمة المرور</label>
+      <input type="password" id="loginPass" autocomplete="current-password" required>
+      <button class="btn block" type="submit" style="margin-top:16px;">دخول</button>
       <div class="errMsg" id="loginErr"></div>
     </form>
   </div>
 </div>
 
 <!-- ================= APP ================= -->
-<div id="app">
+<div id="app" class="hidden">
   <header class="top">
-    <div class="brand">
-      <div class="sun"></div>
-      <div><b>متابعة العملاء</b><br><span>HoloulEnergy</span></div>
-    </div>
-    <div class="tabs">
-      <div class="tab active" data-tab="dashboard">لوحة المتابعة</div>
-      <div class="tab" data-tab="customers">العملاء</div>
-    </div>
-    <div class="userChip">
-      <span id="repNameChip"></span>
-      <button class="btn ghost sm" id="logoutBtn">خروج</button>
+    <div class="brandrow">
+      <div class="brand">
+        <div class="mark">☀️</div>
+        <div><div class="name">متابعة العملاء</div><div class="sub">HoloulEnergy CRM</div></div>
+      </div>
+      <nav class="tabs" id="tabsNav">
+        <button class="active" data-tab="dashboard">لوحة المتابعة</button>
+        <button data-tab="customers">العملاء</button>
+        <button data-tab="settings" id="settingsTabBtn" class="hidden">الإعدادات</button>
+      </nav>
+      <div class="userChip">
+        <span id="repNameChip"></span>
+        <a class="btn ghost small" href="index.html">↩ لوحة التحكم</a>
+        <button class="btn ghost small" id="logoutBtn">خروج</button>
+      </div>
     </div>
   </header>
 
   <main>
-    <section id="view-dashboard">
+    <section id="view-dashboard" class="view active">
       <div class="kpiGrid" id="kpiGrid"></div>
       <div class="panels">
         <div>
-          <div class="panel"><h3>أسباب توقف التنفيذ (البلوكرز)</h3><div id="blockerBars"><div class="loadingNote">بيحمّل...</div></div></div>
-          <div class="panel"><h3>رأي العملاء في السعر</h3><div id="priceBars"><div class="loadingNote">بيحمّل...</div></div></div>
+          <div class="card"><h3><span class="lbl">أسباب توقف التنفيذ (البلوكرز)</span></h3><div id="blockerBars"><div class="loadingNote">بيحمّل...</div></div></div>
+          <div class="card"><h3><span class="lbl">رأي العملاء في السعر</span></h3><div id="priceBars"><div class="loadingNote">بيحمّل...</div></div></div>
         </div>
         <div>
-          <div class="panel"><h3>متابعات متأخرة <span class="badge" style="background:var(--red-dim);color:var(--red)" id="overdueCount">0</span></h3><div id="overdueList"></div></div>
-          <div class="panel"><h3>متابعات النهاردة <span class="badge" style="background:var(--gold-dim);color:var(--gold)" id="todayCount">0</span></h3><div id="todayList"></div></div>
+          <div class="card"><h3><span class="lbl">متابعات متأخرة</span><span class="tag" style="background:var(--bad-tint);color:var(--bad)" id="overdueCount">0</span></h3><div id="overdueList"></div></div>
+          <div class="card"><h3><span class="lbl">متابعات النهاردة</span><span class="tag" style="background:var(--sun-tint);color:#8a6209" id="todayCount">0</span></h3><div id="todayList"></div></div>
         </div>
       </div>
     </section>
 
-    <section id="view-customers" class="hidden">
+    <section id="view-customers" class="view">
       <div class="filterBar">
         <input type="text" id="searchInput" placeholder="دور بالاسم أو رقم الهاتف...">
         <select id="statusFilter"><option value="">كل الحالات</option></select>
@@ -196,7 +211,16 @@ table.list tbody tr:hover{background:var(--surface2);}
         </select>
         <button class="btn" id="newLeadBtn">+ عميل جديد</button>
       </div>
-      <div id="customersTableWrap"><div class="loadingNote">بيحمّل العملاء...</div></div>
+      <div class="card" style="padding:0;overflow:auto;"><div id="customersTableWrap"><div class="loadingNote">بيحمّل العملاء...</div></div></div>
+    </section>
+
+    <section id="view-settings" class="view">
+      <div class="card">
+        <h3><span class="lbl">إعدادات قوائم الـCRM</span></h3>
+        <p class="emptyNote" style="margin-bottom:14px;">هنا تقدر تضيف/تعدّل/تحذف الخيارات اللي بتظهر في نموذج متابعة العميل (الحالة، أسباب توقف التنفيذ، رأي العميل في السعر، الأولوية، نوع التواصل) — من غير أي تعديل في الكود.</p>
+        <div id="settingsGroups"><div class="loadingNote">بيحمّل الإعدادات...</div></div>
+        <div class="saveBar"><div></div><div class="right"><button class="btn teal" id="saveSettingsBtn">حفظ كل التعديلات</button></div></div>
+      </div>
     </section>
   </main>
 </div>
@@ -205,13 +229,13 @@ table.list tbody tr:hover{background:var(--surface2);}
 
 <div class="overlay" id="newOverlay">
   <div class="modal" style="max-width:420px;">
-    <div class="head"><h2>إضافة عميل جديد</h2><button class="closeX" data-close-new>×</button></div>
-    <div class="field"><label>الاسم</label><input type="text" id="newName"></div>
-    <div class="field"><label>رقم الهاتف / واتساب</label><input type="text" id="newPhone" required></div>
-    <div class="field"><label>المدينة</label><input type="text" id="newCity"></div>
-    <div class="field"><label>المندوب المسؤول</label><input type="text" id="newRep"></div>
+    <div class="mhead"><h2>إضافة عميل جديد</h2><button class="closeX" data-close-new>×</button></div>
+    <label>الاسم</label><input type="text" id="newName">
+    <label>رقم الهاتف / واتساب</label><input type="text" id="newPhone" required>
+    <label>المدينة</label><input type="text" id="newCity">
+    <label>المندوب المسؤول</label><input type="text" id="newRep">
     <div class="errMsg" id="newErr"></div>
-    <div class="saveBar"><button class="btn" id="newSaveBtn">حفظ</button></div>
+    <div class="saveBar"><div></div><div class="right"><button class="btn" id="newSaveBtn">حفظ</button></div></div>
   </div>
 </div>
 
@@ -224,33 +248,20 @@ const SUPABASE_ANON_KEY = 'sb_publishable_4qWmgl6fWMpoU6F_o__ykg_Z0Xy_aJY';
 const ENGINE_FN = SUPABASE_URL + '/functions/v1/compute-quote'; // login only
 const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything else
 
-const STATUS_META = {
-  new:{label:"عميل جديد",color:"#5b8ef2",dim:"#1a2436"},
-  contacted:{label:"تم التواصل",color:"#f0c14b",dim:"#3a3016"},
-  negotiating:{label:"بيتفاوض",color:"#e8a33d",dim:"#4a3a1e"},
-  won:{label:"اتنفذ",color:"#2bb673",dim:"#123324"},
-  lost:{label:"اتفقد",color:"#e0553f",dim:"#3a1f1a"},
-  on_hold:{label:"مؤجل",color:"#93a89c",dim:"#26302b"},
-};
-const BLOCKER_META = {
-  price_too_high:"السعر غالي", no_budget:"مفيش ميزانية دلوقتي",
-  comparing_offers:"بيقارن بعروض تانية", technical_concerns:"مخاوف فنية",
-  trust_company:"مش متأكد من الشركة", timing_not_ready:"مش وقته دلوقتي",
-  no_response:"مبيردش / اختفى", changed_mind:"غيّر رأيه",
-  other:"سبب تاني", none:"مفيش مشكلة",
-};
-const PRICE_META = { acceptable:"السعر مناسب", slightly_high:"غالي شوية", too_high:"غالي جدًا", needs_discount:"محتاج خصم", unknown:"مش معروف" };
-const PRIORITY_META = { hot:"🔥 ساخن", warm:"دافئ", cold:"بارد" };
-const INTERACTION_META = { call:"مكالمة", whatsapp:"واتساب", visit:"زيارة", meeting:"اجتماع", other:"تانى" };
-
-/* ============ STATE ============ */
-let SESSION = null; // { role: 'rep'|'admin', token, displayName }
+let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[] };
+let SESSION = null; // { role, token, displayName }
 let loginRole = 'rep';
 
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
 function fmtMoney(v){ if(v==null) return "-"; return Number(v).toLocaleString('ar-EG',{maximumFractionDigits:0}); }
 function fmtDate(v){ if(!v) return "-"; return v.slice(0,10); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+function metaOf(list, value){ return (list||[]).find(o=>o.value===value); }
+function labelOf(list, value, fallback){ const m=metaOf(list,value); return m ? m.label : (fallback||value||'-'); }
+function optHtml(list, current){
+  return '<option value="">-- اختر --</option>' + (list||[]).map(o=>`<option value="${o.value}" ${o.value===current?'selected':''}>${o.label}</option>`).join('');
+}
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
@@ -299,9 +310,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
     SESSION = { role: loginRole, token: data.token, displayName: loginRole==='admin' ? 'الأدمن' : data.displayName };
     sessionStorage.setItem('holoul_crm_session', JSON.stringify(SESSION));
     enterApp();
-  }catch(err){
-    errEl.textContent = "مشكلة في الاتصال، حاول تاني";
-  }
+  }catch(err){ errEl.textContent = "مشكلة في الاتصال، حاول تاني"; }
 });
 
 document.getElementById('logoutBtn').addEventListener('click', ()=>{
@@ -309,14 +318,17 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
   location.reload();
 });
 
-function enterApp(){
-  document.getElementById('loginScreen').style.display='none';
-  document.getElementById('app').style.display='block';
+async function enterApp(){
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
   document.getElementById('repNameChip').textContent = SESSION.displayName;
-  Object.keys(STATUS_META).forEach(k=>{
-    const o=document.createElement('option'); o.value=k; o.textContent=STATUS_META[k].label;
-    document.getElementById('statusFilter').appendChild(o);
-  });
+  if(SESSION.role === 'admin') document.getElementById('settingsTabBtn').classList.remove('hidden');
+  try{
+    const s = await crmApi('admin-crm-settings');
+    SETTINGS = Object.assign(SETTINGS, s.settings||{});
+  }catch(err){ toast('تعذر تحميل إعدادات القوائم: '+err.message); }
+  document.getElementById('statusFilter').innerHTML = '<option value="">كل الحالات</option>' +
+    SETTINGS.statuses.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   loadDashboard();
   loadCustomers();
 }
@@ -327,16 +339,17 @@ function enterApp(){
 })();
 
 /* ============ TABS ============ */
-document.querySelectorAll('.tab').forEach(t=>{
-  t.addEventListener('click', ()=>{
-    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active');
-    const tab = t.dataset.tab;
-    document.getElementById('view-dashboard').classList.toggle('hidden', tab!=='dashboard');
-    document.getElementById('view-customers').classList.toggle('hidden', tab!=='customers');
-    if(tab==='dashboard') loadDashboard();
-    if(tab==='customers') loadCustomers();
-  });
+document.getElementById('tabsNav').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-tab]');
+  if(!btn) return;
+  document.querySelectorAll('#tabsNav button').forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+  const tab = btn.dataset.tab;
+  document.querySelectorAll('section.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+tab).classList.add('active');
+  if(tab==='dashboard') loadDashboard();
+  if(tab==='customers') loadCustomers();
+  if(tab==='settings') loadSettingsScreen();
 });
 
 /* ============ DASHBOARD ============ */
@@ -345,16 +358,16 @@ async function loadDashboard(){
     const d = await crmApi('admin-crm-stats');
     const sc = d.statusCounts || {};
     document.getElementById('kpiGrid').innerHTML = `
-      <div class="kpi gold"><div class="n mono">${d.totalLeads}</div><div class="l">إجمالي العملاء المسجلين</div></div>
-      <div class="kpi"><div class="n mono">${sc.negotiating||0}</div><div class="l">بيتفاوض دلوقتي</div></div>
-      <div class="kpi teal"><div class="n mono">${sc.won||0}</div><div class="l">اتنفذوا (Won)</div></div>
-      <div class="kpi red"><div class="n mono">${sc.lost||0}</div><div class="l">اتفقدوا (Lost)</div></div>
-      <div class="kpi gold"><div class="n mono">${d.conversionRate.toFixed(1)}%</div><div class="l">معدل التحويل</div></div>
-      <div class="kpi"><div class="n mono">${fmtMoney(d.avgWonValue)}</div><div class="l">متوسط سعر العروض الناجحة</div></div>
-      <div class="kpi"><div class="n mono">${fmtMoney(d.avgLostValue)}</div><div class="l">متوسط سعر العروض المفقودة</div></div>
+      <div class="stat sun"><div class="v">${d.totalLeads}</div><div class="l">إجمالي العملاء المسجلين</div></div>
+      <div class="stat"><div class="v">${sc.negotiating||0}</div><div class="l">بيتفاوض دلوقتي</div></div>
+      <div class="stat"><div class="v">${sc.won||0}</div><div class="l">اتنفذوا (Won)</div></div>
+      <div class="stat bad"><div class="v">${sc.lost||0}</div><div class="l">اتفقدوا (Lost)</div></div>
+      <div class="stat sun"><div class="v">${d.conversionRate.toFixed(1)}%</div><div class="l">معدل التحويل</div></div>
+      <div class="stat"><div class="v">${fmtMoney(d.avgWonValue)}</div><div class="l">متوسط سعر العروض الناجحة</div></div>
+      <div class="stat"><div class="v">${fmtMoney(d.avgLostValue)}</div><div class="l">متوسط سعر العروض المفقودة</div></div>
     `;
-    renderBars('blockerBars', d.blockerCounts, BLOCKER_META);
-    renderBars('priceBars', d.priceFeedbackCounts, PRICE_META);
+    renderBars('blockerBars', d.blockerCounts, SETTINGS.blockerReasons);
+    renderBars('priceBars', d.priceFeedbackCounts, SETTINGS.priceFeedback);
     document.getElementById('overdueCount').textContent = d.overdueFollowUps;
     document.getElementById('todayCount').textContent = d.dueToday;
     const [ov, td] = await Promise.all([
@@ -365,13 +378,13 @@ async function loadDashboard(){
     renderFollowList('todayList', td.customers);
   }catch(err){ toast('تعذر تحميل لوحة المتابعة: '+err.message); }
 }
-function renderBars(elId, counts, meta){
+function renderBars(elId, counts, list){
   const el = document.getElementById(elId);
   const entries = Object.entries(counts||{}).sort((a,b)=>b[1]-a[1]);
   if(!entries.length){ el.innerHTML = '<div class="emptyNote">لسه مفيش بيانات كفاية</div>'; return; }
   const max = Math.max(...entries.map(e=>e[1]));
   el.innerHTML = entries.map(([k,v])=>`
-    <div class="barRow"><div class="lbl">${meta[k]||k}</div><div class="track"><div class="fill" style="width:${(v/max*100).toFixed(0)}%"></div></div><div class="val mono">${v}</div></div>`).join('');
+    <div class="barRow"><div class="l">${labelOf(list,k)}</div><div class="track"><div class="fill" style="width:${(v/max*100).toFixed(0)}%"></div></div><div class="v">${v}</div></div>`).join('');
 }
 function renderFollowList(elId, list){
   const el = document.getElementById(elId);
@@ -398,20 +411,20 @@ async function loadCustomers(){
     const d = await crmApi('admin-crm-list-customers', params);
     if(!d.customers.length){ wrap.innerHTML = '<div class="loadingNote">مفيش عملاء مطابقين</div>'; return; }
     const today = todayStr();
-    wrap.innerHTML = `<table class="list"><thead><tr>
+    wrap.innerHTML = `<table class="admtable"><thead><tr>
       <th>العميل</th><th>الهاتف</th><th>الحالة</th><th>الأولوية</th><th>رأيه في السعر</th><th>المشكلة</th><th>متابعة قادمة</th>
       </tr></thead><tbody>
       ${d.customers.map(c=>{
-        const sm = STATUS_META[c.status]||{label:c.status,color:'#93a89c',dim:'#222'};
+        const sm = metaOf(SETTINGS.statuses, c.status) || {label:c.status||'-', color:'#93a89c'};
         const overdue = c.next_follow_up_date && c.next_follow_up_date < today && c.status!=='won' && c.status!=='lost';
         return `<tr data-id="${c.id}">
           <td>${c.name||'<span style="color:var(--muted)">بدون اسم</span>'}</td>
-          <td class="mono">${c.phone}</td>
-          <td><span class="badge" style="background:${sm.dim};color:${sm.color}">${sm.label}</span></td>
-          <td>${PRIORITY_META[c.priority]||'-'}</td>
-          <td>${c.price_feedback ? (PRICE_META[c.price_feedback]||c.price_feedback) : '-'}</td>
-          <td>${c.blocker_reason ? (BLOCKER_META[c.blocker_reason]||c.blocker_reason) : '-'}</td>
-          <td class="${overdue?'od':''} mono">${fmtDate(c.next_follow_up_date)}${overdue?' ⚠':''}</td>
+          <td>${c.phone}</td>
+          <td><span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span></td>
+          <td>${labelOf(SETTINGS.priorities, c.priority)}</td>
+          <td>${c.price_feedback ? labelOf(SETTINGS.priceFeedback, c.price_feedback) : '-'}</td>
+          <td>${c.blocker_reason ? labelOf(SETTINGS.blockerReasons, c.blocker_reason) : '-'}</td>
+          <td class="${overdue?'od':''}">${fmtDate(c.next_follow_up_date)}${overdue?' ⚠':''}</td>
         </tr>`;
       }).join('')}
       </tbody></table>`;
@@ -432,50 +445,50 @@ async function openCustomer(id){
     renderCustomerModal(d.customer, d.quotes, d.interactions);
   }catch(err){ document.getElementById('custModal').innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
 }
-function opt(map, current){ return Object.entries(map).map(([k,v])=>`<option value="${k}" ${k===current?'selected':''}>${typeof v==='string'?v:v.label}</option>`).join(''); }
-function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
 function renderCustomerModal(c, quotes, interactions){
   const m = document.getElementById('custModal');
+  const canDelete = SESSION.role === 'admin';
   m.innerHTML = `
-    <div class="head">
-      <div><h2>${c.name || 'بدون اسم'}</h2><div class="phone">${c.phone}</div></div>
-      <button class="closeX" data-close>×</button>
-    </div>
+    <div class="mhead"><div><h2>${c.name || 'بدون اسم'}</h2><div class="phone">${c.phone}</div></div><button class="closeX" data-close>×</button></div>
     <div class="grid2">
-      <div class="field"><label>الاسم</label><input type="text" id="f_name" value="${c.name||''}"></div>
-      <div class="field"><label>المدينة</label><input type="text" id="f_city" value="${c.city||''}"></div>
-      <div class="field"><label>الحالة</label><select id="f_status">${opt(STATUS_META, c.status)}</select></div>
-      <div class="field"><label>الأولوية</label><select id="f_priority">${opt(PRIORITY_META, c.priority)}</select></div>
-      <div class="field"><label>رأيه في السعر</label><select id="f_price"><option value="">-- اختر --</option>${opt(PRICE_META, c.price_feedback)}</select></div>
-      <div class="field"><label>سبب توقف التنفيذ</label><select id="f_blocker"><option value="">-- اختر --</option>${opt(BLOCKER_META, c.blocker_reason)}</select></div>
-      <div class="field"><label>المندوب المسؤول</label><input type="text" id="f_rep" value="${c.assigned_rep||''}"></div>
-      <div class="field"><label>موعد المتابعة القادمة</label><input type="date" id="f_followup" value="${c.next_follow_up_date||''}"></div>
+      <div><label>الاسم</label><input type="text" id="f_name" value="${c.name||''}"></div>
+      <div><label>رقم الهاتف</label><input type="text" id="f_phone" value="${c.phone||''}"></div>
+      <div><label>المدينة</label><input type="text" id="f_city" value="${c.city||''}"></div>
+      <div><label>المندوب المسؤول</label><input type="text" id="f_rep" value="${c.assigned_rep||''}"></div>
+      <div><label>الحالة</label><select id="f_status">${optHtml(SETTINGS.statuses, c.status)}</select></div>
+      <div><label>الأولوية</label><select id="f_priority">${optHtml(SETTINGS.priorities, c.priority)}</select></div>
+      <div><label>رأيه في السعر</label><select id="f_price">${optHtml(SETTINGS.priceFeedback, c.price_feedback)}</select></div>
+      <div><label>سبب توقف التنفيذ</label><select id="f_blocker">${optHtml(SETTINGS.blockerReasons, c.blocker_reason)}</select></div>
+      <div style="grid-column:1/-1;"><label>موعد المتابعة القادمة</label><input type="date" id="f_followup" value="${c.next_follow_up_date||''}"></div>
     </div>
-    <div class="field"><label>ملاحظات عن المشكلة / السبب</label><textarea id="f_notes">${c.blocker_notes||''}</textarea></div>
-    <div class="saveBar"><button class="btn" id="saveCustBtn">حفظ بيانات المتابعة</button></div>
+    <label>ملاحظات عن المشكلة / السبب</label><textarea id="f_notes">${c.blocker_notes||''}</textarea>
+    <div class="saveBar">
+      <div>${canDelete ? '<button class="btn danger small" id="delCustBtn">🗑 حذف العميل</button>' : ''}</div>
+      <div class="right"><button class="btn" id="saveCustBtn">حفظ بيانات المتابعة</button></div>
+    </div>
 
     <div class="section">
       <h4>سجل عروض الأسعار (${quotes.length})</h4>
       ${quotes.length ? quotes.map(q=>`
         <div class="quoteRow"><div class="top"><span>${fmtDate(q.created_at)}</span><span>${q.rep_display_name||''}</span></div>
-        <div>القدرة: <b>${q.hp||'-'}</b> · الإجمالي: <b class="mono">${fmtMoney(q.final_total)} ﷼</b></div></div>`).join('')
+        <div>القدرة: <b>${q.hp||'-'}</b> · الإجمالي: <b>${fmtMoney(q.final_total)} ﷼</b></div></div>`).join('')
         : '<div class="emptyNote">لسه ملوش عروض مسجلة بالرقم ده</div>'}
     </div>
 
     <div class="section">
       <h4>سجل المتابعات والتواصل (${interactions.length})</h4>
       <div class="grid2" style="margin-bottom:10px;">
-        <div class="field"><label>نوع التواصل</label><select id="i_type">${opt(INTERACTION_META, 'call')}</select></div>
-        <div class="field"><label>النتيجة (اختياري)</label><input type="text" id="i_outcome" placeholder="مثال: هيرد بكرة"></div>
+        <div><label>نوع التواصل</label><select id="i_type">${optHtml(SETTINGS.interactionTypes, SETTINGS.interactionTypes[0] ? SETTINGS.interactionTypes[0].value : '')}</select></div>
+        <div><label>النتيجة (اختياري)</label><input type="text" id="i_outcome" placeholder="مثال: هيرد بكرة"></div>
       </div>
-      <div class="field"><label>ملاحظة</label><textarea id="i_note" placeholder="اكتب اللي حصل في المكالمة/الزيارة..."></textarea></div>
-      <div class="saveBar" style="margin-top:0;"><button class="btn ghost" id="addIntBtn">+ إضافة متابعة</button></div>
+      <label>ملاحظة</label><textarea id="i_note" placeholder="اكتب اللي حصل في المكالمة/الزيارة..."></textarea>
+      <div class="saveBar" style="margin-top:10px;"><div></div><div class="right"><button class="btn ghost small" id="addIntBtn">+ إضافة متابعة</button></div></div>
       <div id="intList" style="margin-top:14px;">
         ${interactions.length ? interactions.map(i=>`
-          <div class="intRow"><div class="top"><span>${INTERACTION_META[i.interaction_type]||i.interaction_type} · ${i.rep_username||''}</span><span>${fmtDate(i.created_at)}</span></div>
-          ${i.note?`<div class="note">${escapeHtml(i.note)}</div>`:''}
-          ${i.outcome?`<div class="note" style="color:var(--muted)">النتيجة: ${escapeHtml(i.outcome)}</div>`:''}</div>`).join('')
+          <div class="intRow"><div class="top"><span>${labelOf(SETTINGS.interactionTypes, i.interaction_type)} · ${i.rep_username||''}</span><span>${fmtDate(i.created_at)}</span></div>
+          ${i.note?`<div>${escapeHtml(i.note)}</div>`:''}
+          ${i.outcome?`<div style="color:var(--muted)">النتيجة: ${escapeHtml(i.outcome)}</div>`:''}</div>`).join('')
           : '<div class="emptyNote">لسه مفيش متابعات مسجلة</div>'}
       </div>
     </div>
@@ -485,6 +498,7 @@ function renderCustomerModal(c, quotes, interactions){
     try{
       const fields = {
         name: m.querySelector('#f_name').value.trim(),
+        phone: m.querySelector('#f_phone').value.trim(),
         city: m.querySelector('#f_city').value.trim(),
         status: m.querySelector('#f_status').value,
         priority: m.querySelector('#f_priority').value,
@@ -497,6 +511,15 @@ function renderCustomerModal(c, quotes, interactions){
       await crmApi('admin-crm-update', {customerId:c.id, fields});
       toast('اتحفظ ✅');
       loadCustomers(); loadDashboard(); openCustomer(c.id);
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+  const delBtn = m.querySelector('#delCustBtn');
+  if(delBtn) delBtn.addEventListener('click', async ()=>{
+    if(!confirm('متأكد إنك عايز تحذف العميل ده؟ سجل عروض الأسعار هيفضل موجود، بس بيانات المتابعة هتتمسح ومش هترجع.')) return;
+    try{
+      await crmApi('admin-crm-delete-customer', {customerId:c.id});
+      toast('اتمسح العميل');
+      closeCustomer(); loadCustomers(); loadDashboard();
     }catch(err){ toast('خطأ: '+err.message); }
   });
   m.querySelector('#addIntBtn').addEventListener('click', async ()=>{
@@ -539,6 +562,79 @@ document.getElementById('newSaveBtn').addEventListener('click', async ()=>{
     toast('اتضاف العميل ✅');
     loadCustomers(); loadDashboard();
   }catch(err){ errEl.textContent = err.message; }
+});
+
+/* ============ SETTINGS (admin only) ============ */
+const SETTINGS_GROUPS = [
+  {key:'statuses', title:'حالات العميل', hasColor:true},
+  {key:'blockerReasons', title:'أسباب توقف التنفيذ', hasColor:false},
+  {key:'priceFeedback', title:'رأي العميل في السعر', hasColor:false},
+  {key:'priorities', title:'مستوى الأولوية', hasColor:false},
+  {key:'interactionTypes', title:'أنواع التواصل', hasColor:false},
+];
+function loadSettingsScreen(){
+  const wrap = document.getElementById('settingsGroups');
+  wrap.innerHTML = SETTINGS_GROUPS.map(g=>`
+    <div class="settingsGroup" data-key="${g.key}">
+      <h4>${g.title}</h4>
+      <div class="optList"></div>
+      <button type="button" class="btn ghost small addOptBtn">+ إضافة خيار</button>
+    </div>
+  `).join('');
+  SETTINGS_GROUPS.forEach(g=>{
+    const groupEl = wrap.querySelector(`.settingsGroup[data-key="${g.key}"] .optList`);
+    (SETTINGS[g.key]||[]).forEach(opt=>addOptRow(groupEl, opt, g.hasColor));
+  });
+  wrap.querySelectorAll('.addOptBtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const group = btn.closest('.settingsGroup');
+      const hasColor = SETTINGS_GROUPS.find(g=>g.key===group.dataset.key).hasColor;
+      addOptRow(group.querySelector('.optList'), {value:'', label:'', color:'#0FA98D'}, hasColor);
+    });
+  });
+}
+function addOptRow(container, opt, hasColor){
+  const row = document.createElement('div');
+  row.className = 'optRow';
+  row.innerHTML = `
+    <input type="text" class="opt-label" placeholder="النص الظاهر" value="${escapeHtml(opt.label||'')}">
+    <input type="text" class="opt-value mini" placeholder="value" value="${escapeHtml(opt.value||'')}">
+    ${hasColor ? `<input type="color" class="opt-color" value="${opt.color||'#0FA98D'}" style="width:40px;padding:2px;">` : ''}
+    <button type="button" class="btn danger small" style="padding:6px 10px;">×</button>
+  `;
+  row.querySelector('button').addEventListener('click', ()=>row.remove());
+  container.appendChild(row);
+}
+function slugify(s){
+  return (s||'').trim().toLowerCase().replace(/[^a-z0-9\u0600-\u06FF\s_-]/g,'').replace(/\s+/g,'_').slice(0,40) || ('opt_'+Date.now());
+}
+document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
+  const wrap = document.getElementById('settingsGroups');
+  const newSettings = {};
+  let ok = true;
+  SETTINGS_GROUPS.forEach(g=>{
+    const rows = wrap.querySelectorAll(`.settingsGroup[data-key="${g.key}"] .optRow`);
+    const list = [];
+    rows.forEach(r=>{
+      const label = r.querySelector('.opt-label').value.trim();
+      if(!label) return;
+      let value = r.querySelector('.opt-value').value.trim();
+      if(!value) value = slugify(label);
+      const item = {value, label};
+      if(g.hasColor) item.color = r.querySelector('.opt-color').value;
+      list.push(item);
+    });
+    if(!list.length) ok = false;
+    newSettings[g.key] = list;
+  });
+  if(!ok){ toast('لازم يكون في خيار واحد على الأقل في كل قايمة'); return; }
+  try{
+    await crmApi('admin-crm-update-settings', {settings: newSettings});
+    SETTINGS = newSettings;
+    toast('اتحفظت الإعدادات ✅ — القوائم اتحدثت في كل الموقع');
+    document.getElementById('statusFilter').innerHTML = '<option value="">كل الحالات</option>' +
+      SETTINGS.statuses.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  }catch(err){ toast('خطأ: '+err.message); }
 });
 </script>
 </body>
