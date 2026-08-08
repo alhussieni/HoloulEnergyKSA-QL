@@ -137,6 +137,30 @@ table.admtable tbody tr:hover td{background:var(--sand);}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--night);color:#fff;padding:10px 18px;border-radius:999px;font-size:13px;z-index:100;opacity:0;transition:opacity .25s;pointer-events:none;box-shadow:var(--shadow);}
 .toast.show{opacity:1;}
 .hidden{display:none !important;}
+
+/* ---------- kanban ---------- */
+.pipelineBar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;}
+.pipelineBar .stat{flex:1;min-width:130px;}
+.kanbanWrap{overflow-x:auto;padding-bottom:10px;}
+.kanban{display:flex;gap:12px;align-items:flex-start;min-width:max-content;}
+.kcol{width:250px;flex:none;background:var(--sand);border:1px solid var(--line);border-radius:10px;padding:10px;}
+.kcol .khead{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 10px;font-size:12.5px;font-weight:800;}
+.kcol .khead .dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-left:6px;}
+.kcol .kcount{background:#fff;border:1px solid var(--line);border-radius:20px;padding:1px 8px;font-size:11px;color:var(--muted);}
+.kcol.dragover{background:var(--teal-tint);}
+.kcard{background:#fff;border:1px solid var(--line);border-radius:9px;padding:10px;margin-bottom:8px;cursor:grab;box-shadow:var(--shadow-soft);font-size:12px;}
+.kcard:active{cursor:grabbing;}
+.kcard .cname{font-weight:700;font-size:13px;color:var(--night);margin-bottom:3px;}
+.kcard .csub{color:var(--muted);font-size:11px;margin-bottom:6px;}
+.kcard .cval{font-weight:700;color:var(--teal-dark);}
+.kcard .cnext{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);color:var(--night-2);font-size:11px;}
+.kcard .cnext.od{color:var(--bad);}
+.newOppRow{display:flex;gap:8px;margin-bottom:10px;}
+.custPick{position:relative;}
+.custPickList{position:absolute;top:100%;right:0;left:0;background:#fff;border:1px solid var(--line);border-radius:9px;box-shadow:var(--shadow);max-height:220px;overflow:auto;z-index:10;}
+.custPickList div{padding:8px 12px;cursor:pointer;font-size:13px;}
+.custPickList div:hover{background:var(--sand);}
+
 </style>
 </head>
 <body>
@@ -175,6 +199,7 @@ table.admtable tbody tr:hover td{background:var(--sand);}
       <nav class="tabs" id="tabsNav">
         <button class="active" data-tab="dashboard">لوحة المتابعة</button>
         <button data-tab="customers">العملاء</button>
+        <button data-tab="pipeline">الصفقات</button>
         <button data-tab="sites">المزارع</button>
         <button data-tab="settings" id="settingsTabBtn" class="hidden">الإعدادات</button>
       </nav>
@@ -215,6 +240,17 @@ table.admtable tbody tr:hover td{background:var(--sand);}
       <div class="card" style="padding:0;overflow:auto;"><div id="customersTableWrap"><div class="loadingNote">بيحمّل العملاء...</div></div></div>
     </section>
 
+    <section id="view-pipeline" class="view">
+      <div class="pipelineBar" id="pipelineStatsBar"></div>
+      <div class="newOppRow">
+        <div class="custPick" style="flex:1;max-width:340px;">
+          <input type="text" id="oppCustSearch" placeholder="دور على عميل تضيفله صفقة جديدة...">
+          <div class="custPickList hidden" id="oppCustList"></div>
+        </div>
+      </div>
+      <div class="kanbanWrap"><div class="kanban" id="kanbanBoard"><div class="loadingNote">بيحمّل الصفقات...</div></div></div>
+    </section>
+
     <section id="view-sites" class="view">
       <div class="filterBar">
         <select id="siteRegionFilter"><option value="">كل المناطق</option></select>
@@ -249,6 +285,8 @@ table.admtable tbody tr:hover td{background:var(--sand);}
 
 <div class="overlay" id="siteOverlay"><div class="modal" id="siteModal" style="max-width:640px;"></div></div>
 
+<div class="overlay" id="oppOverlay"><div class="modal" id="oppModal" style="max-width:640px;"></div></div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -259,7 +297,8 @@ const ENGINE_FN = SUPABASE_URL + '/functions/v1/compute-quote'; // login only
 const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything else
 
 let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[],
-  customerTypes:[], classifications:[], regions:[], energySources:[], contactMethods:[], decisionPowerLevels:[] };
+  customerTypes:[], classifications:[], regions:[], energySources:[], contactMethods:[], decisionPowerLevels:[],
+  opportunityStages:[], projectTypes:[], opportunityLostReasons:[], activityTypes:[] };
 let SESSION = null; // { role, token, displayName }
 let loginRole = 'rep';
 
@@ -362,6 +401,7 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   document.getElementById('view-'+tab).classList.add('active');
   if(tab==='dashboard') loadDashboard();
   if(tab==='customers') loadCustomers();
+  if(tab==='pipeline') loadPipeline();
   if(tab==='sites') loadSites();
   if(tab==='settings') loadSettingsScreen();
 });
@@ -456,11 +496,11 @@ async function openCustomer(id){
   document.getElementById('custModal').innerHTML = '<div class="loadingNote">بيحمّل بيانات العميل...</div>';
   try{
     const d = await crmApi('admin-crm-customer-detail', {customerId:id});
-    renderCustomerModal(d.customer, d.quotes, d.interactions, d.contacts||[], d.sites||[]);
+    renderCustomerModal(d.customer, d.quotes, d.interactions, d.contacts||[], d.sites||[], d.opportunities||[]);
   }catch(err){ document.getElementById('custModal').innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
 }
 
-function renderCustomerModal(c, quotes, interactions, contacts, sites){
+function renderCustomerModal(c, quotes, interactions, contacts, sites, opportunities){
   const m = document.getElementById('custModal');
   const canDelete = SESSION.role === 'admin';
   m.innerHTML = `
@@ -520,6 +560,20 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites){
           </div>`).join('') : '<div class="emptyNote">مفيش مزارع مسجلة لهذا العميل</div>'}
       </div>
       <div class="saveBar" style="margin-top:10px;"><div></div><div class="right"><button class="btn ghost small" id="addSiteBtn">+ إضافة مزرعة/موقع</button></div></div>
+    </div>
+
+    <div class="section">
+      <h4>الصفقات / الفرص البيعية (${opportunities.length})</h4>
+      <div id="oppsMiniList">
+        ${opportunities.length ? opportunities.map(o=>{
+          const sm = metaOf(SETTINGS.opportunityStages, o.stage) || {label:o.stage, color:'#93a89c'};
+          return `<div class="quoteRow" data-opp-id="${o.id}" style="cursor:pointer;">
+            <div class="top"><span>${o.name}</span><span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span></div>
+            <div>${o.project_type?labelOf(SETTINGS.projectTypes,o.project_type)+' · ':''}${o.estimated_value?fmtMoney(o.estimated_value)+' ﷼':''}</div>
+          </div>`;
+        }).join('') : '<div class="emptyNote">مفيش صفقات مسجلة لهذا العميل</div>'}
+      </div>
+      <div class="saveBar" style="margin-top:10px;"><div></div><div class="right"><button class="btn ghost small" id="addOppFromCustBtn">+ إضافة صفقة</button></div></div>
     </div>
 
     <div class="section">
@@ -622,6 +676,10 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites){
   m.querySelector('#addSiteBtn').addEventListener('click', ()=>openSiteEditor(null, c.id));
   m.querySelectorAll('#sitesMiniList [data-site-id]').forEach(row=>{
     row.addEventListener('click', ()=>openSiteEditor(row.dataset.siteId, c.id));
+  });
+  m.querySelector('#addOppFromCustBtn').addEventListener('click', ()=>openOpportunityEditor(null, c.id, c.name));
+  m.querySelectorAll('#oppsMiniList [data-opp-id]').forEach(row=>{
+    row.addEventListener('click', ()=>openOpportunityEditor(row.dataset.oppId));
   });
 }
 
@@ -758,10 +816,246 @@ async function openSiteEditor(siteId, customerId){
   });
 }
 
+/* ============ PIPELINE (Kanban) ============ */
+let kanbanCache = [];
+
+async function loadPipeline(){
+  const board = document.getElementById('kanbanBoard');
+  board.innerHTML = '<div class="loadingNote">بيحمّل الصفقات...</div>';
+  try{
+    const [oppsRes, statsRes] = await Promise.all([
+      crmApi('admin-crm-list-opportunities', {}),
+      crmApi('admin-crm-pipeline-stats', {}),
+    ]);
+    kanbanCache = oppsRes.opportunities;
+    renderPipelineStats(statsRes);
+    renderKanban(kanbanCache);
+  }catch(err){ board.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
+}
+
+function renderPipelineStats(s){
+  document.getElementById('pipelineStatsBar').innerHTML = `
+    <div class="stat sun"><div class="v">${s.totalOpportunities}</div><div class="l">إجمالي الصفقات</div></div>
+    <div class="stat"><div class="v">${fmtMoney(s.pipelineValue)}</div><div class="l">قيمة الصفقات الجارية</div></div>
+    <div class="stat"><div class="v">${fmtMoney(s.wonValue)}</div><div class="l">قيمة الصفقات المكسوبة</div></div>
+    <div class="stat bad"><div class="v">${fmtMoney(s.lostValue)}</div><div class="l">قيمة الصفقات المفقودة</div></div>
+    <div class="stat sun"><div class="v">${s.conversionRate.toFixed(1)}%</div><div class="l">معدل الكسب</div></div>
+    <div class="stat bad"><div class="v">${s.overdueFollowUps}</div><div class="l">متابعات متأخرة</div></div>
+  `;
+}
+
+function renderKanban(opps){
+  const board = document.getElementById('kanbanBoard');
+  const stages = SETTINGS.opportunityStages.length ? SETTINGS.opportunityStages : [{value:'new_lead',label:'عميل جديد',color:'#5b8ef2'}];
+  const today = todayStr();
+  board.innerHTML = stages.map(st=>{
+    const cards = opps.filter(o=>o.stage===st.value);
+    return `<div class="kcol" data-stage="${st.value}">
+      <div class="khead"><span><span class="dot" style="background:${st.color||'#93a89c'}"></span>${st.label}</span><span class="kcount">${cards.length}</span></div>
+      <div class="kcards" data-stage-drop="${st.value}">
+        ${cards.map(o=>{
+          const overdue = o.next_follow_up_date && o.next_follow_up_date < today;
+          return `<div class="kcard" draggable="true" data-opp-id="${o.id}">
+            <div class="cname">${o.name}</div>
+            <div class="csub">${o.customers?(o.customers.name||o.customers.phone):''}${o.sites?' · '+o.sites.name:''}</div>
+            ${o.estimated_value?`<div class="cval">${fmtMoney(o.estimated_value)} ﷼</div>`:''}
+            ${o.project_type?`<div class="csub">${labelOf(SETTINGS.projectTypes,o.project_type)}</div>`:''}
+            ${o.next_action?`<div class="cnext ${overdue?'od':''}">${escapeHtml(o.next_action)}${o.next_follow_up_date?' · '+fmtDate(o.next_follow_up_date):''}</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  board.querySelectorAll('.kcard').forEach(card=>{
+    card.addEventListener('click', ()=>openOpportunityEditor(card.dataset.oppId));
+    card.addEventListener('dragstart', (e)=>{ e.dataTransfer.setData('text/plain', card.dataset.oppId); });
+  });
+  board.querySelectorAll('.kcol').forEach(col=>{
+    col.addEventListener('dragover', (e)=>{ e.preventDefault(); col.classList.add('dragover'); });
+    col.addEventListener('dragleave', ()=>col.classList.remove('dragover'));
+    col.addEventListener('drop', async (e)=>{
+      e.preventDefault(); col.classList.remove('dragover');
+      const oppId = e.dataTransfer.getData('text/plain');
+      const newStage = col.dataset.stage;
+      try{
+        await crmApi('admin-crm-update-opportunity', {opportunityId: oppId, fields: {stage: newStage}});
+        toast('اتحدثت المرحلة ✅');
+        loadPipeline();
+      }catch(err){ toast('خطأ: '+err.message); }
+    });
+  });
+}
+
+/* new-opportunity customer search */
+let oppCustDebounce;
+const oppCustInput = document.getElementById('oppCustSearch');
+const oppCustList = document.getElementById('oppCustList');
+oppCustInput.addEventListener('input', ()=>{
+  clearTimeout(oppCustDebounce);
+  const term = oppCustInput.value.trim();
+  if(!term){ oppCustList.classList.add('hidden'); return; }
+  oppCustDebounce = setTimeout(async ()=>{
+    try{
+      const d = await crmApi('admin-crm-list-customers', {search: term});
+      const list = d.customers.slice(0,8);
+      if(!list.length){ oppCustList.innerHTML = '<div>مفيش نتائج</div>'; }
+      else{
+        oppCustList.innerHTML = list.map(c=>`<div data-id="${c.id}" data-name="${escapeHtml(c.name||c.phone)}">${c.name||'بدون اسم'} · ${c.phone}</div>`).join('');
+      }
+      oppCustList.classList.remove('hidden');
+    }catch(err){}
+  }, 300);
+});
+oppCustList.addEventListener('click', (e)=>{
+  const row = e.target.closest('[data-id]');
+  if(!row) return;
+  oppCustList.classList.add('hidden');
+  oppCustInput.value = '';
+  openOpportunityEditor(null, row.dataset.id, row.dataset.name);
+});
+document.addEventListener('click', (e)=>{
+  if(!oppCustInput.contains(e.target) && !oppCustList.contains(e.target)) oppCustList.classList.add('hidden');
+});
+
+/* opportunity detail / create modal */
+const oppOverlay = document.getElementById('oppOverlay');
+oppOverlay.addEventListener('click', (e)=>{ if(e.target===oppOverlay) oppOverlay.classList.remove('show'); });
+
+async function openOpportunityEditor(opportunityId, customerId, customerName){
+  oppOverlay.classList.add('show');
+  const m = document.getElementById('oppModal');
+  let opp = null, activities = [];
+  if(opportunityId){
+    m.innerHTML = '<div class="loadingNote">بيحمّل الصفقة...</div>';
+    try{
+      const d = await crmApi('admin-crm-opportunity-detail', {opportunityId});
+      opp = d.opportunity; activities = d.activities;
+      customerId = opp.customer_id; customerName = opp.customers ? opp.customers.name : '';
+    }catch(err){ m.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; return; }
+  }
+  opp = opp || { name:'', stage:'new_lead', project_type:'', estimated_capacity:'', estimated_value:'', expected_cost:'', probability:'', expected_closing_date:'', sales_person:'', competitor_name:'', competitor_price:'', lost_reason:'', next_action:'', next_follow_up_date:'', notes:'' };
+  const isLost = opp.stage === 'lost';
+  m.innerHTML = `
+    <div class="mhead"><div><h2>${opportunityId ? 'تعديل صفقة' : 'صفقة جديدة'}</h2><div class="phone">${customerName||''}</div></div><button class="closeX" data-close-opp>×</button></div>
+    <label>اسم الصفقة</label><input type="text" id="of_name" value="${escapeHtml(opp.name||'')}" placeholder="مثال: تركيب مضخة ري مزرعة الوادي">
+    <div class="grid2">
+      <div><label>المرحلة</label><select id="of_stage">${optHtml(SETTINGS.opportunityStages, opp.stage)}</select></div>
+      <div><label>نوع المشروع</label><select id="of_ptype">${optHtml(SETTINGS.projectTypes, opp.project_type)}</select></div>
+      <div><label>القدرة التقديرية</label><input type="text" id="of_capacity" value="${escapeHtml(opp.estimated_capacity||'')}" placeholder="مثال: 4×125HP"></div>
+      <div><label>احتمالية الإغلاق %</label><input type="number" min="0" max="100" id="of_prob" value="${opp.probability??''}"></div>
+      <div><label>القيمة التقديرية (﷼)</label><input type="number" id="of_value" value="${opp.estimated_value??''}"></div>
+      <div><label>التكلفة المتوقعة (﷼)</label><input type="number" id="of_cost" value="${opp.expected_cost??''}"></div>
+      <div><label>تاريخ الإغلاق المتوقع</label><input type="date" id="of_closing" value="${opp.expected_closing_date||''}"></div>
+      <div><label>المسؤول عن البيع</label><input type="text" id="of_salesperson" value="${escapeHtml(opp.sales_person||'')}"></div>
+    </div>
+    <div id="lostFields" class="grid2" style="${isLost?'':'display:none'}">
+      <div><label>اسم المنافس</label><input type="text" id="of_competitor" value="${escapeHtml(opp.competitor_name||'')}"></div>
+      <div><label>سعر المنافس (﷼)</label><input type="number" id="of_competitor_price" value="${opp.competitor_price??''}"></div>
+      <div style="grid-column:1/-1;"><label>سبب الخسارة</label><select id="of_lostreason">${optHtml(SETTINGS.opportunityLostReasons, opp.lost_reason)}</select></div>
+    </div>
+    <div class="grid2">
+      <div><label>الخطوة القادمة (Next Action)</label><input type="text" id="of_nextaction" value="${escapeHtml(opp.next_action||'')}" placeholder="مثال: إرسال العرض المعدل"></div>
+      <div><label>تاريخ المتابعة القادمة</label><input type="date" id="of_nextdate" value="${opp.next_follow_up_date||''}"></div>
+    </div>
+    <label>ملاحظات</label><textarea id="of_notes">${escapeHtml(opp.notes||'')}</textarea>
+    <div class="saveBar">
+      <div>${opportunityId && SESSION.role==='admin' ? '<button class="btn danger small" id="delOppBtn">🗑 حذف الصفقة</button>' : ''}</div>
+      <div class="right"><button class="btn" id="saveOppBtn">حفظ</button></div>
+    </div>
+    ${opportunityId ? `
+    <div class="section">
+      <h4>سجل الأنشطة (${activities.length})</h4>
+      <div class="grid2" style="margin-bottom:10px;">
+        <div><label>نوع النشاط</label><select id="af_type">${optHtml(SETTINGS.activityTypes, SETTINGS.activityTypes[0]?SETTINGS.activityTypes[0].value:'')}</select></div>
+        <div><label>النتيجة</label><input type="text" id="af_result" placeholder="مثال: مهتم، هيرد بعد المسح"></div>
+      </div>
+      <label>الوصف</label><textarea id="af_desc" placeholder="اكتب تفاصيل النشاط..."></textarea>
+      <div class="grid2" style="margin-top:10px;">
+        <div><label>الخطوة القادمة</label><input type="text" id="af_nextaction"></div>
+        <div><label>تاريخ المتابعة</label><input type="date" id="af_nextdate"></div>
+      </div>
+      <div class="saveBar" style="margin-top:10px;"><div></div><div class="right"><button class="btn ghost small" id="addActivityBtn">+ إضافة نشاط</button></div></div>
+      <div style="margin-top:14px;">
+        ${activities.length ? activities.map(a=>`
+          <div class="intRow"><div class="top"><span>${labelOf(SETTINGS.activityTypes, a.activity_type)} · ${a.rep_username||''}</span><span>${fmtDate(a.created_at)}</span></div>
+          ${a.description?`<div>${escapeHtml(a.description)}</div>`:''}
+          ${a.result?`<div style="color:var(--muted)">النتيجة: ${escapeHtml(a.result)}</div>`:''}</div>`).join('')
+          : '<div class="emptyNote">لسه مفيش أنشطة مسجلة</div>'}
+      </div>
+    </div>` : ''}
+  `;
+  m.querySelector('[data-close-opp]').addEventListener('click', ()=>oppOverlay.classList.remove('show'));
+  m.querySelector('#of_stage').addEventListener('change', (e)=>{
+    document.getElementById('lostFields').style.display = e.target.value==='lost' ? 'grid' : 'none';
+  });
+  m.querySelector('#saveOppBtn').addEventListener('click', async ()=>{
+    const name = m.querySelector('#of_name').value.trim();
+    if(!name){ toast('اكتب اسم الصفقة'); return; }
+    const fields = {
+      project_type: m.querySelector('#of_ptype').value || null,
+      estimated_capacity: m.querySelector('#of_capacity').value.trim(),
+      probability: m.querySelector('#of_prob').value || null,
+      estimated_value: m.querySelector('#of_value').value || null,
+      expected_cost: m.querySelector('#of_cost').value || null,
+      expected_closing_date: m.querySelector('#of_closing').value || null,
+      sales_person: m.querySelector('#of_salesperson').value.trim(),
+      next_action: m.querySelector('#of_nextaction').value.trim(),
+      next_follow_up_date: m.querySelector('#of_nextdate').value || null,
+      notes: m.querySelector('#of_notes').value.trim(),
+      stage: m.querySelector('#of_stage').value,
+    };
+    if(fields.stage === 'lost'){
+      fields.competitor_name = m.querySelector('#of_competitor').value.trim();
+      fields.competitor_price = m.querySelector('#of_competitor_price').value || null;
+      fields.lost_reason = m.querySelector('#of_lostreason').value || null;
+    }
+    try{
+      if(opportunityId){
+        await crmApi('admin-crm-update-opportunity', {opportunityId, fields: Object.assign({name}, fields)});
+      } else {
+        await crmApi('admin-crm-add-opportunity', {customerId, name, fields});
+      }
+      toast('اتحفظت الصفقة ✅');
+      oppOverlay.classList.remove('show');
+      loadPipeline();
+      if(document.getElementById('custOverlay').classList.contains('show')) openCustomer(customerId);
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+  const delOppBtn = m.querySelector('#delOppBtn');
+  if(delOppBtn) delOppBtn.addEventListener('click', async ()=>{
+    if(!confirm('تحذف الصفقة دي؟ سجل الأنشطة المرتبط بيها هيتمسح كمان.')) return;
+    try{
+      await crmApi('admin-crm-delete-opportunity', {opportunityId});
+      toast('اتمسحت الصفقة');
+      oppOverlay.classList.remove('show');
+      loadPipeline();
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+  const addActivityBtn = m.querySelector('#addActivityBtn');
+  if(addActivityBtn) addActivityBtn.addEventListener('click', async ()=>{
+    const description = m.querySelector('#af_desc').value.trim();
+    if(!description){ toast('اكتب وصف النشاط الأول'); return; }
+    try{
+      await crmApi('admin-crm-add-activity', {
+        opportunityId, customerId,
+        activityType: m.querySelector('#af_type').value,
+        description, result: m.querySelector('#af_result').value.trim(),
+        nextAction: m.querySelector('#af_nextaction').value.trim(),
+        nextFollowUpDate: m.querySelector('#af_nextdate').value || null,
+      });
+      toast('اتسجل النشاط ✅');
+      openOpportunityEditor(opportunityId);
+      loadPipeline();
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+}
+
 const SETTINGS_GROUPS = [
   {key:'statuses', title:'حالات العميل', hasColor:true},
   {key:'blockerReasons', title:'أسباب توقف التنفيذ', hasColor:false},
   {key:'priceFeedback', title:'رأي العميل في السعر', hasColor:false},
+
   {key:'priorities', title:'مستوى الأولوية', hasColor:false},
   {key:'interactionTypes', title:'أنواع التواصل', hasColor:false},
   {key:'customerTypes', title:'نوع العميل', hasColor:false},
@@ -770,6 +1064,10 @@ const SETTINGS_GROUPS = [
   {key:'energySources', title:'مصادر الطاقة الحالية', hasColor:false},
   {key:'contactMethods', title:'طرق التواصل المفضلة', hasColor:false},
   {key:'decisionPowerLevels', title:'مستوى قوة القرار (جهات الاتصال)', hasColor:false},
+  {key:'opportunityStages', title:'مراحل الصفقات (Pipeline)', hasColor:true},
+  {key:'projectTypes', title:'أنواع المشاريع', hasColor:false},
+  {key:'opportunityLostReasons', title:'أسباب خسارة الصفقة', hasColor:false},
+  {key:'activityTypes', title:'أنواع الأنشطة', hasColor:false},
 ];
 function loadSettingsScreen(){
   const wrap = document.getElementById('settingsGroups');
