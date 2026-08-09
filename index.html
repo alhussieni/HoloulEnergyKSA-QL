@@ -3135,10 +3135,10 @@ function renderAdmin(){
           ${adminConfig.inverterBrands.length>1 ? `<button class="btn danger small" data-delbrand="${bi}">🗑 حذف هذا النوع</button>` : ''}
         </div>
         <table class="admtable">
-          <thead><tr><th>KW</th><th>سعر البيع (Sell)</th><th>نسبة الخصم % (منها تُحسب التكلفة)</th><th>سعر التكلفة (محسوب تلقائيًا)</th><th></th></tr></thead>
+          <thead><tr><th>KW</th><th>سعر البيع (Sell)</th><th>نسبة الخصم % (منها تُحسب التكلفة)</th><th>سعر التكلفة (محسوب تلقائيًا)</th><th>أقصى قدرة ألواح (KW)</th><th></th></tr></thead>
           <tbody data-tierbody="${bi}">
             ${brand.tiers.map((row,ti)=>{
-              const [kw,cost,list]=row;
+              const [kw,cost,list,maxSolarKw]=row;
               const disc = list>0 ? ((1-cost/list)*100) : 0;
               return `
               <tr>
@@ -3146,6 +3146,7 @@ function renderAdmin(){
                 <td><input data-brand="${bi}" data-tier="${ti}" data-f="list" type="number" value="${list}"></td>
                 <td><input data-brand="${bi}" data-tier="${ti}" data-f="disc" type="number" step="0.1" value="${disc.toFixed(1)}"></td>
                 <td class="num" style="color:var(--muted)">${fmt(cost)}</td>
+                <td><input data-brand="${bi}" data-tier="${ti}" data-f="maxsolar" type="number" step="0.01" placeholder="غير معروف" value="${maxSolarKw!=null?maxSolarKw:''}"></td>
                 <td class="op"><button class="btn danger small" data-deltier="${bi}:${ti}">✕</button></td>
               </tr>`;
             }).join('')}
@@ -3154,7 +3155,7 @@ function renderAdmin(){
         <button class="btn ghost small" data-addtier="${bi}" style="margin-top:6px">+ إضافة قدرة KW</button>
       </div>`).join('')}
     <button class="btn ghost small" id="addInverterBrand">+ إضافة نوع انفرتر جديد</button>
-    <div class="note" style="margin-top:8px">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي). لو فيه أكتر من نوع، هيظهر للعميل اختيار "نوع الانفرتر" في الحاسبة.</div>
+    <div class="note" style="margin-top:8px">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي). لو فيه أكتر من نوع، هيظهر للعميل اختيار "نوع الانفرتر" في الحاسبة.<br>"أقصى قدرة ألواح (KW)" — من الداتا شيت الرسمي للانفرتر (عمود Max solar power input). لو فاضية، الحاسبة مش هتنبّه لو الألواح زادت عن قدرة الانفرتر لهذا الموديل بالذات.</div>
   </div>
   </div>
 
@@ -4179,13 +4180,14 @@ function wire(){
         const bi=+inp.dataset.brand, ti=+inp.dataset.tier, f=inp.dataset.f;
         tierRows[bi] = tierRows[bi] || {};
         tierRows[bi][ti] = tierRows[bi][ti] || {};
-        tierRows[bi][ti][f] = +inp.value;
+        tierRows[bi][ti][f] = (f==='maxsolar' && inp.value==='') ? null : +inp.value;
       });
       Object.keys(tierRows).forEach(bi=>{
         Object.keys(tierRows[bi]).forEach(ti=>{
           const r = tierRows[bi][ti];
           const cost = r.list * (1 - (r.disc||0)/100);
-          adminConfig.inverterBrands[+bi].tiers[+ti] = [r.kw, +cost.toFixed(2), r.list];
+          const maxSolarKw = (r.maxsolar!=null && !isNaN(r.maxsolar)) ? r.maxsolar : null;
+          adminConfig.inverterBrands[+bi].tiers[+ti] = maxSolarKw!=null ? [r.kw, +cost.toFixed(2), r.list, maxSolarKw] : [r.kw, +cost.toFixed(2), r.list];
         });
       });
       delete adminConfig.inverters;
