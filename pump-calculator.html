@@ -115,6 +115,10 @@ main{max-width:1180px;margin:0 auto;padding:24px 20px 70px;}
 .calc-note i{color:#9c6a05;margin-top:2px;}
 .footer-disclaimer{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:10px;background:var(--sand);border:1px solid var(--line);margin-top:12px;font-size:12px;line-height:1.75;color:var(--muted);}
 
+.curve-box{margin-top:14px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--sand);}
+.curve-box-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:700;color:var(--night);}
+.curve-img{display:block;width:100%;height:auto;background:#fff;}
+
 .calc-empty{text-align:center;padding:40px 0;color:var(--muted);}
 .calc-empty i{font-size:34px;display:block;margin-bottom:10px;color:var(--line);}
 
@@ -619,9 +623,15 @@ function pickGfModel(FR, kw_c, wellDia) {
   };
 }
 
+function gfCurveImage(family) {
+  const key = family.toLowerCase().replace(/\s+/g,'');
+  return `assets/curves/${key}.jpg`;
+}
+
 function renderGfSuggestion(FR, kw_c, wellDia) {
   const pick = pickGfModel(FR, kw_c, wellDia);
   if (!pick) return '';
+  const imgSrc = gfCurveImage(pick.family);
   return `
     <div class="calc-divider"></div>
     <p class="pipe-section-title">الموديل المقترح من كتالوج Grundfos SP</p>
@@ -639,6 +649,15 @@ function renderGfSuggestion(FR, kw_c, wellDia) {
     </div>
     ${pick.qOutOfRange ? `<div class="calc-note"><i class="ti ti-alert-triangle"></i><span>معدل التصرف المطلوب خارج مدى التصرف المعتاد لعائلة ${pick.family} حسب رسم الأداء العام — يُنصح بمراجعة منحنى الأداء التفصيلي للموديل مع فريق حلول قبل الطلب.</span></div>` : ''}
     ${pick.exceeds ? `<div class="calc-note"><i class="ti ti-alert-triangle"></i><span>القدرة المطلوبة تتجاوز أعلى موديل متاح بعدد مراحل معقول في هذه العائلة — راجع فريق حلول لدراسة عائلة أعلى أو أكثر من طلمبة.</span></div>` : ''}
+
+    <div class="curve-box">
+      <div class="curve-box-head">
+        <span>منحنى أداء عائلة ${pick.family} — من كتالوج Grundfos الرسمي</span>
+        <span class="rec-badge">دوّري على المنحنى المسمى <strong>-${pick.stages}</strong></span>
+      </div>
+      <img src="${imgSrc}" alt="منحنى أداء ${pick.family}" loading="lazy" class="curve-img" onerror="this.parentElement.style.display='none'">
+    </div>
+
     <div class="footer-disclaimer" style="margin-top:8px;">
       <i class="ti ti-info-circle"></i>
       <span>الموديل والمراحل مقترحة بمطابقة معدل التصرف وأقرب قدرة قياسية من كتالوج Grundfos SP الرسمي (60Hz) — مدى التصرف لكل عائلة قراءة تقريبية من رسم الأداء العام، والاختيار النهائي لازم يتأكد من منحنى الأداء التفصيلي لكل موديل (Q-H curve) قبل الشراء.</span>
