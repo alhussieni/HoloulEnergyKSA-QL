@@ -201,6 +201,9 @@ table.admtable tbody tr:hover td{background:var(--sand);}
         <button data-tab="customers">العملاء</button>
         <button data-tab="pipeline">الصفقات</button>
         <button data-tab="sites">المزارع</button>
+        <button data-tab="warranty">الضمانات</button>
+        <button data-tab="projects">المشاريع</button>
+        <button data-tab="maintenance">الصيانة</button>
         <button data-tab="settings" id="settingsTabBtn" class="hidden">الإعدادات</button>
       </nav>
       <div class="userChip">
@@ -258,6 +261,45 @@ table.admtable tbody tr:hover td{background:var(--sand);}
       <div class="card" style="padding:0;overflow:auto;"><div id="sitesTableWrap"><div class="loadingNote">بيحمّل المزارع...</div></div></div>
     </section>
 
+    <section id="view-warranty" class="view">
+      <div class="kpiGrid" id="warrantyKpiGrid"></div>
+      <div class="filterBar">
+        <input type="text" id="assetSearchInput" placeholder="دور برقم السريال أو الموديل أو الشركة المصنّعة...">
+      </div>
+      <div class="card" style="padding:0;overflow:auto;"><div id="assetsTableWrap"><div class="loadingNote">بيحمّل المعدات...</div></div></div>
+    </section>
+
+    <section id="view-projects" class="view">
+      <div class="filterBar">
+        <select id="projectStatusFilter"><option value="">كل الحالات</option></select>
+      </div>
+      <div class="card" style="padding:0;overflow:auto;"><div id="projectsTableWrap"><div class="loadingNote">بيحمّل المشاريع...</div></div></div>
+    </section>
+
+    <section id="view-maintenance" class="view">
+      <div class="kpiGrid" id="maintenanceKpiGrid"></div>
+      <div class="panels">
+        <div>
+          <div class="card">
+            <h3><span class="lbl">بلاغات الأعطال (Service Tickets)</span></h3>
+            <div class="filterBar" style="margin-bottom:10px;">
+              <select id="ticketStatusFilter"><option value="">كل الحالات</option></select>
+              <select id="ticketPriorityFilter"><option value="">كل الأولويات</option></select>
+              <button class="btn small" id="newTicketBtn" type="button">+ بلاغ جديد</button>
+            </div>
+            <div id="ticketsTableWrap"><div class="loadingNote">بيحمّل البلاغات...</div></div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <h3><span class="lbl">عقود الصيانة</span></h3>
+            <button class="btn small ghost" id="newMaintBtn" type="button" style="margin-bottom:10px;">+ عقد صيانة جديد</button>
+            <div id="maintContractsList"><div class="loadingNote">بيحمّل العقود...</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="view-settings" class="view">
       <div class="card">
         <h3><span class="lbl">إعدادات قوائم الـCRM</span></h3>
@@ -287,6 +329,11 @@ table.admtable tbody tr:hover td{background:var(--sand);}
 
 <div class="overlay" id="oppOverlay"><div class="modal" id="oppModal" style="max-width:640px;"></div></div>
 
+<div class="overlay" id="assetOverlay"><div class="modal" id="assetModal" style="max-width:600px;"></div></div>
+
+<div class="overlay" id="ticketOverlay"><div class="modal" id="ticketModal" style="max-width:520px;"></div></div>
+<div class="overlay" id="maintOverlay"><div class="modal" id="maintModal" style="max-width:520px;"></div></div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -298,7 +345,10 @@ const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything el
 
 let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[],
   customerTypes:[], classifications:[], regions:[], energySources:[], contactMethods:[], decisionPowerLevels:[],
-  opportunityStages:[], projectTypes:[], opportunityLostReasons:[], activityTypes:[] };
+  opportunityStages:[], projectTypes:[], opportunityLostReasons:[], activityTypes:[],
+  assetTypes:[], assetStatuses:[], quotationStatuses:[],
+  leadSources:[], projectScopeTypes:[], projectStatuses:[], costTypes:[], paymentMethods:[],
+  ticketPriorities:[], ticketStatuses:[], maintenanceContractStatuses:[] };
 let SESSION = null; // { role, token, displayName }
 let loginRole = 'rep';
 
@@ -381,6 +431,12 @@ async function enterApp(){
     SETTINGS.statuses.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   document.getElementById('siteRegionFilter').innerHTML = '<option value="">كل المناطق</option>' +
     SETTINGS.regions.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  document.getElementById('projectStatusFilter').innerHTML = '<option value="">كل الحالات</option>' +
+    SETTINGS.projectStatuses.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  document.getElementById('ticketStatusFilter').innerHTML = '<option value="">كل الحالات</option>' +
+    SETTINGS.ticketStatuses.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
+  document.getElementById('ticketPriorityFilter').innerHTML = '<option value="">كل الأولويات</option>' +
+    SETTINGS.ticketPriorities.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   loadDashboard();
   loadCustomers();
 }
@@ -403,6 +459,9 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='customers') loadCustomers();
   if(tab==='pipeline') loadPipeline();
   if(tab==='sites') loadSites();
+  if(tab==='warranty') loadWarranty();
+  if(tab==='projects') loadProjects();
+  if(tab==='maintenance') loadMaintenance();
   if(tab==='settings') loadSettingsScreen();
 });
 
@@ -496,11 +555,11 @@ async function openCustomer(id){
   document.getElementById('custModal').innerHTML = '<div class="loadingNote">بيحمّل بيانات العميل...</div>';
   try{
     const d = await crmApi('admin-crm-customer-detail', {customerId:id});
-    renderCustomerModal(d.customer, d.quotes, d.interactions, d.contacts||[], d.sites||[], d.opportunities||[]);
+    renderCustomerModal(d.customer, d.quotes, d.interactions, d.contacts||[], d.sites||[], d.opportunities||[], d.assets||[]);
   }catch(err){ document.getElementById('custModal').innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
 }
 
-function renderCustomerModal(c, quotes, interactions, contacts, sites, opportunities){
+function renderCustomerModal(c, quotes, interactions, contacts, sites, opportunities, assets){
   const m = document.getElementById('custModal');
   const canDelete = SESSION.role === 'admin';
   m.innerHTML = `
@@ -512,17 +571,18 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       <div><label>التصنيف</label><select id="f_classif">${optHtml(SETTINGS.classifications, c.classification)}</select></div>
       <div><label>المدينة</label><input type="text" id="f_city" value="${c.city||''}"></div>
       <div><label>المنطقة</label><select id="f_region">${optHtml(SETTINGS.regions, c.region)}</select></div>
+      <div><label>مصدر العميل</label><select id="f_lead_source">${optHtml(SETTINGS.leadSources, c.lead_source)}</select></div>
       <div><label>المندوب المسؤول</label><input type="text" id="f_rep" value="${c.assigned_rep||''}"></div>
       <div><label>الحالة</label><select id="f_status">${optHtml(SETTINGS.statuses, c.status)}</select></div>
       <div><label>الأولوية</label><select id="f_priority">${optHtml(SETTINGS.priorities, c.priority)}</select></div>
-      <div><label>رأيه في السعر</label><select id="f_price">${optHtml(SETTINGS.priceFeedback, c.price_feedback)}</select></div>
-      <div><label>سبب توقف التنفيذ</label><select id="f_blocker">${optHtml(SETTINGS.blockerReasons, c.blocker_reason)}</select></div>
+      <div id="f_price_wrap"><label>رأيه في السعر</label><select id="f_price">${optHtml(SETTINGS.priceFeedback, c.price_feedback)}</select></div>
+      <div id="f_blocker_wrap"><label>سبب توقف التنفيذ</label><select id="f_blocker">${optHtml(SETTINGS.blockerReasons, c.blocker_reason)}</select></div>
       <div><label>موعد المتابعة القادمة</label><input type="date" id="f_followup" value="${c.next_follow_up_date||''}"></div>
       <div><label>السجل التجاري</label><input type="text" id="f_cr" value="${c.commercial_registration||''}"></div>
       <div><label>الرقم الضريبي (VAT)</label><input type="text" id="f_vat" value="${c.vat_number||''}"></div>
       <div style="grid-column:1/-1;"><label>الرقم الموحد</label><input type="text" id="f_unified" value="${c.unified_number||''}"></div>
     </div>
-    <label>ملاحظات عن المشكلة / السبب</label><textarea id="f_notes">${c.blocker_notes||''}</textarea>
+    <div id="f_notes_wrap"><label>ملاحظات عن المشكلة / السبب</label><textarea id="f_notes">${c.blocker_notes||''}</textarea></div>
     <div class="saveBar">
       <div>${canDelete ? '<button class="btn danger small" id="delCustBtn">🗑 حذف العميل</button>' : ''}</div>
       <div class="right"><button class="btn" id="saveCustBtn">حفظ بيانات المتابعة</button></div>
@@ -577,6 +637,23 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     </div>
 
     <div class="section">
+      <h4>المعدات المركبة والضمان (${assets.length})</h4>
+      <div id="assetsMiniList">
+        ${assets.length ? assets.map(a=>{
+          const overdue = a.warranty_end_date && a.warranty_end_date < todayStr();
+          const sm = metaOf(SETTINGS.assetStatuses, a.status) || {label:a.status, color:'#93a89c'};
+          return `<div class="quoteRow" data-asset-id="${a.id}" style="cursor:pointer;">
+            <div class="top"><span>${labelOf(SETTINGS.assetTypes, a.asset_type)}${a.model?' · '+escapeHtml(a.model):''}</span>
+              <span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span></div>
+            <div>${a.serial_number?'S/N: '+escapeHtml(a.serial_number)+' · ':''}${a.manufacturer?escapeHtml(a.manufacturer)+' · ':''}الكمية: ${a.quantity??1}</div>
+            ${a.warranty_end_date?`<div style="color:${overdue?'var(--bad)':'var(--muted)'};font-size:11px;">الضمان لحد: ${fmtDate(a.warranty_end_date)}${overdue?' (منتهي)':''}</div>`:''}
+          </div>`;
+        }).join('') : '<div class="emptyNote">مفيش معدات مسجلة لهذا العميل</div>'}
+      </div>
+      <div class="saveBar" style="margin-top:10px;"><div></div><div class="right"><button class="btn ghost small" id="addAssetBtn">+ تسجيل منتج مركّب</button></div></div>
+    </div>
+
+    <div class="section">
       <h4>سجل عروض الأسعار (${quotes.length})</h4>
       ${quotes.length ? quotes.map(q=>`
         <div class="quoteRow"><div class="top"><span>${fmtDate(q.created_at)}</span><span>${q.rep_display_name||''}</span></div>
@@ -602,6 +679,14 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     </div>
   `;
   m.querySelector('[data-close]').addEventListener('click', closeCustomer);
+  function toggleLossFields(){
+    const won = m.querySelector('#f_status').value === 'won';
+    ['f_price_wrap','f_blocker_wrap','f_notes_wrap'].forEach(id=>{
+      m.querySelector('#'+id).style.display = won ? 'none' : '';
+    });
+  }
+  toggleLossFields();
+  m.querySelector('#f_status').addEventListener('change', toggleLossFields);
   m.querySelector('#saveCustBtn').addEventListener('click', async ()=>{
     try{
       const fields = {
@@ -609,6 +694,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
         phone: m.querySelector('#f_phone').value.trim(),
         city: m.querySelector('#f_city').value.trim(),
         region: m.querySelector('#f_region').value || null,
+        lead_source: m.querySelector('#f_lead_source').value || null,
         customer_type: m.querySelector('#f_ctype').value || null,
         classification: m.querySelector('#f_classif').value || null,
         commercial_registration: m.querySelector('#f_cr').value.trim(),
@@ -680,6 +766,10 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
   m.querySelector('#addOppFromCustBtn').addEventListener('click', ()=>openOpportunityEditor(null, c.id, c.name));
   m.querySelectorAll('#oppsMiniList [data-opp-id]').forEach(row=>{
     row.addEventListener('click', ()=>openOpportunityEditor(row.dataset.oppId));
+  });
+  m.querySelector('#addAssetBtn').addEventListener('click', ()=>openAssetEditor(null, c.id));
+  m.querySelectorAll('#assetsMiniList [data-asset-id]').forEach(row=>{
+    row.addEventListener('click', ()=>openAssetEditor(row.dataset.assetId, c.id));
   });
 }
 
@@ -925,12 +1015,13 @@ oppOverlay.addEventListener('click', (e)=>{ if(e.target===oppOverlay) oppOverlay
 async function openOpportunityEditor(opportunityId, customerId, customerName){
   oppOverlay.classList.add('show');
   const m = document.getElementById('oppModal');
-  let opp = null, activities = [];
+  let opp = null, activities = [], survey = null, study = null, customerQuotes = [];
   if(opportunityId){
     m.innerHTML = '<div class="loadingNote">بيحمّل الصفقة...</div>';
     try{
       const d = await crmApi('admin-crm-opportunity-detail', {opportunityId});
       opp = d.opportunity; activities = d.activities;
+      survey = d.survey; study = d.study; customerQuotes = d.customerQuotes || [];
       customerId = opp.customer_id; customerName = opp.customers ? opp.customers.name : '';
     }catch(err){ m.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; return; }
   }
@@ -964,6 +1055,23 @@ async function openOpportunityEditor(opportunityId, customerId, customerName){
       <div class="right"><button class="btn" id="saveOppBtn">حفظ</button></div>
     </div>
     ${opportunityId ? `
+    <details class="section" style="border-top:1px dashed var(--line);">
+      <summary style="cursor:pointer;font-size:13px;color:var(--night-2);font-weight:700;">📋 المسح الميداني (Site Survey)</summary>
+      <div id="surveyFormWrap" style="margin-top:14px;"></div>
+    </details>
+    <details class="section" style="border-top:1px dashed var(--line);">
+      <summary style="cursor:pointer;font-size:13px;color:var(--night-2);font-weight:700;">⚙️ الدراسة الفنية (Technical Study)</summary>
+      <div id="studyFormWrap" style="margin-top:14px;"></div>
+    </details>
+    <details class="section" style="border-top:1px dashed var(--line);" open>
+      <summary style="cursor:pointer;font-size:13px;color:var(--night-2);font-weight:700;">🧾 عروض الأسعار الرسمية (Quotations)</summary>
+      <div id="quotationsWrap" style="margin-top:14px;"></div>
+    </details>
+    <details class="section" style="border-top:1px dashed var(--line);" open>
+      <summary style="cursor:pointer;font-size:13px;color:var(--night-2);font-weight:700;">🏗️ المشروع (Project)</summary>
+      <div id="projectWrap" style="margin-top:14px;"></div>
+    </details>` : ''}
+    ${opportunityId ? `
     <div class="section">
       <h4>سجل الأنشطة (${activities.length})</h4>
       <div class="grid2" style="margin-bottom:10px;">
@@ -986,6 +1094,12 @@ async function openOpportunityEditor(opportunityId, customerId, customerName){
     </div>` : ''}
   `;
   m.querySelector('[data-close-opp]').addEventListener('click', ()=>oppOverlay.classList.remove('show'));
+  if(opportunityId){
+    renderSurveyForm(m.querySelector('#surveyFormWrap'), survey||{}, opportunityId, customerId);
+    renderStudyForm(m.querySelector('#studyFormWrap'), study||{}, opportunityId, customerQuotes);
+    renderQuotationsPanel(m.querySelector('#quotationsWrap'), opportunityId, customerQuotes);
+    renderProjectPanel(m.querySelector('#projectWrap'), opportunityId, opp);
+  }
   m.querySelector('#of_stage').addEventListener('change', (e)=>{
     document.getElementById('lostFields').style.display = e.target.value==='lost' ? 'grid' : 'none';
   });
@@ -1051,6 +1165,707 @@ async function openOpportunityEditor(opportunityId, customerId, customerName){
   });
 }
 
+/* ============ ASSETS / WARRANTY ============ */
+document.getElementById('assetSearchInput').addEventListener('input', ()=>{
+  clearTimeout(window._assetSearchDebounce);
+  window._assetSearchDebounce = setTimeout(loadWarranty, 350);
+});
+
+async function loadWarranty(){
+  const kpiWrap = document.getElementById('warrantyKpiGrid');
+  const tableWrap = document.getElementById('assetsTableWrap');
+  kpiWrap.innerHTML = '';
+  tableWrap.innerHTML = '<div class="loadingNote">بيحمّل المعدات...</div>';
+  try{
+    const [statsRes, listRes] = await Promise.all([
+      crmApi('admin-crm-warranty-stats', {}),
+      crmApi('admin-crm-list-assets', { search: document.getElementById('assetSearchInput').value.trim() }),
+    ]);
+    kpiWrap.innerHTML = `
+      <div class="stat"><div class="v">${statsRes.total}</div><div class="l">إجمالي المعدات المسجلة</div></div>
+      <div class="stat"><div class="v">${statsRes.active}</div><div class="l">ضمان ساري</div></div>
+      <div class="stat sun"><div class="v">${statsRes.expiring30}</div><div class="l">هينتهي خلال ٣٠ يوم</div></div>
+      <div class="stat sun"><div class="v">${statsRes.expiring60}</div><div class="l">هينتهي خلال ٦٠ يوم</div></div>
+      <div class="stat bad"><div class="v">${statsRes.expired}</div><div class="l">ضمان منتهي</div></div>
+    `;
+    const assets = listRes.assets;
+    if(!assets.length){ tableWrap.innerHTML = '<div class="loadingNote">مفيش معدات مسجلة</div>'; return; }
+    const today = todayStr();
+    tableWrap.innerHTML = `<table class="admtable"><thead><tr>
+      <th>النوع</th><th>العميل</th><th>الموديل</th><th>رقم السريال</th><th>الحالة</th><th>الضمان لحد</th>
+      </tr></thead><tbody>
+      ${assets.map(a=>{
+        const overdue = a.warranty_end_date && a.warranty_end_date < today;
+        const sm = metaOf(SETTINGS.assetStatuses, a.status) || {label:a.status, color:'#93a89c'};
+        return `<tr data-asset-id="${a.id}" data-customer-id="${a.customer_id}">
+          <td>${labelOf(SETTINGS.assetTypes, a.asset_type)}</td>
+          <td>${a.customers?(a.customers.name||a.customers.phone):'-'}</td>
+          <td>${a.model||'-'}</td>
+          <td>${a.serial_number||'-'}</td>
+          <td><span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span></td>
+          <td class="${overdue?'od':''}">${fmtDate(a.warranty_end_date)}${overdue?' ⚠':''}</td>
+        </tr>`;
+      }).join('')}
+      </tbody></table>`;
+    tableWrap.querySelectorAll('tbody tr').forEach(r=>r.addEventListener('click', ()=>openAssetEditor(r.dataset.assetId, r.dataset.customerId)));
+  }catch(err){ tableWrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
+}
+
+const assetOverlay = document.getElementById('assetOverlay');
+assetOverlay.addEventListener('click', (e)=>{ if(e.target===assetOverlay) assetOverlay.classList.remove('show'); });
+
+async function openAssetEditor(assetId, customerId){
+  assetOverlay.classList.add('show');
+  const m = document.getElementById('assetModal');
+  let asset = null;
+  if(assetId){
+    m.innerHTML = '<div class="loadingNote">بيحمّل بيانات المنتج...</div>';
+    try{
+      const d = await crmApi('admin-crm-list-assets', {customerId});
+      asset = (d.assets||[]).find(a=>String(a.id)===String(assetId)) || {};
+    }catch(e){ asset = {}; }
+  }
+  asset = asset || {};
+  m.innerHTML = `
+    <div class="mhead"><h2>${assetId ? 'تعديل منتج مركّب' : 'تسجيل منتج مركّب'}</h2><button class="closeX" data-close-asset>×</button></div>
+    <div class="grid2">
+      <div><label>نوع المنتج</label><select id="asf_type">${optHtml(SETTINGS.assetTypes, asset.asset_type)}</select></div>
+      <div><label>الحالة</label><select id="asf_status">${optHtml(SETTINGS.assetStatuses, asset.status||'active')}</select></div>
+      <div><label>الشركة المصنّعة</label><input type="text" id="asf_manufacturer" value="${escapeHtml(asset.manufacturer||'')}"></div>
+      <div><label>الموديل</label><input type="text" id="asf_model" value="${escapeHtml(asset.model||'')}"></div>
+      <div><label>رقم السريال</label><input type="text" id="asf_serial" value="${escapeHtml(asset.serial_number||'')}" placeholder="لو أكتر من قطعة بنفس السريال اكتبهم مفصولين بفاصلة"></div>
+      <div><label>القدرة / السعة</label><input type="text" id="asf_capacity" value="${escapeHtml(asset.capacity||'')}" placeholder="مثال: 550W أو 125HP"></div>
+      <div><label>الكمية</label><input type="number" min="1" id="asf_quantity" value="${asset.quantity??1}"></div>
+      <div><label>مكان التركيب</label><input type="text" id="asf_location" value="${escapeHtml(asset.location_note||'')}" placeholder="مثال: بئر رقم ٢"></div>
+      <div><label>تاريخ التركيب</label><input type="date" id="asf_install_date" value="${asset.installation_date||''}"></div>
+      <div></div>
+      <div><label>بداية الضمان</label><input type="date" id="asf_warranty_start" value="${asset.warranty_start_date||''}"></div>
+      <div><label>نهاية الضمان</label><input type="date" id="asf_warranty_end" value="${asset.warranty_end_date||''}"></div>
+    </div>
+    <label>ملاحظات</label><textarea id="asf_notes">${escapeHtml(asset.notes||'')}</textarea>
+    <div class="saveBar">
+      <div>${assetId && SESSION.role==='admin' ? '<button class="btn danger small" id="delAssetBtn">🗑 حذف المنتج</button>' : ''}</div>
+      <div class="right"><button class="btn" id="saveAssetBtn">حفظ</button></div>
+    </div>
+  `;
+  m.querySelector('[data-close-asset]').addEventListener('click', ()=>assetOverlay.classList.remove('show'));
+  m.querySelector('#saveAssetBtn').addEventListener('click', async ()=>{
+    const fields = {
+      asset_type: m.querySelector('#asf_type').value || null,
+      status: m.querySelector('#asf_status').value || 'active',
+      manufacturer: m.querySelector('#asf_manufacturer').value.trim(),
+      model: m.querySelector('#asf_model').value.trim(),
+      serial_number: m.querySelector('#asf_serial').value.trim(),
+      capacity: m.querySelector('#asf_capacity').value.trim(),
+      quantity: m.querySelector('#asf_quantity').value || 1,
+      location_note: m.querySelector('#asf_location').value.trim(),
+      installation_date: m.querySelector('#asf_install_date').value || null,
+      warranty_start_date: m.querySelector('#asf_warranty_start').value || null,
+      warranty_end_date: m.querySelector('#asf_warranty_end').value || null,
+      notes: m.querySelector('#asf_notes').value.trim(),
+    };
+    try{
+      if(assetId){
+        await crmApi('admin-crm-update-asset', {assetId, fields});
+      } else {
+        await crmApi('admin-crm-add-asset', {customerId, fields});
+      }
+      toast('اتحفظ المنتج ✅');
+      assetOverlay.classList.remove('show');
+      if(document.getElementById('custOverlay').classList.contains('show')) openCustomer(customerId);
+      if(!document.getElementById('view-warranty').classList.contains('hidden')) loadWarranty();
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+  const delAssetBtn = m.querySelector('#delAssetBtn');
+  if(delAssetBtn) delAssetBtn.addEventListener('click', async ()=>{
+    if(!confirm('تحذف المنتج ده من السجل؟')) return;
+    try{
+      await crmApi('admin-crm-delete-asset', {assetId});
+      toast('اتمسح المنتج');
+      assetOverlay.classList.remove('show');
+      if(document.getElementById('custOverlay').classList.contains('show')) openCustomer(customerId);
+      if(!document.getElementById('view-warranty').classList.contains('hidden')) loadWarranty();
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+}
+
+/* ============ SITE SURVEY + TECHNICAL STUDY (inside opportunity modal) ============ */
+const SURVEY_FIELD_GROUPS = [
+  { title: 'عام', fields: [
+    ['engineer_name','المهندس المسؤول','text'], ['survey_date','تاريخ المسح','date'],
+  ]},
+  { title: 'المضخة', fields: [
+    ['pump_type','نوع المضخة','text'], ['pump_manufacturer','الشركة المصنّعة','text'], ['pump_model','الموديل','text'],
+    ['pump_hp','القدرة (HP)','text'], ['pump_kw','القدرة (kW)','text'], ['flow','التصرف (Flow)','text'],
+    ['head','الرفع (Head)','text'], ['well_depth','عمق البئر','text'],
+    ['static_water_level','منسوب الماء الساكن','text'], ['dynamic_water_level','منسوب الماء الديناميكي','text'],
+  ]},
+  { title: 'الموتور', fields: [
+    ['motor_manufacturer','الشركة المصنّعة','text'], ['motor_model','الموديل','text'],
+    ['motor_hp','القدرة (HP)','text'], ['motor_kw','القدرة (kW)','text'], ['motor_voltage','الفولت','text'],
+    ['motor_current','التيار (Amp)','text'], ['motor_frequency','التردد (Hz)','text'], ['motor_rpm','RPM','text'],
+    ['motor_power_factor','معامل القدرة','text'], ['motor_efficiency','الكفاءة','text'],
+  ]},
+  { title: 'مصدر الطاقة الحالي', fields: [
+    ['existing_diesel_generator','مولد ديزل موجود؟','text'], ['generator_capacity','قدرة المولد','text'],
+    ['diesel_consumption','استهلاك الديزل','text'], ['electricity_grid','كهرباء شبكة موجودة؟','text'],
+    ['electricity_tariff','تعريفة الكهرباء','text'], ['existing_solar','نظام شمسي حالي','text'],
+  ]},
+  { title: 'متطلبات التشغيل', fields: [
+    ['hours_per_day','ساعات التشغيل/اليوم','text'], ['days_per_month','أيام التشغيل/الشهر','text'],
+    ['seasonal_operation','تشغيل موسمي؟','text'], ['required_water_production','الإنتاج المطلوب من المياه','text'],
+  ]},
+  { title: 'الموقع', fields: [
+    ['available_area','المساحة المتاحة','text'], ['roof_or_ground','سطح أم أرضي','text'], ['shading','تظليل؟','text'],
+    ['orientation','الاتجاه','text'], ['tilt','زاوية الميل','text'], ['soil','نوع التربة','text'],
+    ['access','سهولة الوصول','text'], ['distance','المسافة عن الموقع','text'], ['cable_length','طول الكابلات المطلوب','text'],
+  ]},
+];
+
+function renderSurveyForm(wrap, survey, opportunityId, customerId){
+  wrap.innerHTML = SURVEY_FIELD_GROUPS.map(g=>`
+    <div style="margin-bottom:14px;">
+      <div style="font-size:12px;color:var(--muted);font-weight:700;margin-bottom:8px;">${g.title}</div>
+      <div class="grid2">
+        ${g.fields.map(([key,label,type])=>`<div><label>${label}</label><input type="${type}" id="sv_${key}" value="${escapeHtml(String(survey[key]??''))}"></div>`).join('')}
+      </div>
+    </div>`).join('') +
+    `<label>ملاحظات فنية</label><textarea id="sv_technical_notes">${escapeHtml(survey.technical_notes||'')}</textarea>
+    <div class="saveBar"><div></div><div class="right"><button class="btn ghost small" id="saveSurveyBtn" type="button">حفظ المسح الميداني</button></div></div>`;
+  wrap.querySelector('#saveSurveyBtn').addEventListener('click', async ()=>{
+    const fields = {};
+    SURVEY_FIELD_GROUPS.forEach(g=>g.fields.forEach(([key])=>{ fields[key] = wrap.querySelector('#sv_'+key).value; }));
+    fields.technical_notes = wrap.querySelector('#sv_technical_notes').value.trim();
+    try{
+      await crmApi('admin-crm-save-site-survey', {opportunityId, fields});
+      toast('اتحفظ المسح الميداني ✅');
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+}
+
+function renderStudyForm(wrap, study, opportunityId, customerQuotes){
+  const quoteOptions = '<option value="">-- من غير ربط --</option>' + customerQuotes.map(q=>
+    `<option value="${q.id}" ${String(study.quote_id)===String(q.id)?'selected':''}>${fmtDate(q.created_at)} · ${q.hp||''} HP · ${fmtMoney(q.final_total)} ﷼</option>`
+  ).join('');
+  const STUDY_FIELDS = [
+    ['pv_capacity','قدرة المنظومة (PV)','text'], ['number_of_panels','عدد الألواح','text'],
+    ['panel_model','موديل اللوح','text'], ['panel_wattage','قدرة اللوح (W)','text'],
+    ['inverter','الإنفرتر','text'], ['inverter_capacity','قدرة الإنفرتر','text'],
+    ['pump','المضخة المقترحة','text'], ['vfd','VFD','text'], ['structure','الهيكل','text'],
+    ['dc_cables','كابلات DC','text'], ['ac_cables','كابلات AC','text'], ['protection','الحماية','text'],
+    ['combiner_boxes','صناديق التجميع','text'], ['monitoring','نظام المراقبة','text'],
+    ['expected_production','الإنتاج المتوقع','text'], ['expected_operating_hours','ساعات التشغيل المتوقعة','text'],
+    ['estimated_diesel_saving','توفير الديزل المتوقع','text'], ['estimated_electricity_saving','توفير الكهرباء المتوقع','text'],
+    ['capex','التكلفة الرأسمالية CAPEX (﷼)','number'], ['opex','التكلفة التشغيلية OPEX (﷼)','number'],
+    ['estimated_roi','العائد على الاستثمار ROI','text'], ['payback_period','فترة الاسترداد','text'],
+  ];
+  wrap.innerHTML = `
+    <div class="emptyNote" style="margin-bottom:10px;">لو الحاسبة الأساسية عملت عرض سعر لنفس العميل، اربطه هنا بدل ما تدخل تفاصيل الألواح والإنفرتر يدويًا تاني.</div>
+    <label>ربط بعرض سعر من الحاسبة</label><select id="st_quote_id">${quoteOptions}</select>
+    <div class="grid2" style="margin-top:10px;">
+      ${STUDY_FIELDS.map(([key,label,type])=>`<div><label>${label}</label><input type="${type}" id="st_${key}" value="${escapeHtml(String(study[key]??''))}"></div>`).join('')}
+    </div>
+    <label>ملاحظات</label><textarea id="st_notes">${escapeHtml(study.notes||'')}</textarea>
+    <div class="saveBar"><div></div><div class="right"><button class="btn ghost small" id="saveStudyBtn" type="button">حفظ الدراسة الفنية</button></div></div>
+  `;
+  wrap.querySelector('#saveStudyBtn').addEventListener('click', async ()=>{
+    const fields = { quote_id: wrap.querySelector('#st_quote_id').value || null };
+    STUDY_FIELDS.forEach(([key])=>{ fields[key] = wrap.querySelector('#st_'+key).value; });
+    fields.notes = wrap.querySelector('#st_notes').value.trim();
+    try{
+      await crmApi('admin-crm-save-technical-study', {opportunityId, fields});
+      toast('اتحفظت الدراسة الفنية ✅');
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+}
+
+/* ============ QUOTATIONS (versioned, inside opportunity modal) ============ */
+async function renderQuotationsPanel(wrap, opportunityId, customerQuotes){
+  wrap.innerHTML = '<div class="loadingNote">بيحمّل عروض الأسعار...</div>';
+  let history = [];
+  try{
+    const d = await crmApi('admin-crm-list-quotations', {opportunityId});
+    history = d.quotations;
+  }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; return; }
+
+  const linkedQuoteOptions = '<option value="">-- من غير ربط --</option>' + customerQuotes.map(q=>
+    `<option value="${q.id}">${fmtDate(q.created_at)} · ${q.hp||''} HP · ${fmtMoney(q.final_total)} ﷼</option>`
+  ).join('');
+  const isAdmin = SESSION.role === 'admin';
+
+  wrap.innerHTML = `
+    <div id="quoteHistoryList">
+      ${history.length ? history.map(q=>{
+        const sm = metaOf(SETTINGS.quotationStatuses, q.status) || {label:q.status, color:'#93a89c'};
+        return `<div class="quoteRow" data-quotation-id="${q.id}">
+          <div class="top"><span><b>${q.quotation_number}</b> · نسخة ${q.version}</span><span>${fmtDate(q.created_at)}</span></div>
+          <div>الإجمالي شامل الضريبة: <b>${fmtMoney(q.total)} ﷼</b>
+            ${isAdmin && q.gross_margin!=null ? ` · هامش الربح: <b>${q.gross_margin.toFixed(1)}%</b>`:''}
+          </div>
+          <div style="margin-top:6px;display:flex;gap:8px;align-items:center;">
+            <select class="qStatusSelect" data-id="${q.id}" style="max-width:160px;">${optHtml(SETTINGS.quotationStatuses, q.status)}</select>
+            ${isAdmin?`<button class="btn danger small delQuoteBtn" data-id="${q.id}" style="padding:6px 10px;">حذف</button>`:''}
+          </div>
+        </div>`;
+      }).join('') : '<div class="emptyNote">لسه مفيش عروض أسعار رسمية لهذه الصفقة</div>'}
+    </div>
+
+    <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--line);">
+      <div style="font-size:12.5px;color:var(--muted);font-weight:700;margin-bottom:8px;">إنشاء نسخة جديدة</div>
+      <label>ربط بعرض سعر من الحاسبة (اختياري)</label><select id="q_linked_quote">${linkedQuoteOptions}</select>
+      <div class="grid2" style="margin-top:10px;">
+        <div><label>صالح لغاية</label><input type="date" id="q_valid_until"></div>
+        <div><label>المهندس المسؤول</label><input type="text" id="q_engineer"></div>
+      </div>
+      <div id="itemRows" style="margin-top:10px;"></div>
+      <button type="button" class="btn ghost small" id="addItemRowBtn">+ إضافة بند</button>
+      <div class="grid2" style="margin-top:10px;">
+        <div><label>خصم إجمالي (﷼)</label><input type="number" id="q_discount_total" value="0"></div>
+        <div><label>نسبة الضريبة %</label><input type="number" id="q_vat_percent" value="15"></div>
+        ${isAdmin ? '<div><label>التكلفة (﷼) — للأدمن بس</label><input type="number" id="q_cost"></div>' : ''}
+      </div>
+      <div id="qTotalsPreview" style="margin-top:10px;font-size:13px;background:var(--sand);border:1px solid var(--line);border-radius:9px;padding:10px 12px;"></div>
+      <label>ملاحظات</label><textarea id="q_notes"></textarea>
+      <div class="saveBar"><div></div><div class="right"><button class="btn" id="saveQuotationBtn" type="button">حفظ كنسخة جديدة</button></div></div>
+    </div>
+  `;
+
+  wrap.querySelectorAll('.qStatusSelect').forEach(sel=>{
+    sel.addEventListener('change', async ()=>{
+      try{
+        await crmApi('admin-crm-update-quotation-status', {quotationId: sel.dataset.id, status: sel.value});
+        toast('اتحدثت حالة العرض ✅');
+      }catch(err){ toast('خطأ: '+err.message); }
+    });
+  });
+  wrap.querySelectorAll('.delQuoteBtn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('تحذف نسخة العرض دي؟')) return;
+      try{
+        await crmApi('admin-crm-delete-quotation', {quotationId: btn.dataset.id});
+        toast('اتمسحت النسخة');
+        renderQuotationsPanel(wrap, opportunityId, customerQuotes);
+      }catch(err){ toast('خطأ: '+err.message); }
+    });
+  });
+
+  const itemRowsEl = wrap.querySelector('#itemRows');
+  function addItemRow(desc='', qty=1, price='', discount=0){
+    const row = document.createElement('div');
+    row.className = 'optRow';
+    row.innerHTML = `
+      <input type="text" class="it-desc" placeholder="وصف البند" value="${escapeHtml(desc)}" style="flex:2;">
+      <input type="number" class="it-qty mini" placeholder="كمية" value="${qty}">
+      <input type="number" class="it-price mini" placeholder="سعر الوحدة" value="${price}">
+      <input type="number" class="it-discount mini" placeholder="خصم" value="${discount}">
+      <button type="button" class="btn danger small" style="padding:6px 10px;">×</button>
+    `;
+    row.querySelector('button').addEventListener('click', ()=>{ row.remove(); recalcTotals(); });
+    row.querySelectorAll('input').forEach(inp=>inp.addEventListener('input', recalcTotals));
+    itemRowsEl.appendChild(row);
+    recalcTotals();
+  }
+  wrap.querySelector('#addItemRowBtn').addEventListener('click', ()=>addItemRow());
+  addItemRow();
+
+  function recalcTotals(){
+    let subtotal = 0;
+    itemRowsEl.querySelectorAll('.optRow').forEach(row=>{
+      const qty = Number(row.querySelector('.it-qty').value)||0;
+      const price = Number(row.querySelector('.it-price').value)||0;
+      const disc = Number(row.querySelector('.it-discount').value)||0;
+      subtotal += qty*price - disc;
+    });
+    const discountTotal = Number(wrap.querySelector('#q_discount_total').value)||0;
+    subtotal = Math.max(0, subtotal - discountTotal);
+    const vatPercent = Number(wrap.querySelector('#q_vat_percent').value)||0;
+    const vatAmount = subtotal * (vatPercent/100);
+    const total = subtotal + vatAmount;
+    let marginLine = '';
+    if(isAdmin){
+      const cost = Number(wrap.querySelector('#q_cost')?.value)||0;
+      const costEl = wrap.querySelector('#q_cost');
+      if(costEl && costEl.value !== ''){
+        const profit = subtotal - cost;
+        const margin = subtotal>0 ? (profit/subtotal*100) : 0;
+        marginLine = ` · هامش الربح: <b>${margin.toFixed(1)}%</b> (${fmtMoney(profit)} ﷼)`;
+      }
+    }
+    wrap.querySelector('#qTotalsPreview').innerHTML =
+      `الإجمالي قبل الضريبة: <b>${fmtMoney(subtotal)} ﷼</b> · الضريبة: <b>${fmtMoney(vatAmount)} ﷼</b> · الإجمالي شامل الضريبة: <b>${fmtMoney(total)} ﷼</b>${marginLine}`;
+  }
+  wrap.querySelector('#q_discount_total').addEventListener('input', recalcTotals);
+  wrap.querySelector('#q_vat_percent').addEventListener('input', recalcTotals);
+  const costEl2 = wrap.querySelector('#q_cost');
+  if(costEl2) costEl2.addEventListener('input', recalcTotals);
+
+  wrap.querySelector('#saveQuotationBtn').addEventListener('click', async ()=>{
+    const items = [];
+    itemRowsEl.querySelectorAll('.optRow').forEach(row=>{
+      const description = row.querySelector('.it-desc').value.trim();
+      if(!description) return;
+      items.push({
+        description,
+        quantity: Number(row.querySelector('.it-qty').value)||0,
+        unitPrice: Number(row.querySelector('.it-price').value)||0,
+        discount: Number(row.querySelector('.it-discount').value)||0,
+      });
+    });
+    if(!items.length){ toast('ضيف بند واحد على الأقل'); return; }
+    const payload = {
+      opportunityId, items,
+      linkedQuoteId: wrap.querySelector('#q_linked_quote').value || null,
+      validUntil: wrap.querySelector('#q_valid_until').value || null,
+      engineer: wrap.querySelector('#q_engineer').value.trim(),
+      discountTotal: wrap.querySelector('#q_discount_total').value || 0,
+      vatPercent: wrap.querySelector('#q_vat_percent').value || 15,
+      notes: wrap.querySelector('#q_notes').value.trim(),
+    };
+    if(isAdmin){
+      const costVal = wrap.querySelector('#q_cost').value;
+      if(costVal !== '') payload.cost = costVal;
+    }
+    try{
+      await crmApi('admin-crm-create-quotation-version', payload);
+      toast('اتحفظ عرض السعر ✅');
+      renderQuotationsPanel(wrap, opportunityId, customerQuotes);
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+}
+
+/* ============ PROJECT (inside opportunity modal, once won) ============ */
+async function renderProjectPanel(wrap, opportunityId, opp){
+  wrap.innerHTML = '<div class="loadingNote">بيحمّل بيانات المشروع...</div>';
+  let data;
+  try{ data = await crmApi('admin-crm-project-by-opportunity', {opportunityId}); }
+  catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; return; }
+
+  if(!data.project){
+    if(opp.stage !== 'won'){
+      wrap.innerHTML = '<div class="emptyNote">هيتفعل تحويل الصفقة لمشروع لما تبقى مرحلتها "اتكسبت".</div>';
+      return;
+    }
+    wrap.innerHTML = `<div class="emptyNote" style="margin-bottom:10px;">الصفقة اتكسبت! حوّلها لمشروع فعلي عشان تتابع التنفيذ والتكاليف والدفعات.</div>
+      <button class="btn" id="createProjectBtn" type="button">🏗️ تحويل لمشروع</button>`;
+    wrap.querySelector('#createProjectBtn').addEventListener('click', async ()=>{
+      try{
+        await crmApi('admin-crm-create-project', {opportunityId});
+        toast('اتعمل المشروع ✅');
+        renderProjectPanel(wrap, opportunityId, opp);
+      }catch(err){ toast('خطأ: '+err.message); }
+    });
+    return;
+  }
+
+  const p = data.project;
+  const isAdmin = SESSION.role === 'admin';
+  const sm = metaOf(SETTINGS.projectStatuses, p.status) || {label:p.status, color:'#93a89c'};
+  wrap.innerHTML = `
+    <div style="margin-bottom:10px;"><span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span> <b>${p.project_number}</b></div>
+    <div class="grid2">
+      <div><label>قيمة العقد (﷼)</label><input type="number" id="pf_contract_value" value="${p.contract_value??''}"></div>
+      <div><label>نطاق المشروع</label><select id="pf_scope">${optHtml(SETTINGS.projectScopeTypes, p.scope_type)}</select></div>
+      <div><label>حالة المشروع</label><select id="pf_status">${optHtml(SETTINGS.projectStatuses, p.status)}</select></div>
+      <div><label>تاريخ توقيع العقد</label><input type="date" id="pf_signed" value="${p.contract_signed_date||''}"></div>
+      <div><label>مدير المشروع</label><input type="text" id="pf_pm" value="${escapeHtml(p.project_manager||'')}"></div>
+      <div><label>المهندس المسؤول</label><input type="text" id="pf_eng" value="${escapeHtml(p.engineer||'')}"></div>
+      <div><label>تاريخ التوريد المخطط</label><input type="date" id="pf_psupply" value="${p.planned_supply_date||''}"></div>
+      <div><label>تاريخ التوريد الفعلي</label><input type="date" id="pf_asupply" value="${p.actual_supply_date||''}"></div>
+      <div><label>تاريخ التركيب المخطط</label><input type="date" id="pf_pinstall" value="${p.planned_install_date||''}"></div>
+      <div><label>تاريخ التركيب الفعلي</label><input type="date" id="pf_ainstall" value="${p.actual_install_date||''}"></div>
+    </div>
+    <label>ملاحظات</label><textarea id="pf_notes">${escapeHtml(p.notes||'')}</textarea>
+    <div class="saveBar"><div></div><div class="right"><button class="btn" id="saveProjectBtn" type="button">حفظ بيانات المشروع</button></div></div>
+
+    <div class="section">
+      <h4>الدفعات — المحصّل: ${fmtMoney(data.collected)} ﷼ · المتبقي: ${fmtMoney(data.remaining)} ﷼</h4>
+      <div id="paymentsList">
+        ${data.payments.length ? data.payments.map(pm=>`
+          <div class="quoteRow"><div class="top"><span>${fmtDate(pm.payment_date)} · ${pm.method?labelOf(SETTINGS.paymentMethods,pm.method):''}</span><span>${fmtMoney(pm.amount)} ﷼</span></div>
+          ${pm.notes?`<div>${escapeHtml(pm.notes)}</div>`:''}</div>`).join('')
+          : '<div class="emptyNote">لسه مفيش دفعات مسجلة</div>'}
+      </div>
+      <div class="grid2" style="margin-top:10px;">
+        <div><label>المبلغ (﷼)</label><input type="number" id="pay_amount"></div>
+        <div><label>تاريخ الدفعة</label><input type="date" id="pay_date" value="${todayStr()}"></div>
+        <div><label>طريقة الدفع</label><select id="pay_method">${optHtml(SETTINGS.paymentMethods,'')}</select></div>
+        <div><label>ملاحظات</label><input type="text" id="pay_notes"></div>
+      </div>
+      <div class="saveBar" style="margin-top:0;"><div></div><div class="right"><button class="btn ghost small" id="addPaymentBtn" type="button">+ إضافة دفعة</button></div></div>
+    </div>
+
+    ${isAdmin ? `
+    <div class="section">
+      <h4>التكاليف الفعلية ${p.total_cost!=null?`— الإجمالي: ${fmtMoney(p.total_cost)} ﷼ · الربح: ${fmtMoney(p.gross_profit)} ﷼ (${p.gross_margin.toFixed(1)}%)`:''}</h4>
+      <div id="costsList">
+        ${(data.costs||[]).length ? data.costs.map(c=>`
+          <div class="quoteRow" data-cost-id="${c.id}"><div class="top"><span>${labelOf(SETTINGS.costTypes,c.cost_type)}</span><span>${fmtMoney(c.amount)} ﷼</span></div>
+          ${c.description?`<div>${escapeHtml(c.description)}</div>`:''}
+          <button class="btn danger small delCostBtn" style="padding:3px 8px;margin-top:4px;">حذف</button></div>`).join('')
+          : '<div class="emptyNote">لسه مفيش تكاليف مسجلة</div>'}
+      </div>
+      <div class="grid2" style="margin-top:10px;">
+        <div><label>نوع التكلفة</label><select id="cost_type">${optHtml(SETTINGS.costTypes,'')}</select></div>
+        <div><label>المبلغ (﷼)</label><input type="number" id="cost_amount"></div>
+        <div style="grid-column:1/-1;"><label>وصف</label><input type="text" id="cost_desc"></div>
+      </div>
+      <div class="saveBar" style="margin-top:0;"><div></div><div class="right"><button class="btn ghost small" id="addCostBtn" type="button">+ إضافة تكلفة</button></div></div>
+    </div>` : ''}
+  `;
+
+  wrap.querySelector('#saveProjectBtn').addEventListener('click', async ()=>{
+    const fields = {
+      contract_value: wrap.querySelector('#pf_contract_value').value || null,
+      scope_type: wrap.querySelector('#pf_scope').value || null,
+      status: wrap.querySelector('#pf_status').value,
+      contract_signed_date: wrap.querySelector('#pf_signed').value || null,
+      project_manager: wrap.querySelector('#pf_pm').value.trim(),
+      engineer: wrap.querySelector('#pf_eng').value.trim(),
+      planned_supply_date: wrap.querySelector('#pf_psupply').value || null,
+      actual_supply_date: wrap.querySelector('#pf_asupply').value || null,
+      planned_install_date: wrap.querySelector('#pf_pinstall').value || null,
+      actual_install_date: wrap.querySelector('#pf_ainstall').value || null,
+      notes: wrap.querySelector('#pf_notes').value.trim(),
+    };
+    try{
+      await crmApi('admin-crm-update-project', {projectId:p.id, fields});
+      toast('اتحفظ المشروع ✅');
+      renderProjectPanel(wrap, opportunityId, opp);
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+  wrap.querySelector('#addPaymentBtn').addEventListener('click', async ()=>{
+    const amount = wrap.querySelector('#pay_amount').value;
+    if(!amount){ toast('اكتب المبلغ'); return; }
+    try{
+      await crmApi('admin-crm-add-payment', {projectId:p.id, amount, paymentDate: wrap.querySelector('#pay_date').value, method: wrap.querySelector('#pay_method').value, notes: wrap.querySelector('#pay_notes').value.trim()});
+      toast('اتسجلت الدفعة ✅');
+      renderProjectPanel(wrap, opportunityId, opp);
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+  const addCostBtn = wrap.querySelector('#addCostBtn');
+  if(addCostBtn) addCostBtn.addEventListener('click', async ()=>{
+    const amount = wrap.querySelector('#cost_amount').value;
+    if(!amount){ toast('اكتب المبلغ'); return; }
+    try{
+      await crmApi('admin-crm-add-cost', {projectId:p.id, costType: wrap.querySelector('#cost_type').value, amount, description: wrap.querySelector('#cost_desc').value.trim()});
+      toast('اتسجلت التكلفة ✅');
+      renderProjectPanel(wrap, opportunityId, opp);
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+  wrap.querySelectorAll('.delCostBtn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const row = btn.closest('[data-cost-id]');
+      if(!confirm('تحذف التكلفة دي؟')) return;
+      try{ await crmApi('admin-crm-delete-cost', {costId: row.dataset.costId}); renderProjectPanel(wrap, opportunityId, opp); }
+      catch(err){ toast('خطأ: '+err.message); }
+    });
+  });
+}
+
+/* ============ TOP-LEVEL: PROJECTS TAB ============ */
+document.getElementById('projectStatusFilter').addEventListener('change', loadProjects);
+async function loadProjects(){
+  const wrap = document.getElementById('projectsTableWrap');
+  wrap.innerHTML = '<div class="loadingNote">بيحمّل المشاريع...</div>';
+  try{
+    const status = document.getElementById('projectStatusFilter').value;
+    const d = await crmApi('admin-crm-list-projects', status?{status}:{});
+    if(!d.projects.length){ wrap.innerHTML = '<div class="loadingNote">مفيش مشاريع مسجلة</div>'; return; }
+    wrap.innerHTML = `<table class="admtable"><thead><tr>
+      <th>رقم المشروع</th><th>العميل</th><th>الحالة</th><th>قيمة العقد</th><th>مدير المشروع</th><th>تاريخ التوقيع</th>
+      </tr></thead><tbody>
+      ${d.projects.map(p=>{
+        const sm = metaOf(SETTINGS.projectStatuses, p.status) || {label:p.status, color:'#93a89c'};
+        return `<tr data-opp-id="${p.opportunity_id}">
+          <td>${p.project_number}</td>
+          <td>${p.customers?(p.customers.name||p.customers.phone):'-'}</td>
+          <td><span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span></td>
+          <td>${fmtMoney(p.contract_value)} ﷼</td>
+          <td>${p.project_manager||'-'}</td>
+          <td>${fmtDate(p.contract_signed_date)}</td>
+        </tr>`;
+      }).join('')}
+      </tbody></table>`;
+    wrap.querySelectorAll('tbody tr').forEach(r=>r.addEventListener('click', ()=>openOpportunityEditor(r.dataset.oppId)));
+  }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
+}
+
+/* ============ TOP-LEVEL: MAINTENANCE TAB (tickets + contracts) ============ */
+document.getElementById('ticketStatusFilter').addEventListener('change', loadMaintenance);
+document.getElementById('ticketPriorityFilter').addEventListener('change', loadMaintenance);
+document.getElementById('newTicketBtn').addEventListener('click', ()=>openTicketEditor(null));
+document.getElementById('newMaintBtn').addEventListener('click', ()=>openMaintContractEditor(null));
+
+async function loadMaintenance(){
+  try{
+    const stats = await crmApi('admin-crm-maintenance-stats', {});
+    document.getElementById('maintenanceKpiGrid').innerHTML = `
+      <div class="stat"><div class="v">${stats.openTickets}</div><div class="l">بلاغات مفتوحة</div></div>
+      <div class="stat bad"><div class="v">${stats.criticalTickets}</div><div class="l">بلاغات حرجة</div></div>
+      <div class="stat"><div class="v">${stats.activeContracts}</div><div class="l">عقود صيانة سارية</div></div>
+      <div class="stat sun"><div class="v">${stats.upcomingVisits}</div><div class="l">زيارات صيانة قادمة</div></div>
+    `;
+  }catch(err){}
+  await loadTickets();
+  await loadMaintContracts();
+}
+
+async function loadTickets(){
+  const wrap = document.getElementById('ticketsTableWrap');
+  wrap.innerHTML = '<div class="loadingNote">بيحمّل البلاغات...</div>';
+  try{
+    const params = {
+      status: document.getElementById('ticketStatusFilter').value,
+      priority: document.getElementById('ticketPriorityFilter').value,
+    };
+    const d = await crmApi('admin-crm-list-tickets', params);
+    if(!d.tickets.length){ wrap.innerHTML = '<div class="loadingNote">مفيش بلاغات</div>'; return; }
+    wrap.innerHTML = d.tickets.map(t=>{
+      const sm = metaOf(SETTINGS.ticketStatuses, t.status) || {label:t.status, color:'#93a89c'};
+      const pm = metaOf(SETTINGS.ticketPriorities, t.priority) || {label:t.priority, color:'#93a89c'};
+      return `<div class="quoteRow" data-ticket-id="${t.id}" style="cursor:pointer;">
+        <div class="top"><span><b>${t.ticket_number}</b> · ${t.customers?(t.customers.name||t.customers.phone):''}</span><span>${fmtDate(t.created_at)}</span></div>
+        <div>${escapeHtml(t.issue_description||'')}</div>
+        <div style="margin-top:4px;display:flex;gap:6px;">
+          <span class="tag" style="background:${pm.color}22;color:${pm.color}">${pm.label}</span>
+          <span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span>
+        </div>
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('[data-ticket-id]').forEach(row=>row.addEventListener('click', ()=>openTicketEditor(row.dataset.ticketId)));
+  }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
+}
+
+const ticketOverlay = document.getElementById('ticketOverlay');
+ticketOverlay.addEventListener('click', (e)=>{ if(e.target===ticketOverlay) ticketOverlay.classList.remove('show'); });
+
+async function openTicketEditor(ticketId, presetCustomerId){
+  ticketOverlay.classList.add('show');
+  const m = document.getElementById('ticketModal');
+  let t = {};
+  if(ticketId){
+    m.innerHTML = '<div class="loadingNote">بيحمّل البلاغ...</div>';
+    try{
+      const d = await crmApi('admin-crm-list-tickets', {});
+      t = (d.tickets||[]).find(x=>String(x.id)===String(ticketId)) || {};
+    }catch(e){ t = {}; }
+  }
+  m.innerHTML = `
+    <div class="mhead"><h2>${ticketId?'تعديل بلاغ':'بلاغ عطل جديد'}</h2><button class="closeX" data-close-ticket>×</button></div>
+    ${!ticketId ? `<label>رقم هاتف العميل</label><input type="text" id="tk_phone" placeholder="ابحث عن العميل بالهاتف">` : `<div class="emptyNote">${t.customers?(t.customers.name||t.customers.phone):''}</div>`}
+    <label>وصف العطل</label><textarea id="tk_desc">${escapeHtml(t.issue_description||'')}</textarea>
+    <div class="grid2" style="margin-top:10px;">
+      <div><label>الأولوية</label><select id="tk_priority">${optHtml(SETTINGS.ticketPriorities, t.priority||'medium')}</select></div>
+      ${ticketId?`<div><label>الحالة</label><select id="tk_status">${optHtml(SETTINGS.ticketStatuses, t.status)}</select></div>`:''}
+      <div><label>المهندس المسؤول</label><input type="text" id="tk_engineer" value="${escapeHtml(t.assigned_engineer||'')}"></div>
+    </div>
+    ${ticketId?`<label>ملاحظات الحل</label><textarea id="tk_resolution">${escapeHtml(t.resolution_notes||'')}</textarea>`:''}
+    <div class="saveBar"><div></div><div class="right"><button class="btn" id="saveTicketBtn" type="button">حفظ</button></div></div>
+  `;
+  m.querySelector('[data-close-ticket]').addEventListener('click', ()=>ticketOverlay.classList.remove('show'));
+  m.querySelector('#saveTicketBtn').addEventListener('click', async ()=>{
+    try{
+      if(ticketId){
+        await crmApi('admin-crm-update-ticket', {ticketId, fields:{
+          priority: m.querySelector('#tk_priority').value,
+          status: m.querySelector('#tk_status').value,
+          assigned_engineer: m.querySelector('#tk_engineer').value.trim(),
+          resolution_notes: m.querySelector('#tk_resolution').value.trim(),
+          issue_description: m.querySelector('#tk_desc').value.trim(),
+        }});
+      } else {
+        const phone = m.querySelector('#tk_phone').value.trim();
+        if(!phone){ toast('اكتب رقم هاتف العميل'); return; }
+        const found = await crmApi('admin-crm-list-customers', {search: phone});
+        if(!found.customers.length){ toast('مفيش عميل بالرقم ده'); return; }
+        await crmApi('admin-crm-create-ticket', {
+          customerId: found.customers[0].id,
+          issueDescription: m.querySelector('#tk_desc').value.trim(),
+          priority: m.querySelector('#tk_priority').value,
+          assignedEngineer: m.querySelector('#tk_engineer').value.trim(),
+        });
+      }
+      toast('اتحفظ البلاغ ✅');
+      ticketOverlay.classList.remove('show');
+      loadTickets();
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+}
+
+async function loadMaintContracts(){
+  const wrap = document.getElementById('maintContractsList');
+  wrap.innerHTML = '<div class="loadingNote">بيحمّل العقود...</div>';
+  try{
+    const d = await crmApi('admin-crm-list-maintenance-contracts', {});
+    if(!d.contracts.length){ wrap.innerHTML = '<div class="emptyNote">مفيش عقود صيانة مسجلة</div>'; return; }
+    wrap.innerHTML = d.contracts.map(c=>{
+      const sm = metaOf(SETTINGS.maintenanceContractStatuses, c.status) || {label:c.status, color:'#93a89c'};
+      return `<div class="quoteRow" data-contract-id="${c.id}" style="cursor:pointer;">
+        <div class="top"><span>${c.contract_number||'بدون رقم'} · ${c.customers?(c.customers.name||c.customers.phone):''}</span><span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span></div>
+        <div>زيارة قادمة: ${fmtDate(c.next_visit_date)} · ${c.visits_per_year||'-'} زيارة/سنة</div>
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('[data-contract-id]').forEach(row=>row.addEventListener('click', ()=>openMaintContractEditor(row.dataset.contractId)));
+  }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
+}
+
+const maintOverlay = document.getElementById('maintOverlay');
+maintOverlay.addEventListener('click', (e)=>{ if(e.target===maintOverlay) maintOverlay.classList.remove('show'); });
+
+async function openMaintContractEditor(contractId, presetCustomerId){
+  maintOverlay.classList.add('show');
+  const m = document.getElementById('maintModal');
+  let c = {};
+  if(contractId){
+    const d = await crmApi('admin-crm-list-maintenance-contracts', {});
+    c = (d.contracts||[]).find(x=>String(x.id)===String(contractId)) || {};
+  }
+  m.innerHTML = `
+    <div class="mhead"><h2>${contractId?'تعديل عقد صيانة':'عقد صيانة جديد'}</h2><button class="closeX" data-close-maint>×</button></div>
+    ${!contractId ? `<label>رقم هاتف العميل</label><input type="text" id="mc_phone" placeholder="ابحث عن العميل بالهاتف">` : `<div class="emptyNote">${c.customers?(c.customers.name||c.customers.phone):''}</div>`}
+    <div class="grid2" style="margin-top:10px;">
+      <div><label>رقم العقد</label><input type="text" id="mc_number" value="${escapeHtml(c.contract_number||'')}"></div>
+      <div><label>الحالة</label><select id="mc_status">${optHtml(SETTINGS.maintenanceContractStatuses, c.status||'active')}</select></div>
+      <div><label>تاريخ البداية</label><input type="date" id="mc_start" value="${c.start_date||''}"></div>
+      <div><label>تاريخ النهاية</label><input type="date" id="mc_end" value="${c.end_date||''}"></div>
+      <div><label>قيمة العقد (﷼)</label><input type="number" id="mc_value" value="${c.contract_value??''}"></div>
+      <div><label>عدد الزيارات/سنة</label><input type="number" id="mc_visits" value="${c.visits_per_year??''}"></div>
+      <div><label>الزيارة القادمة</label><input type="date" id="mc_next_visit" value="${c.next_visit_date||''}"></div>
+      <div><label>المهندس المسؤول</label><input type="text" id="mc_engineer" value="${escapeHtml(c.responsible_engineer||'')}"></div>
+    </div>
+    <label>ملاحظات</label><textarea id="mc_notes">${escapeHtml(c.notes||'')}</textarea>
+    <div class="saveBar"><div></div><div class="right"><button class="btn" id="saveMaintBtn" type="button">حفظ</button></div></div>
+  `;
+  m.querySelector('[data-close-maint]').addEventListener('click', ()=>maintOverlay.classList.remove('show'));
+  m.querySelector('#saveMaintBtn').addEventListener('click', async ()=>{
+    const fields = {
+      contract_number: m.querySelector('#mc_number').value.trim(),
+      status: m.querySelector('#mc_status').value,
+      start_date: m.querySelector('#mc_start').value || null,
+      end_date: m.querySelector('#mc_end').value || null,
+      contract_value: m.querySelector('#mc_value').value || null,
+      visits_per_year: m.querySelector('#mc_visits').value || null,
+      next_visit_date: m.querySelector('#mc_next_visit').value || null,
+      responsible_engineer: m.querySelector('#mc_engineer').value.trim(),
+      notes: m.querySelector('#mc_notes').value.trim(),
+    };
+    try{
+      if(contractId){
+        await crmApi('admin-crm-save-maintenance-contract', {contractId, fields});
+      } else {
+        const phone = m.querySelector('#mc_phone').value.trim();
+        if(!phone){ toast('اكتب رقم هاتف العميل'); return; }
+        const found = await crmApi('admin-crm-list-customers', {search: phone});
+        if(!found.customers.length){ toast('مفيش عميل بالرقم ده'); return; }
+        await crmApi('admin-crm-save-maintenance-contract', {customerId: found.customers[0].id, fields});
+      }
+      toast('اتحفظ العقد ✅');
+      maintOverlay.classList.remove('show');
+      loadMaintContracts();
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+}
+
 const SETTINGS_GROUPS = [
   {key:'statuses', title:'حالات العميل', hasColor:true},
   {key:'blockerReasons', title:'أسباب توقف التنفيذ', hasColor:false},
@@ -1068,6 +1883,17 @@ const SETTINGS_GROUPS = [
   {key:'projectTypes', title:'أنواع المشاريع', hasColor:false},
   {key:'opportunityLostReasons', title:'أسباب خسارة الصفقة', hasColor:false},
   {key:'activityTypes', title:'أنواع الأنشطة', hasColor:false},
+  {key:'assetTypes', title:'أنواع المعدات/المنتجات', hasColor:false},
+  {key:'assetStatuses', title:'حالة المعدة', hasColor:true},
+  {key:'quotationStatuses', title:'حالات عروض الأسعار الرسمية', hasColor:true},
+  {key:'leadSources', title:'مصدر العميل', hasColor:false},
+  {key:'projectScopeTypes', title:'نطاق المشروع', hasColor:false},
+  {key:'projectStatuses', title:'حالات المشروع', hasColor:true},
+  {key:'costTypes', title:'أنواع التكاليف', hasColor:false},
+  {key:'paymentMethods', title:'طرق الدفع', hasColor:false},
+  {key:'ticketPriorities', title:'أولوية بلاغات الأعطال', hasColor:true},
+  {key:'ticketStatuses', title:'حالات بلاغات الأعطال', hasColor:true},
+  {key:'maintenanceContractStatuses', title:'حالات عقود الصيانة', hasColor:true},
 ];
 function loadSettingsScreen(){
   const wrap = document.getElementById('settingsGroups');
