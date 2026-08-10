@@ -184,10 +184,10 @@ main{max-width:1180px;margin:0 auto;padding:24px 20px 70px;}
         <div class="field">
           <label for="area">مساحة الأرض</label>
           <div class="field-inline">
-            <input type="number" id="area" value="5" min="0.1" step="0.5" oninput="calc()">
+            <input type="number" id="area" value="2" min="0.1" step="0.5" oninput="calc()">
             <select id="area_unit" onchange="onAreaUnitChange()">
-              <option value="feddan" selected>فدان</option>
-              <option value="hectare">هكتار</option>
+              <option value="feddan">فدان</option>
+              <option value="hectare" selected>هكتار</option>
               <option value="m2">متر مربع</option>
             </select>
           </div>
@@ -252,8 +252,8 @@ main{max-width:1180px;margin:0 auto;padding:24px 20px 70px;}
           <div class="field-inline">
             <input type="number" id="flow_per_fed" value="30" min="1" step="1" oninput="calc()">
             <select id="water_unit" onchange="onWaterUnitChange()">
-              <option value="m3" selected>م³</option>
-              <option value="gal">جالون أمريكي</option>
+              <option value="m3">م³</option>
+              <option value="gal" selected>جالون أمريكي</option>
             </select>
           </div>
           <span class="field-hint" id="flowUnitHint">م³ / ساعة / فدان — يتغيّر تلقائيًا حسب المحصول المختار</span>
@@ -651,7 +651,7 @@ function displayFlow(m3PerFedHr) {
   return unit === 'gal' ? r2(m3PerFedHr * M3_TO_GAL) : m3PerFedHr;
 }
 
-let lastAreaUnit = 'feddan';
+let lastAreaUnit = 'hectare';
 
 function onAreaUnitChange() {
   const newUnit = document.getElementById('area_unit').value;
