@@ -575,14 +575,20 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       <div><label>المندوب المسؤول</label><input type="text" id="f_rep" value="${c.assigned_rep||''}"></div>
       <div><label>الحالة</label><select id="f_status">${optHtml(SETTINGS.statuses, c.status)}</select></div>
       <div><label>الأولوية</label><select id="f_priority">${optHtml(SETTINGS.priorities, c.priority)}</select></div>
-      <div id="f_price_wrap"><label>رأيه في السعر</label><select id="f_price">${optHtml(SETTINGS.priceFeedback, c.price_feedback)}</select></div>
-      <div id="f_blocker_wrap"><label>سبب توقف التنفيذ</label><select id="f_blocker">${optHtml(SETTINGS.blockerReasons, c.blocker_reason)}</select></div>
-      <div><label>موعد المتابعة القادمة</label><input type="date" id="f_followup" value="${c.next_follow_up_date||''}"></div>
+      <div style="grid-column:1/-1;"><label>موعد المتابعة القادمة</label><input type="date" id="f_followup" value="${c.next_follow_up_date||''}"></div>
+    </div>
+    <div id="stallReasonGroup" class="grid2" style="${c.status==='won'?'display:none':''}">
+      <div><label>رأيه في السعر</label><select id="f_price">${optHtml(SETTINGS.priceFeedback, c.price_feedback)}</select></div>
+      <div><label>سبب توقف التنفيذ</label><select id="f_blocker">${optHtml(SETTINGS.blockerReasons, c.blocker_reason)}</select></div>
+    </div>
+    <div class="grid2">
       <div><label>السجل التجاري</label><input type="text" id="f_cr" value="${c.commercial_registration||''}"></div>
       <div><label>الرقم الضريبي (VAT)</label><input type="text" id="f_vat" value="${c.vat_number||''}"></div>
       <div style="grid-column:1/-1;"><label>الرقم الموحد</label><input type="text" id="f_unified" value="${c.unified_number||''}"></div>
     </div>
-    <div id="f_notes_wrap"><label>ملاحظات عن المشكلة / السبب</label><textarea id="f_notes">${c.blocker_notes||''}</textarea></div>
+    <div id="stallNotesGroup" style="${c.status==='won'?'display:none':''}">
+      <label>ملاحظات عن المشكلة / السبب</label><textarea id="f_notes">${c.blocker_notes||''}</textarea>
+    </div>
     <div class="saveBar">
       <div>${canDelete ? '<button class="btn danger small" id="delCustBtn">🗑 حذف العميل</button>' : ''}</div>
       <div class="right"><button class="btn" id="saveCustBtn">حفظ بيانات المتابعة</button></div>
@@ -679,14 +685,11 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     </div>
   `;
   m.querySelector('[data-close]').addEventListener('click', closeCustomer);
-  function toggleLossFields(){
-    const won = m.querySelector('#f_status').value === 'won';
-    ['f_price_wrap','f_blocker_wrap','f_notes_wrap'].forEach(id=>{
-      m.querySelector('#'+id).style.display = won ? 'none' : '';
-    });
-  }
-  toggleLossFields();
-  m.querySelector('#f_status').addEventListener('change', toggleLossFields);
+  m.querySelector('#f_status').addEventListener('change', (e)=>{
+    const won = e.target.value === 'won';
+    m.querySelector('#stallReasonGroup').style.display = won ? 'none' : '';
+    m.querySelector('#stallNotesGroup').style.display = won ? 'none' : '';
+  });
   m.querySelector('#saveCustBtn').addEventListener('click', async ()=>{
     try{
       const fields = {
@@ -1055,6 +1058,7 @@ async function openOpportunityEditor(opportunityId, customerId, customerName){
       <div class="right"><button class="btn" id="saveOppBtn">حفظ</button></div>
     </div>
     ${opportunityId ? `
+    <div id="executionSections" style="${opp.stage==='lost'?'display:none':''}">
     <details class="section" style="border-top:1px dashed var(--line);">
       <summary style="cursor:pointer;font-size:13px;color:var(--night-2);font-weight:700;">📋 المسح الميداني (Site Survey)</summary>
       <div id="surveyFormWrap" style="margin-top:14px;"></div>
@@ -1070,7 +1074,9 @@ async function openOpportunityEditor(opportunityId, customerId, customerName){
     <details class="section" style="border-top:1px dashed var(--line);" open>
       <summary style="cursor:pointer;font-size:13px;color:var(--night-2);font-weight:700;">🏗️ المشروع (Project)</summary>
       <div id="projectWrap" style="margin-top:14px;"></div>
-    </details>` : ''}
+    </details>
+    </div>
+    <div id="lostNote" class="emptyNote" style="${opp.stage==='lost'?'':'display:none'};margin-top:10px;">الصفقة اتفقدت — مفيش داعي لتسجيل مسح ميداني أو دراسة فنية أو عروض أسعار أو مشروع لصفقة اتنفذت مع منافس.</div>` : ''}
     ${opportunityId ? `
     <div class="section">
       <h4>سجل الأنشطة (${activities.length})</h4>
@@ -1094,14 +1100,28 @@ async function openOpportunityEditor(opportunityId, customerId, customerName){
     </div>` : ''}
   `;
   m.querySelector('[data-close-opp]').addEventListener('click', ()=>oppOverlay.classList.remove('show'));
-  if(opportunityId){
+  if(opportunityId && opp.stage !== 'lost'){
     renderSurveyForm(m.querySelector('#surveyFormWrap'), survey||{}, opportunityId, customerId);
     renderStudyForm(m.querySelector('#studyFormWrap'), study||{}, opportunityId, customerQuotes);
     renderQuotationsPanel(m.querySelector('#quotationsWrap'), opportunityId, customerQuotes);
     renderProjectPanel(m.querySelector('#projectWrap'), opportunityId, opp);
   }
   m.querySelector('#of_stage').addEventListener('change', (e)=>{
-    document.getElementById('lostFields').style.display = e.target.value==='lost' ? 'grid' : 'none';
+    const isLost = e.target.value==='lost';
+    document.getElementById('lostFields').style.display = isLost ? 'grid' : 'none';
+    const execEl = document.getElementById('executionSections');
+    const noteEl = document.getElementById('lostNote');
+    if(execEl){ execEl.style.display = isLost ? 'none' : ''; }
+    if(noteEl){ noteEl.style.display = isLost ? '' : 'none'; }
+    if(!isLost && opportunityId){
+      const surveyWrap = document.getElementById('surveyFormWrap');
+      if(surveyWrap && !surveyWrap.innerHTML.trim()){
+        renderSurveyForm(surveyWrap, survey||{}, opportunityId, customerId);
+        renderStudyForm(document.getElementById('studyFormWrap'), study||{}, opportunityId, customerQuotes);
+        renderQuotationsPanel(document.getElementById('quotationsWrap'), opportunityId, customerQuotes);
+        renderProjectPanel(document.getElementById('projectWrap'), opportunityId, opp);
+      }
+    }
   });
   m.querySelector('#saveOppBtn').addEventListener('click', async ()=>{
     const name = m.querySelector('#of_name').value.trim();
