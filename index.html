@@ -4099,6 +4099,7 @@ function wire(){
   if(currentView==='admin'){
     const admSectionTitles = {overview:'نظرة عامة',pricing:'الأسعار والهوامش',calcs:'حاسبات الأنظمة',products:'المنتجات والكتالوج',portfolio:'البورتفوليو',leads:'قاعدة العملاء',reps:'إدارة المناديب',security:'الحماية والنظام'};
     function goToAdminSection(id){
+      if(id === 'leads'){ window.location.href = 'crm.html'; return; }
       currentAdminSection = id;
       document.querySelectorAll('.admin-nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.admsec===id));
       document.querySelectorAll('.admsec').forEach(s=>s.classList.toggle('active', s.dataset.admsec===id));
