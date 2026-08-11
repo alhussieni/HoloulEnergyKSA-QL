@@ -872,7 +872,7 @@ function buildOffgridInput(){
     panelIdx: o.panelIdx,
     method: o.method,
     dailyKwh: +o.dailyKwh || 0,
-    autonomyDays: +o.autonomyDays || 1,
+    autonomyDays: +o.autonomyDays || 0,
     appliances: o.appliances,
     discountTierIdx: discountUnlocked ? state.discountOverrideIdx : null,
     specialDiscountAmt: state.specialDiscountAmt,
@@ -1039,7 +1039,7 @@ const state = {
     panelIdx: 0,
     method: 'consumption', // 'consumption' | 'appliances'
     dailyKwh: 10,
-    autonomyDays: 1,
+    autonomyDays: 0,
     appliances: [ {name:'ثلاجة', watts:150, hours:8, qty:1} ],
   },
   ongrid: {
@@ -1705,6 +1705,32 @@ function sendGenericQuoteWhatsapp(finalTotal){
   window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank');
 }
 
+// Common household/agricultural appliance presets for the off-grid load
+// picker — typical power draw (watt) and a reasonable average daily runtime
+// (hours/day) for solar sizing purposes. Purely a UI convenience: the
+// customer can still edit every value, or add a fully custom device.
+const OFFGRID_APPLIANCE_PRESETS = [
+  {name:'لمبة إضاءة LED', watts:10, hours:6},
+  {name:'راوتر / شاحن', watts:15, hours:24},
+  {name:'كاميرا مراقبة', watts:10, hours:24},
+  {name:'DVR / NVR', watts:25, hours:24},
+  {name:'لابتوب', watts:65, hours:6},
+  {name:'مروحة', watts:70, hours:6},
+  {name:'شفاط مطبخ', watts:75, hours:1},
+  {name:'تلفاز LCD', watts:80, hours:4},
+  {name:'ثلاجة', watts:150, hours:8},
+  {name:'كشاف إنارة', watts:200, hours:8},
+  {name:'فريزر', watts:300, hours:8},
+  {name:'موتور 1 حصان', watts:740, hours:2},
+  {name:'ميكروويف', watts:1000, hours:0.5},
+  {name:'موتور 1.5 حصان / غاطس', watts:1100, hours:2},
+  {name:'تكييف 1.5 حصان', watts:1100, hours:8},
+  {name:'غسالة', watts:1500, hours:1},
+  {name:'تكييف 2.5 حصان', watts:1800, hours:8},
+  {name:'تكييف 3 حصان', watts:2200, hours:8},
+  {name:'سخان مياه', watts:9000, hours:2},
+];
+
 function renderOffgridCalc(){
   const q = cachedOffgridQuote;
   const o = state.offgrid;
@@ -1727,6 +1753,12 @@ function renderOffgridCalc(){
       <input type="number" id="og_dailykwh" value="${o.dailyKwh}" min="0.1" step="0.1">
       ` : `
       <label style="margin-top:10px">قائمة الأجهزة</label>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+        <select id="ogAppliancePreset" style="flex:1;min-width:180px">
+          ${OFFGRID_APPLIANCE_PRESETS.map((p,i)=>`<option value="${i}">${p.name} (${p.watts} واط)</option>`).join('')}
+        </select>
+        <button type="button" class="btn small" id="ogAddPresetAppliance">+ إضافة من القائمة</button>
+      </div>
       <table class="admtable" id="ogApplianceTable">
         <thead><tr><th>الجهاز</th><th>واط</th><th>ساعات/يوم</th><th>العدد</th><th></th></tr></thead>
         <tbody>
@@ -1740,11 +1772,15 @@ function renderOffgridCalc(){
             </tr>`).join('')}
         </tbody>
       </table>
-      <button type="button" class="btn ghost small" id="ogAddAppliance" style="margin-top:8px">+ إضافة جهاز</button>
+      <button type="button" class="btn ghost small" id="ogAddAppliance" style="margin-top:8px">+ إضافة جهاز مخصّص</button>
       <div class="note" style="margin-top:8px">إجمالي الاستهلاك اليومي المحسوب: <b>${q?fmt1(q.dailyKwh):'—'}</b> كيلوواط/ساعة</div>
       `}
       <label style="margin-top:10px">أيام الاستقلالية (بدون شمس)</label>
-      <input type="number" id="og_autonomy" value="${o.autonomyDays}" min="1" step="1">
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="number" id="og_autonomy" value="${o.autonomyDays}" min="0" step="1" style="flex:1">
+        <button type="button" class="btn small" id="ogAutonomyConfirm">تأكيد</button>
+      </div>
+      <div class="note" style="margin-top:4px">تقدر تدخل 0 لو مش محتاج أيام احتياط بدون شمس — اضغط "تأكيد" بعد كتابة الرقم.</div>
     </div>
     <div class="card">
       <h3>نوع اللوح الشمسي</h3>
@@ -4721,7 +4757,17 @@ function wireOffgridCalc(){
   const dailyEl = document.getElementById('og_dailykwh');
   if(dailyEl) dailyEl.oninput = e=>{ o.dailyKwh = +e.target.value || 0; scheduleRefreshOffgrid(); };
   const autoEl = document.getElementById('og_autonomy');
-  if(autoEl) autoEl.oninput = e=>{ o.autonomyDays = +e.target.value || 1; scheduleRefreshOffgrid(); };
+  const confirmAutonomy = ()=>{
+    const v = autoEl.value.trim();
+    o.autonomyDays = v === '' ? 0 : Math.max(0, +v || 0);
+    autoEl.value = o.autonomyDays;
+    scheduleRefreshOffgrid(0);
+  };
+  if(autoEl){
+    autoEl.onkeydown = e=>{ if(e.key === 'Enter'){ e.preventDefault(); confirmAutonomy(); } };
+  }
+  const autoConfirmBtn = document.getElementById('ogAutonomyConfirm');
+  if(autoConfirmBtn) autoConfirmBtn.onclick = confirmAutonomy;
   const panelEl = document.getElementById('og_panel');
   if(panelEl) panelEl.onchange = e=>{ o.panelIdx = +e.target.value; scheduleRefreshOffgrid(); };
   document.querySelectorAll('[data-ogapp]').forEach(inp=>{
@@ -4736,6 +4782,14 @@ function wireOffgridCalc(){
   });
   const addBtn = document.getElementById('ogAddAppliance');
   if(addBtn) addBtn.onclick = ()=>{ o.appliances.push({name:'جهاز جديد',watts:100,hours:4,qty:1}); scheduleRefreshOffgrid(0); };
+  const addPresetBtn = document.getElementById('ogAddPresetAppliance');
+  if(addPresetBtn) addPresetBtn.onclick = ()=>{
+    const sel = document.getElementById('ogAppliancePreset');
+    const preset = OFFGRID_APPLIANCE_PRESETS[+sel.value];
+    if(!preset) return;
+    o.appliances.push({name:preset.name, watts:preset.watts, hours:preset.hours, qty:1});
+    scheduleRefreshOffgrid(0);
+  };
   const unlockInfoBtn = document.getElementById('adminInfoTrigger');
   if(unlockInfoBtn && !adminInfoUnlocked) unlockInfoBtn.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked=true; scheduleRefreshOffgrid(0); });
 }
