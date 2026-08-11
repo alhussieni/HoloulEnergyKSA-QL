@@ -320,6 +320,20 @@ const motorHP   = {4:5.5, 5.5:7.5, 7.5:10, 10:15, 15:20, 18.5:25, 22:30, 30:40, 
 const stdPipes  = [1,1.25,1.5,2,2.5,3,4,5,6,8,10,12];
 const KW_TO_HP  = 1.341;
 
+// Nearest commercial HP by absolute distance (not always rounding up).
+// e.g. calculated 52 HP is closer to 50 HP than to 60 HP, so 50 HP wins —
+// matches how the sales team actually picks a motor size commercially.
+// On an exact tie (distance equal on both sides, e.g. 55 HP is exactly
+// between 50 and 60) it rounds UP, to keep a safety margin by default.
+function nearestStdMotor(hpNeeded) {
+  let bestKw = stdMotors[0], bestDiff = Infinity;
+  for (const kw of stdMotors) {
+    const diff = Math.abs(motorHP[kw] - hpNeeded);
+    if (diff <= bestDiff) { bestDiff = diff; bestKw = kw; }
+  }
+  return bestKw;
+}
+
 /* ── Unit conversion constants ── */
 const FEDDAN_M2   = 4200.833;
 const HECTARE_M2  = 10000;
@@ -623,44 +637,67 @@ function pickGfModel(FR, kw_c, wellDia) {
   };
 }
 
+// أفضل 3 اقتراحات: الموديل الأقرب (اللي بيغطي القدرة المطلوبة) + خيارين إضافيين
+// بعدد مراحل أعلى (هامش أمان أكبر) من نفس العائلة، مرتبة تصاعديًا بالقدرة —
+// عشان المندوب/العميل يقارن بين "أقل قدرة كافية" و"هامش أكبر" بنفس المكان.
+function pickGfModels(FR, kw_c, wellDia, count) {
+  count = count || 3;
+  const family = pickGfFamily(FR, wellDia);
+  if (!family) return [];
+  const models = gfModels.filter(m => m.f === family.f).sort((a,b)=>a.kw-b.kw);
+  if (!models.length) return [];
+  const qOutOfRange = !(FR >= family.qMin && FR <= family.qMax);
+  const startIdx = models.findIndex(m => m.kw >= kw_c);
+  const base = startIdx === -1 ? models.length - 1 : startIdx;
+  const picked = models.slice(base, base + count);
+  return picked.map((chosen, i) => ({
+    family: family.f,
+    stages: chosen.s,
+    motor: chosen.m,
+    kw: chosen.kw,
+    exceeds: startIdx === -1,
+    qOutOfRange,
+    isPrimary: i === 0,
+  }));
+}
+
 function gfCurveImage(family) {
   const key = family.toLowerCase().replace(/\s+/g,'');
   return `assets/curves/${key}.jpg`;
 }
 
 function renderGfSuggestion(FR, kw_c, wellDia) {
-  const pick = pickGfModel(FR, kw_c, wellDia);
-  if (!pick) return '';
-  const imgSrc = gfCurveImage(pick.family);
+  const picks = pickGfModels(FR, kw_c, wellDia, 3);
+  if (!picks.length) return '';
+  const first = picks[0];
+  const imgSrc = gfCurveImage(first.family);
+  const stagesLabels = picks.map(p => '-' + p.stages).join('، ');
+
+  const cards = picks.map(p => `
+    <div class="metric-card ${p.isPrimary ? 'brand' : ''}">
+      <div class="metric-label">${p.isPrimary ? 'الأقرب للاحتياج' : 'خيار بهامش أعلى'}</div>
+      <div class="metric-value" style="font-size:19px;">SP ${p.family.replace('SP ','')}-${p.stages}</div>
+      <div class="metric-unit">${p.stages} مرحلة — ${p.motor} — ${p.kw} كيلوواط</div>
+    </div>`).join('');
+
   return `
     <div class="calc-divider"></div>
-    <p class="pipe-section-title">الموديل المقترح من كتالوج Grundfos SP</p>
-    <div class="metrics-row">
-      <div class="metric-card brand">
-        <div class="metric-label">الموديل المقترح</div>
-        <div class="metric-value" style="font-size:20px;">SP ${pick.family.replace('SP ','')}-${pick.stages}</div>
-        <div class="metric-unit">${pick.stages} مرحلة (stage)</div>
-      </div>
-      <div class="metric-card">
-        <div class="metric-label">الموتور</div>
-        <div class="metric-value" style="font-size:18px;">${pick.motor}</div>
-        <div class="metric-unit">${pick.kw} كيلوواط</div>
-      </div>
-    </div>
-    ${pick.qOutOfRange ? `<div class="calc-note"><i class="ti ti-alert-triangle"></i><span>معدل التصرف المطلوب خارج مدى التصرف المعتاد لعائلة ${pick.family} حسب رسم الأداء العام — يُنصح بمراجعة منحنى الأداء التفصيلي للموديل مع فريق حلول قبل الطلب.</span></div>` : ''}
-    ${pick.exceeds ? `<div class="calc-note"><i class="ti ti-alert-triangle"></i><span>القدرة المطلوبة تتجاوز أعلى موديل متاح بعدد مراحل معقول في هذه العائلة — راجع فريق حلول لدراسة عائلة أعلى أو أكثر من طلمبة.</span></div>` : ''}
+    <p class="pipe-section-title">أفضل 3 اقتراحات من كتالوج Grundfos SP</p>
+    <div class="metrics-row">${cards}</div>
+    ${first.qOutOfRange ? `<div class="calc-note"><i class="ti ti-alert-triangle"></i><span>معدل التصرف المطلوب خارج مدى التصرف المعتاد لعائلة ${first.family} حسب رسم الأداء العام — يُنصح بمراجعة منحنى الأداء التفصيلي للموديل مع فريق حلول قبل الطلب.</span></div>` : ''}
+    ${first.exceeds ? `<div class="calc-note"><i class="ti ti-alert-triangle"></i><span>القدرة المطلوبة تتجاوز أعلى موديل متاح بعدد مراحل معقول في هذه العائلة — راجع فريق حلول لدراسة عائلة أعلى أو أكثر من طلمبة.</span></div>` : ''}
 
     <div class="curve-box">
       <div class="curve-box-head">
-        <span>منحنى أداء عائلة ${pick.family} — من كتالوج Grundfos الرسمي</span>
-        <span class="rec-badge">دوّر على المنحنى المسمى <strong>-${pick.stages}</strong></span>
+        <span>منحنى أداء عائلة ${first.family} — من كتالوج Grundfos الرسمي</span>
+        <span class="rec-badge">دوّر على المنحنيات المسماة <strong>${stagesLabels}</strong></span>
       </div>
-      <img src="${imgSrc}" alt="منحنى أداء ${pick.family}" loading="lazy" class="curve-img" onerror="this.parentElement.style.display='none'">
+      <img src="${imgSrc}" alt="منحنى أداء ${first.family}" loading="lazy" class="curve-img" onerror="this.parentElement.style.display='none'">
     </div>
 
     <div class="footer-disclaimer" style="margin-top:8px;">
       <i class="ti ti-info-circle"></i>
-      <span>الموديل والمراحل مقترحة بمطابقة معدل التصرف وأقرب قدرة قياسية من كتالوج Grundfos SP الرسمي (60Hz) — مدى التصرف لكل عائلة قراءة تقريبية من رسم الأداء العام، والاختيار النهائي لازم يتأكد من منحنى الأداء التفصيلي لكل موديل (Q-H curve) قبل الشراء.</span>
+      <span>الموديل الأول هو الأقرب لتغطية القدرة المطلوبة (أقرب قدرة قياسية)، والاثنان التاليان بعدد مراحل أعلى من نفس العائلة كخيارات بهامش أمان أكبر — من كتالوج Grundfos SP الرسمي (60Hz). مدى التصرف لكل عائلة قراءة تقريبية من رسم الأداء العام، والاختيار النهائي لازم يتأكد من منحنى الأداء التفصيلي لكل موديل (Q-H curve) قبل الشراء.</span>
     </div>
   `;
 }
@@ -751,9 +788,10 @@ function calc() {
   const TDH   = swl + elev + safety + (far/10) + pm;
   const hp_c   = r2((FR * TDH) / (270 * 0.75));
   const kw_c   = r2(hp_c / KW_TO_HP);
-  const kw_std   = stdMotors.find(kw => motorHP[kw] >= hp_c) || stdMotors[stdMotors.length-1];
+  const kw_std   = nearestStdMotor(hp_c);
   const hp_std   = motorHP[kw_std];
   const exceedsMax = hp_c > motorHP[stdMotors[stdMotors.length-1]];
+  const underpowered = hp_std < hp_c;
 
   const D_m    = Math.sqrt((4 * FR_s) / (Math.PI * V));
   const D_mm   = D_m * 1000;
@@ -898,12 +936,17 @@ function calc() {
       <i class="ti ti-alert-triangle"></i>
       <span><strong>تنبيه:</strong> القدرة الحسابية (${hp_c} حصان) تتجاوز أكبر مقاس منفرد متاح في الجدول (${motorHP[stdMotors[stdMotors.length-1]]} حصان). موتور واحد غير كافٍ لهذا التطبيق — يلزم دراسة استخدام أكثر من طلمبة على التوازي، أو طلمبة صناعية أعلى قدرة، أو محطة رفع (booster). يُرجى التواصل مع فريق حلول قبل اتخاذ أي قرار شراء.</span>
     </div>` : ''}
+    ${(!exceedsMax && underpowered) ? `
+    <div class="calc-note">
+      <i class="ti ti-alert-triangle"></i>
+      <span><strong>ملاحظة:</strong> القدرة المختارة (${hp_std} حصان) أقل من القدرة الحسابية (${hp_c} حصان) — تم اختيارها لأنها الأقرب تجاريًا، لكن الهامش هنا صفر أو سالب. يُنصح بمراجعة منحنى الأداء للتأكد إن الطلمبة تقدر توصل لنقطة التشغيل المطلوبة (TDH = ${TDH.toFixed(0)} متر)، وإلا فالأفضل اختيار ${motorHP[stdMotors[stdMotors.indexOf(kw_std)+1]] || hp_std} حصان بدلاً منها.</span>
+    </div>` : ''}
 
     <div class="footer-disclaimer">
       <i class="ti ti-shield-check"></i>
       <span>⚠️ <strong>تنويه:</strong> جميع الأرقام والنتائج الواردة أعلاه هي <strong>أرقام استرشادية تقريبية</strong> للتخطيط الأولي فقط، ولا تُغني عن الدراسة الهندسية المتخصصة. للحصول على تصميم دقيق واحترافي يُرجى <strong>التواصل المباشر مع فريق حلول</strong> عبر واتساب.</span>
     </div>
-    ${renderGfSuggestion(FR, kw_c, wellDia)}
+    ${renderGfSuggestion(FR, kw_std, wellDia)}
 
     <a class="cta-btn" href="#" onclick="sendToWhatsapp();return false;">
       <i class="ti ti-send"></i> اطلب عرض سعر عبر واتساب — سيتم إرفاق بياناتك تلقائياً
@@ -949,13 +992,13 @@ function sendToWhatsapp() {
   const TDH    = parseFloat(swl) + parseFloat(elev) + parseFloat(safety) + (parseFloat(far)/10) + pm;
   const hp_c   = Math.round((FR * TDH) / (270 * 0.75) * 100) / 100;
   const kw_c   = Math.round(hp_c / 1.341 * 100) / 100;
-  const kw_std = stdMotors.find(kw => motorHP[kw] >= hp_c) || stdMotors[stdMotors.length-1];
+  const kw_std = nearestStdMotor(hp_c);
   const hp_std = motorHP[kw_std];
   const D_m    = Math.sqrt((4 * FR_s) / (Math.PI * parseFloat(V)));
   const D_mm   = D_m * 1000;
   const D_in   = D_mm / 25.4;
   const D_near = nearestPipe(D_in);
-  const gfPick = pickGfModel(FR, kw_c, wellDia);
+  const gfPick = pickGfModel(FR, kw_std, wellDia);
   const gfLine = gfPick ? `SP ${gfPick.family.replace('SP ','')}-${gfPick.stages} (موتور ${gfPick.motor} — ${gfPick.kw} كيلوواط)` : 'غير متاح';
 
   const note = `مرحبًا، محتاج عرض سعر لنظام ضخ زراعي شمسي بناءً على حاسبة الموقع:
