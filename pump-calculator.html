@@ -661,16 +661,24 @@ function pickGfModels(FR, kw_c, wellDia, count) {
   }));
 }
 
-function gfCurveImage(family) {
+// عائلات الطلمبات اللي عدد مراحلها كبير (17 مرحلة فأكتر) بيبقى منحنى الأداء
+// بتاعها موزّع على صفحتين في الكتالوج الأصلي (صفحة للمراحل الأقل وصفحة
+// للمراحل الأعلى) — بنعرض الاتنين مع بعض عشان أي مرحلة مقترحة تكون ظاهرة.
+const GF_MULTI_PAGE_FAMILIES = ['SP 17','SP 30','SP 46','SP 60','SP 77','SP 95','SP 125','SP 160','SP 215'];
+
+function gfCurveImages(family) {
   const key = family.toLowerCase().replace(/\s+/g,'');
-  return `assets/curves/${key}.jpg`;
+  if (GF_MULTI_PAGE_FAMILIES.includes(family)) {
+    return [`assets/curves/${key}a.jpg`, `assets/curves/${key}b.jpg`];
+  }
+  return [`assets/curves/${key}.jpg`];
 }
 
 function renderGfSuggestion(FR, kw_c, wellDia) {
   const picks = pickGfModels(FR, kw_c, wellDia, 3);
   if (!picks.length) return '';
   const first = picks[0];
-  const imgSrc = gfCurveImage(first.family);
+  const imgSrcs = gfCurveImages(first.family);
   const stagesLabels = picks.map(p => '-' + p.stages).join('، ');
 
   const cards = picks.map(p => `
@@ -679,6 +687,10 @@ function renderGfSuggestion(FR, kw_c, wellDia) {
       <div class="metric-value" style="font-size:19px;">SP ${p.family.replace('SP ','')}-${p.stages}</div>
       <div class="metric-unit">${p.stages} مرحلة — ${p.motor} — ${p.kw} كيلوواط</div>
     </div>`).join('');
+
+  const imagesHtml = imgSrcs.map((src, i) => `
+      <img src="${src}" alt="منحنى أداء ${first.family}${imgSrcs.length>1?' (صفحة '+(i+1)+')':''}" loading="lazy" class="curve-img" onerror="this.style.display='none'">
+      ${imgSrcs.length>1 && i===0 ? '<div style="height:1px;background:var(--line)"></div>' : ''}`).join('');
 
   return `
     <div class="calc-divider"></div>
@@ -689,10 +701,10 @@ function renderGfSuggestion(FR, kw_c, wellDia) {
 
     <div class="curve-box">
       <div class="curve-box-head">
-        <span>منحنى أداء عائلة ${first.family} — من كتالوج Grundfos الرسمي</span>
+        <span>منحنى أداء عائلة ${first.family} — من كتالوج Grundfos الرسمي${imgSrcs.length>1?' (صفحتين)':''}</span>
         <span class="rec-badge">دوّر على المنحنيات المسماة <strong>${stagesLabels}</strong></span>
       </div>
-      <img src="${imgSrc}" alt="منحنى أداء ${first.family}" loading="lazy" class="curve-img" onerror="this.parentElement.style.display='none'">
+      ${imagesHtml}
     </div>
 
     <div class="footer-disclaimer" style="margin-top:8px;">
