@@ -118,6 +118,10 @@ main{max-width:1180px;margin:0 auto;padding:24px 20px 70px;}
 .curve-box{margin-top:14px;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--sand);}
 .curve-box-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:700;color:var(--night);}
 .curve-img{display:block;width:100%;height:auto;background:#fff;}
+.curve-img-wrap{position:relative;}
+.curve-marker-dot{position:absolute;width:14px;height:14px;margin-left:-7px;margin-top:-7px;border-radius:50%;background:#E0301E;border:2.5px solid #fff;box-shadow:0 0 0 1.5px #E0301E, 0 2px 6px rgba(0,0,0,.35);z-index:2;}
+.curve-marker-label{position:absolute;transform:translate(10px,-50%);background:#1a1a1a;color:#fff;font-size:11px;line-height:1.55;font-weight:600;padding:6px 9px;border-radius:7px;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,.3);z-index:3;pointer-events:none;}
+.curve-marker-label strong{color:#FFD166;font-size:11.5px;}
 
 .calc-empty{text-align:center;padding:40px 0;color:var(--muted);}
 .calc-empty i{font-size:34px;display:block;margin-bottom:10px;color:var(--line);}
@@ -661,10 +665,65 @@ function pickGfModels(FR, kw_c, wellDia, count) {
   }));
 }
 
-// عائلات الطلمبات اللي عدد مراحلها كبير (17 مرحلة فأكتر) بيبقى منحنى الأداء
-// بتاعها موزّع على صفحتين في الكتالوج الأصلي (صفحة للمراحل الأقل وصفحة
-// للمراحل الأعلى) — بنعرض الاتنين مع بعض عشان أي مرحلة مقترحة تكون ظاهرة.
+// عائلات الطلمبات اللي عدد مراحلها كبير بيبقى منحنى الأداء بتاعها موزّع على
+// صفحتين في الكتالوج الأصلي (صفحة للمراحل الأقل وصفحة للمراحل الأعلى).
 const GF_MULTI_PAGE_FAMILIES = ['SP 17','SP 30','SP 46','SP 60','SP 77','SP 95','SP 125','SP 160','SP 215'];
+
+// أعلى رقم مرحلة موجود على الصفحة الأولى (a) لكل عائلة مقسّمة على صفحتين —
+// أي مرحلة أعلى من الرقم ده معروضة على الصفحة التانية (b).
+const GF_STAGE_BOUNDARY = {
+  "SP 17": 18,
+  "SP 30": 17,
+  "SP 46": 8,
+  "SP 60": 7,
+  "SP 77": 6,
+  "SP 95": 4,
+  "SP 125": 4,
+  "SP 160": 3,
+  "SP 215": 3
+};
+
+// معايرة كل صورة منحنى: موقع إطار الرسمة (كنسبة % من أبعاد الصورة الكاملة)
+// + المدى الفعلي لمحوري Q (م³/ساعة) وH (متر) داخل الإطار ده. اتحسبت من
+// تحليل موضع خطوط الشبكة تلقائيًا + قراءة القيم المطبوعة على كل رسم من
+// الكتالوج الأصلي.
+const GF_CURVE_CALIB = {
+  sp1a: {l:0.2299,r:0.8188,t:0.1504,b:0.709,qMax:1.6,hMin:0,hMax:320},
+  sp2a: {l:0.1846,r:0.8205,t:0.1022,b:0.7057,qMax:3.2,hMin:0,hMax:520},
+  sp3a: {l:0.2039,r:0.8398,t:0.1087,b:0.7116,qMax:4.8,hMin:0,hMax:680},
+  sp5a: {l:0.2039,r:0.8398,t:0.1035,b:0.707,qMax:8.0,hMin:0,hMax:480},
+  sp7: {l:0.2081,r:0.844,t:0.0898,b:0.6934,qMax:11,hMin:0,hMax:600},
+  sp9: {l:0.2005,r:0.8322,t:0.0924,b:0.6927,qMax:14,hMin:0,hMax:600},
+  sp11: {l:0.1955,r:0.8314,t:0.0853,b:0.6882,qMax:18,hMin:0,hMax:200},
+  sp14: {l:0.2114,r:0.8473,t:0.0931,b:0.6966,qMax:22,hMin:0,hMax:160},
+  sp17a: {l:0.2039,r:0.8398,t:0.1094,b:0.7122,qMax:28,hMin:0,hMax:300},
+  sp17b: {l:0.2039,r:0.8398,t:0.0534,b:0.6562,qMax:28,hMin:120,hMax:840},
+  sp30a: {l:0.2039,r:0.8398,t:0.11,b:0.7135,qMax:48,hMin:0,hMax:280},
+  sp30b: {l:0.2039,r:0.8398,t:0.054,b:0.6569,qMax:48,hMin:80,hMax:680},
+  sp46a: {l:0.2039,r:0.8398,t:0.1094,b:0.7122,qMax:70,hMin:0,hMax:160},
+  sp46b: {l:0.2039,r:0.8398,t:0.0475,b:0.6504,qMax:70,hMin:40,hMax:480},
+  sp60a: {l:0.2039,r:0.8398,t:0.11,b:0.7135,qMax:95,hMin:0,hMax:150},
+  sp60b: {l:0.2039,r:0.8398,t:0.054,b:0.6569,qMax:95,hMin:40,hMax:440},
+  sp77a: {l:0.2039,r:0.8398,t:0.1094,b:0.7122,qMax:120,hMin:0,hMax:170},
+  sp77b: {l:0.2039,r:0.8398,t:0.054,b:0.6569,qMax:120,hMin:40,hMax:440},
+  sp95a: {l:0.2039,r:0.8398,t:0.11,b:0.7135,qMax:160,hMin:0,hMax:150},
+  sp95b: {l:0.2039,r:0.8398,t:0.054,b:0.6569,qMax:160,hMin:40,hMax:400},
+  sp125a: {l:0.2039,r:0.8398,t:0.099,b:0.7025,qMax:200,hMin:0,hMax:170},
+  sp125b: {l:0.2039,r:0.8398,t:0.0534,b:0.6562,qMax:200,hMin:60,hMax:480},
+  sp160a: {l:0.2039,r:0.8398,t:0.11,b:0.7135,qMax:250,hMin:0,hMax:150},
+  sp160b: {l:0.2039,r:0.8398,t:0.0547,b:0.6576,qMax:250,hMin:40,hMax:440},
+  sp215a: {l:0.2039,r:0.8398,t:0.1022,b:0.7057,qMax:330,hMin:0,hMax:170},
+  sp215b: {l:0.2039,r:0.8398,t:0.0534,b:0.6562,qMax:330,hMin:60,hMax:360}
+};
+
+// يرجّع اسم ملف الصورة (من غير .jpg) الصحيح لعرض المرحلة المطلوبة، مع
+// نسخة الصفحة التانية لو العائلة موزّعة على صفحتين.
+function gfPageForStage(family, stage) {
+  const key = family.toLowerCase().replace(/\s+/g,'');
+  if (!GF_MULTI_PAGE_FAMILIES.includes(family)) return key;
+  const boundary = GF_STAGE_BOUNDARY[family] || 0;
+  return stage > boundary ? key + 'b' : key + 'a';
+}
 
 function gfCurveImages(family) {
   const key = family.toLowerCase().replace(/\s+/g,'');
@@ -674,12 +733,28 @@ function gfCurveImages(family) {
   return [`assets/curves/${key}.jpg`];
 }
 
-function renderGfSuggestion(FR, kw_c, wellDia) {
+// يحسب موقع النقطة (Q, TDH) كنسبة % فوق صورة معيّنة، بناءً على معايرة
+// الصورة دي. بيرجع null لو النقطة برّه مدى المحور (وقتها منعرضش ماركر).
+function gfMarkerPosition(pageKey, Q, TDH) {
+  const c = GF_CURVE_CALIB[pageKey];
+  if (!c) return null;
+  if (Q < 0 || Q > c.qMax || TDH < c.hMin || TDH > c.hMax) return null;
+  const xFrac = Q / c.qMax;
+  const yFrac = 1 - ((TDH - c.hMin) / (c.hMax - c.hMin));
+  const leftPct = (c.l + xFrac * (c.r - c.l)) * 100;
+  const topPct = (c.t + yFrac * (c.b - c.t)) * 100;
+  return { leftPct, topPct };
+}
+
+function renderGfSuggestion(FR, kw_c, wellDia, TDH) {
   const picks = pickGfModels(FR, kw_c, wellDia, 3);
   if (!picks.length) return '';
   const first = picks[0];
   const imgSrcs = gfCurveImages(first.family);
   const stagesLabels = picks.map(p => '-' + p.stages).join('، ');
+
+  // الصفحة اللي فيها منحنى الموديل الأساسي (الأقرب للاحتياج) — عليها هيتحط الماركر
+  const primaryPageKey = gfPageForStage(first.family, first.stages);
 
   const cards = picks.map(p => `
     <div class="metric-card ${p.isPrimary ? 'brand' : ''}">
@@ -688,9 +763,24 @@ function renderGfSuggestion(FR, kw_c, wellDia) {
       <div class="metric-unit">${p.stages} مرحلة — ${p.motor} — ${p.kw} كيلوواط</div>
     </div>`).join('');
 
-  const imagesHtml = imgSrcs.map((src, i) => `
-      <img src="${src}" alt="منحنى أداء ${first.family}${imgSrcs.length>1?' (صفحة '+(i+1)+')':''}" loading="lazy" class="curve-img" onerror="this.style.display='none'">
-      ${imgSrcs.length>1 && i===0 ? '<div style="height:1px;background:var(--line)"></div>' : ''}`).join('');
+  const imagesHtml = imgSrcs.map((src, i) => {
+    const pageKey = src.match(/curves\/([a-z0-9]+)\.jpg/)[1];
+    const isPrimaryPage = pageKey === primaryPageKey;
+    const marker = isPrimaryPage ? gfMarkerPosition(pageKey, FR, TDH) : null;
+    const markerHtml = marker ? `
+        <div class="curve-marker-dot" style="left:${marker.leftPct}%;top:${marker.topPct}%;"></div>
+        <div class="curve-marker-label" style="left:${marker.leftPct}%;top:${marker.topPct}%;">
+          <strong>SP ${first.family.replace('SP ','')}-${first.stages}</strong><br>
+          العمق: ${TDH.toFixed(0)} م<br>
+          التصرف: ${FR.toFixed(1)} م³/س
+        </div>` : '';
+    return `
+      <div class="curve-img-wrap">
+        <img src="${src}" alt="منحنى أداء ${first.family}${imgSrcs.length>1?' (صفحة '+(i+1)+')':''}" loading="lazy" class="curve-img" onerror="this.parentElement.style.display='none'">
+        ${markerHtml}
+      </div>
+      ${imgSrcs.length>1 && i===0 ? '<div style="height:1px;background:var(--line)"></div>' : ''}`;
+  }).join('');
 
   return `
     <div class="calc-divider"></div>
@@ -702,14 +792,14 @@ function renderGfSuggestion(FR, kw_c, wellDia) {
     <div class="curve-box">
       <div class="curve-box-head">
         <span>منحنى أداء عائلة ${first.family} — من كتالوج Grundfos الرسمي${imgSrcs.length>1?' (صفحتين)':''}</span>
-        <span class="rec-badge">دوّر على المنحنيات المسماة <strong>${stagesLabels}</strong></span>
+        <span class="rec-badge">النقطة الحمراء = نقطة التشغيل على SP ${first.family.replace('SP ','')}-${first.stages}</span>
       </div>
       ${imagesHtml}
     </div>
 
     <div class="footer-disclaimer" style="margin-top:8px;">
       <i class="ti ti-info-circle"></i>
-      <span>الموديل الأول هو الأقرب لتغطية القدرة المطلوبة (أقرب قدرة قياسية)، والاثنان التاليان بعدد مراحل أعلى من نفس العائلة كخيارات بهامش أمان أكبر — من كتالوج Grundfos SP الرسمي (60Hz). مدى التصرف لكل عائلة قراءة تقريبية من رسم الأداء العام، والاختيار النهائي لازم يتأكد من منحنى الأداء التفصيلي لكل موديل (Q-H curve) قبل الشراء.</span>
+      <span>الموديل الأول هو الأقرب لتغطية القدرة المطلوبة (أقرب قدرة قياسية)، والاثنان التاليان بعدد مراحل أعلى من نفس العائلة كخيارات بهامش أمان أكبر — من كتالوج Grundfos SP الرسمي (60Hz). موقع النقطة الحمراء محسوب من معايرة تقريبية لمحاور الرسم، فممكن يكون فيه انحراف بسيط عند حواف الرسم — والاختيار النهائي لازم يتأكد من منحنى الأداء التفصيلي لكل موديل (Q-H curve) قبل الشراء.</span>
     </div>
   `;
 }
@@ -958,7 +1048,7 @@ function calc() {
       <i class="ti ti-shield-check"></i>
       <span>⚠️ <strong>تنويه:</strong> جميع الأرقام والنتائج الواردة أعلاه هي <strong>أرقام استرشادية تقريبية</strong> للتخطيط الأولي فقط، ولا تُغني عن الدراسة الهندسية المتخصصة. للحصول على تصميم دقيق واحترافي يُرجى <strong>التواصل المباشر مع فريق حلول</strong> عبر واتساب.</span>
     </div>
-    ${renderGfSuggestion(FR, kw_std, wellDia)}
+    ${renderGfSuggestion(FR, kw_std, wellDia, TDH)}
 
     <a class="cta-btn" href="#" onclick="sendToWhatsapp();return false;">
       <i class="ti ti-send"></i> اطلب عرض سعر عبر واتساب — سيتم إرفاق بياناتك تلقائياً
