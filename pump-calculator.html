@@ -120,6 +120,8 @@ main{max-width:1180px;margin:0 auto;padding:24px 20px 70px;}
 .curve-img{display:block;width:100%;height:auto;background:#fff;}
 .curve-img-wrap{position:relative;}
 .curve-marker-dot{position:absolute;width:14px;height:14px;margin-left:-7px;margin-top:-7px;border-radius:50%;background:#E0301E;border:2.5px solid #fff;box-shadow:0 0 0 1.5px #E0301E, 0 2px 6px rgba(0,0,0,.35);z-index:2;}
+.curve-marker-vline{position:absolute;top:0;bottom:0;width:0;border-left:2px dashed #E0301E;opacity:.85;z-index:1;pointer-events:none;}
+.curve-marker-hline{position:absolute;left:0;right:0;height:0;border-top:2px dashed #E0301E;opacity:.85;z-index:1;pointer-events:none;}
 .curve-marker-label{position:absolute;transform:translate(10px,-50%);background:#1a1a1a;color:#fff;font-size:11px;line-height:1.55;font-weight:600;padding:6px 9px;border-radius:7px;white-space:nowrap;box-shadow:0 3px 10px rgba(0,0,0,.3);z-index:3;pointer-events:none;}
 .curve-marker-label strong{color:#FFD166;font-size:11.5px;}
 
@@ -688,32 +690,32 @@ const GF_STAGE_BOUNDARY = {
 // تحليل موضع خطوط الشبكة تلقائيًا + قراءة القيم المطبوعة على كل رسم من
 // الكتالوج الأصلي.
 const GF_CURVE_CALIB = {
-  sp1a: {l:0.2299,r:0.8188,t:0.1504,b:0.709,qMax:1.6,hMin:0,hMax:320},
-  sp2a: {l:0.1846,r:0.8205,t:0.1022,b:0.7057,qMax:3.2,hMin:0,hMax:520},
-  sp3a: {l:0.2039,r:0.8398,t:0.1087,b:0.7116,qMax:4.8,hMin:0,hMax:680},
-  sp5a: {l:0.2039,r:0.8398,t:0.1035,b:0.707,qMax:8.0,hMin:0,hMax:480},
-  sp7: {l:0.2081,r:0.844,t:0.0898,b:0.6934,qMax:11,hMin:0,hMax:600},
-  sp9: {l:0.2005,r:0.8322,t:0.0924,b:0.6927,qMax:14,hMin:0,hMax:600},
-  sp11: {l:0.1955,r:0.8314,t:0.0853,b:0.6882,qMax:18,hMin:0,hMax:200},
-  sp14: {l:0.2114,r:0.8473,t:0.0931,b:0.6966,qMax:22,hMin:0,hMax:160},
-  sp17a: {l:0.2039,r:0.8398,t:0.1094,b:0.7122,qMax:28,hMin:0,hMax:300},
-  sp17b: {l:0.2039,r:0.8398,t:0.0534,b:0.6562,qMax:28,hMin:120,hMax:840},
-  sp30a: {l:0.2039,r:0.8398,t:0.11,b:0.7135,qMax:48,hMin:0,hMax:280},
-  sp30b: {l:0.2039,r:0.8398,t:0.054,b:0.6569,qMax:48,hMin:80,hMax:680},
-  sp46a: {l:0.2039,r:0.8398,t:0.1094,b:0.7122,qMax:70,hMin:0,hMax:160},
-  sp46b: {l:0.2039,r:0.8398,t:0.0475,b:0.6504,qMax:70,hMin:40,hMax:480},
-  sp60a: {l:0.2039,r:0.8398,t:0.11,b:0.7135,qMax:95,hMin:0,hMax:150},
-  sp60b: {l:0.2039,r:0.8398,t:0.054,b:0.6569,qMax:95,hMin:40,hMax:440},
-  sp77a: {l:0.2039,r:0.8398,t:0.1094,b:0.7122,qMax:120,hMin:0,hMax:170},
-  sp77b: {l:0.2039,r:0.8398,t:0.054,b:0.6569,qMax:120,hMin:40,hMax:440},
-  sp95a: {l:0.2039,r:0.8398,t:0.11,b:0.7135,qMax:160,hMin:0,hMax:150},
-  sp95b: {l:0.2039,r:0.8398,t:0.054,b:0.6569,qMax:160,hMin:40,hMax:400},
-  sp125a: {l:0.2039,r:0.8398,t:0.099,b:0.7025,qMax:200,hMin:0,hMax:170},
-  sp125b: {l:0.2039,r:0.8398,t:0.0534,b:0.6562,qMax:200,hMin:60,hMax:480},
-  sp160a: {l:0.2039,r:0.8398,t:0.11,b:0.7135,qMax:250,hMin:0,hMax:150},
-  sp160b: {l:0.2039,r:0.8398,t:0.0547,b:0.6576,qMax:250,hMin:40,hMax:440},
-  sp215a: {l:0.2039,r:0.8398,t:0.1022,b:0.7057,qMax:330,hMin:0,hMax:170},
-  sp215b: {l:0.2039,r:0.8398,t:0.0534,b:0.6562,qMax:330,hMin:60,hMax:360}
+  sp1a: {l:0.2305,r:0.7542,t:0.1834,b:0.708,qMax:1.6,hMin:0,hMax:320},
+  sp2a: {l:0.1851,r:0.7499,t:0.1454,b:0.705,qMax:3.2,hMin:0,hMax:520},
+  sp3a: {l:0.2048,r:0.791,t:0.142,b:0.7112,qMax:4.8,hMin:0,hMax:680},
+  sp5a: {l:0.2048,r:0.7821,t:0.1503,b:0.7066,qMax:8.0,hMin:0,hMax:480},
+  sp7: {l:0.2088,r:0.7916,t:0.1365,b:0.6928,qMax:11,hMin:0,hMax:600},
+  sp9: {l:0.2008,r:0.7909,t:0.1587,b:0.6445,qMax:14,hMin:0,hMax:600},
+  sp11: {l:0.1959,r:0.7685,t:0.1402,b:0.688,qMax:18,hMin:0,hMax:200},
+  sp14: {l:0.2126,r:0.7952,t:0.1605,b:0.696,qMax:22,hMin:0,hMax:160},
+  sp17a: {l:0.2057,r:0.7603,t:0.1472,b:0.712,qMax:28,hMin:0,hMax:300},
+  sp17b: {l:0.2058,r:0.7603,t:0.0849,b:0.6559,qMax:28,hMin:120,hMax:840},
+  sp30a: {l:0.2048,r:0.7911,t:0.1503,b:0.7128,qMax:48,hMin:0,hMax:280},
+  sp30b: {l:0.2048,r:0.7911,t:0.0915,b:0.6565,qMax:48,hMin:80,hMax:680},
+  sp46a: {l:0.2047,r:0.7606,t:0.1449,b:0.7121,qMax:70,hMin:0,hMax:160},
+  sp46b: {l:0.2047,r:0.7605,t:0.0978,b:0.6501,qMax:70,hMin:40,hMax:480},
+  sp60a: {l:0.2048,r:0.7533,t:0.148,b:0.7127,qMax:95,hMin:0,hMax:150},
+  sp60b: {l:0.2048,r:0.7533,t:0.0826,b:0.6566,qMax:95,hMin:40,hMax:440},
+  sp77a: {l:0.2046,r:0.7496,t:0.1428,b:0.7122,qMax:120,hMin:0,hMax:170},
+  sp77b: {l:0.2046,r:0.7496,t:0.0826,b:0.6566,qMax:120,hMin:40,hMax:440},
+  sp95a: {l:0.2045,r:0.77,t:0.148,b:0.7127,qMax:160,hMin:0,hMax:150},
+  sp95b: {l:0.2042,r:0.7702,t:0.0856,b:0.6566,qMax:160,hMin:40,hMax:400},
+  sp125a: {l:0.2046,r:0.7828,t:0.1327,b:0.7019,qMax:200,hMin:0,hMax:170},
+  sp125b: {l:0.2044,r:0.783,t:0.1052,b:0.6505,qMax:200,hMin:60,hMax:480},
+  sp160a: {l:0.2047,r:0.7722,t:0.148,b:0.7127,qMax:250,hMin:0,hMax:150},
+  sp160b: {l:0.2048,r:0.7722,t:0.0833,b:0.6572,qMax:250,hMin:40,hMax:440},
+  sp215a: {l:0.2047,r:0.729,t:0.136,b:0.7052,qMax:330,hMin:0,hMax:170},
+  sp215b: {l:0.2047,r:0.7289,t:0.0909,b:0.6559,qMax:330,hMin:60,hMax:360}
 };
 
 // يرجّع اسم ملف الصورة (من غير .jpg) الصحيح لعرض المرحلة المطلوبة، مع
@@ -767,7 +769,10 @@ function renderGfSuggestion(FR, kw_c, wellDia, TDH) {
     const pageKey = src.match(/curves\/([a-z0-9]+)\.jpg/)[1];
     const isPrimaryPage = pageKey === primaryPageKey;
     const marker = isPrimaryPage ? gfMarkerPosition(pageKey, FR, TDH) : null;
+    const cal = GF_CURVE_CALIB[pageKey];
     const markerHtml = marker ? `
+        <div class="curve-marker-vline" style="left:${marker.leftPct}%;top:${cal.t*100}%;height:${(cal.b-cal.t)*100}%;"></div>
+        <div class="curve-marker-hline" style="top:${marker.topPct}%;left:${cal.l*100}%;width:${(cal.r-cal.l)*100}%;"></div>
         <div class="curve-marker-dot" style="left:${marker.leftPct}%;top:${marker.topPct}%;"></div>
         <div class="curve-marker-label" style="left:${marker.leftPct}%;top:${marker.topPct}%;">
           <strong>SP ${first.family.replace('SP ','')}-${first.stages}</strong><br>
