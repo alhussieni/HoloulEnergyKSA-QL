@@ -370,25 +370,42 @@ function r2(n)            { return Math.round(n*100)/100; }
    مأخوذة من جداول "Dimensions and weights" الفعلية داخل الكتالوج.
    قطر البئر الأدنى الموصى به من جدول "Recommended minimum borehole
    diameter" — بوصة. ══════════════════════════════════════════════ */
+// qBEP = معدل التصرف عند أفضل نقطة كفاءة (Best Efficiency Point) — استُخرج
+// بتتبّع منحنى Eta[%] الفعلي من كل رسم في الكتالوج (نفس مصدر بيانات
+// المعايرة). النطاق الآمن للتشغيل المعتاد في الصناعة هو 70%-120% من BEP —
+// خارج النطاق ده الحمل الميكانيكي والاهتزاز على الطلمبة والموتور بيزيد حتى
+// لو القدرة الاسمية كافية نظريًا.
 const gfFamilies = [
-  {f:'SP 1A',  qMin:0.5, qMax:1.8,  well:4},
-  {f:'SP 2A',  qMin:1,   qMax:3.5,  well:4},
-  {f:'SP 3A',  qMin:1.7, qMax:5,    well:4},
-  {f:'SP 5A',  qMin:2.5, qMax:7.5,  well:4},
-  {f:'SP 7',   qMin:4,   qMax:9,    well:4},
-  {f:'SP 9',   qMin:5.5, qMax:13,   well:4},
-  {f:'SP 11',  qMin:7,   qMax:16,   well:4},
-  {f:'SP 14',  qMin:9,   qMax:20,   well:4},
-  {f:'SP 17',  qMin:11,  qMax:24,   well:4},
-  {f:'SP 30',  qMin:17,  qMax:46,   well:6},
-  {f:'SP 46',  qMin:28,  qMax:65,   well:6},
-  {f:'SP 60',  qMin:40,  qMax:85,   well:6},
-  {f:'SP 77',  qMin:55,  qMax:110,  well:6},
-  {f:'SP 95',  qMin:70,  qMax:135,  well:6},
-  {f:'SP 125', qMin:95,  qMax:175,  well:6},
-  {f:'SP 160', qMin:125, qMax:225,  well:6},
-  {f:'SP 215', qMin:160, qMax:350,  well:6}
+  {f:'SP 1A',  qMin:0.5, qMax:1.8,  well:4, qBEP:1.02},
+  {f:'SP 2A',  qMin:1,   qMax:3.5,  well:4, qBEP:1.96},
+  {f:'SP 3A',  qMin:1.7, qMax:5,    well:4, qBEP:3.25},
+  {f:'SP 5A',  qMin:2.5, qMax:7.5,  well:4, qBEP:5.05},
+  {f:'SP 7',   qMin:4,   qMax:9,    well:4, qBEP:7.53},
+  {f:'SP 9',   qMin:5.5, qMax:13,   well:4, qBEP:9.8},
+  {f:'SP 11',  qMin:7,   qMax:16,   well:4, qBEP:13.05},
+  {f:'SP 14',  qMin:9,   qMax:20,   well:4, qBEP:16.77},
+  {f:'SP 17',  qMin:11,  qMax:24,   well:4, qBEP:16.01},
+  {f:'SP 30',  qMin:17,  qMax:46,   well:6, qBEP:31.63},
+  {f:'SP 46',  qMin:28,  qMax:65,   well:6, qBEP:50.97},
+  {f:'SP 60',  qMin:40,  qMax:85,   well:6, qBEP:65.18},
+  {f:'SP 77',  qMin:55,  qMax:110,  well:6, qBEP:84.55},
+  {f:'SP 95',  qMin:70,  qMax:135,  well:6, qBEP:96.62},
+  {f:'SP 125', qMin:95,  qMax:175,  well:6, qBEP:141.16},
+  {f:'SP 160', qMin:125, qMax:225,  well:6, qBEP:179.36},
+  {f:'SP 215', qMin:160, qMax:350,  well:6, qBEP:240.1}
 ];
+
+// يرجّع نسبة نقطة التشغيل من BEP (Q ÷ qBEP)، ووصف حالة النطاق
+function gfBepStatus(family, FR) {
+  const fam = gfFamilies.find(x => x.f === family);
+  if (!fam || !fam.qBEP) return null;
+  const ratio = FR / fam.qBEP;
+  const pct = Math.round(ratio * 100);
+  let status = 'ok';
+  if (ratio < 0.7) status = 'low';       // بعيد تحت BEP — حمل وانحراف تدفق مرتفع
+  else if (ratio > 1.2) status = 'high'; // بعيد فوق BEP — حمل ميكانيكي زائد على الموتور
+  return { ratio, pct, status, qBEP: fam.qBEP };
+}
 
 // موديل لكل عدد مراحل (s) داخل كل عائلة، مع نوع الموتور والقدرة (kW) —
 // مستخرجة من جداول الأبعاد والأوزان الفعلية في الكتالوج (214 صف)
@@ -787,12 +804,17 @@ function renderGfSuggestion(FR, kw_c, wellDia, TDH) {
       ${imgSrcs.length>1 && i===0 ? '<div style="height:1px;background:var(--line)"></div>' : ''}`;
   }).join('');
 
+  const bep = gfBepStatus(first.family, FR);
+  const bepBadge = bep ? `<span class="rec-badge" style="background:${bep.status==='ok'?'#E7F8F4':'#FCE9E6'};color:${bep.status==='ok'?'#0B7A66':'#B0432C'}">${bep.pct}% من BEP</span>` : '';
+
   return `
     <div class="calc-divider"></div>
-    <p class="pipe-section-title">أفضل 3 اقتراحات من كتالوج Grundfos SP</p>
+    <p class="pipe-section-title">أفضل 3 اقتراحات من كتالوج Grundfos SP ${bepBadge}</p>
     <div class="metrics-row">${cards}</div>
     ${first.qOutOfRange ? `<div class="calc-note"><i class="ti ti-alert-triangle"></i><span>معدل التصرف المطلوب خارج مدى التصرف المعتاد لعائلة ${first.family} حسب رسم الأداء العام — يُنصح بمراجعة منحنى الأداء التفصيلي للموديل مع فريق حلول قبل الطلب.</span></div>` : ''}
     ${first.exceeds ? `<div class="calc-note"><i class="ti ti-alert-triangle"></i><span>القدرة المطلوبة تتجاوز أعلى موديل متاح بعدد مراحل معقول في هذه العائلة — راجع فريق حلول لدراسة عائلة أعلى أو أكثر من طلمبة.</span></div>` : ''}
+    ${bep && bep.status === 'high' ? `<div class="calc-note"><i class="ti ti-alert-triangle"></i><span><strong>تنبيه حمل ميكانيكي:</strong> معدل التصرف المطلوب (${FR.toFixed(1)} م³/ساعة) أعلى بكثير من نقطة أفضل كفاءة لعائلة ${first.family} (BEP ≈ ${bep.qBEP.toFixed(1)} م³/ساعة — يعني ${bep.pct}% منها). التشغيل بعيدًا فوق BEP بالقدر ده بيزوّد الحمل الميكانيكي والاهتزاز على الطلمبة والموتور. يُنصح بمراجعة فريق حلول لتقييم عائلة أكبر أو تركيب أكثر من طلمبة على التوازي.</span></div>` : ''}
+    ${bep && bep.status === 'low' ? `<div class="calc-note"><i class="ti ti-alert-triangle"></i><span><strong>تنبيه:</strong> معدل التصرف المطلوب (${FR.toFixed(1)} م³/ساعة) أقل بكثير من نقطة أفضل كفاءة لعائلة ${first.family} (BEP ≈ ${bep.qBEP.toFixed(1)} م³/ساعة — يعني ${bep.pct}% منها بس). التشغيل بعيدًا تحت BEP بيقلل الكفاءة وممكن يزوّد الاهتزاز وتآكل المحامل بمرور الوقت. يُنصح بمراجعة فريق حلول لتقييم عائلة أصغر أنسب للتصرف المطلوب.</span></div>` : ''}
 
     <div class="curve-box">
       <div class="curve-box-head">
