@@ -626,17 +626,30 @@ const gfModels = [
 {f:"SP 95",s:13,m:"MMS 8000",kw:92.0}
 ];
 
-// يختار أقرب عائلة لمعدل التصريف المطلوب (FR بالمتر المكعب/ساعة)، مع تفضيل
-// العائلات المتوافقة مع قطر البئر المختار في الحاسبة
+// يختار أفضل عائلة لمعدل التصريف المطلوب (FR) — بيفضّل العائلة اللي معدل
+// التصريف فيها واقع في النطاق الصناعي الطبيعي حوالين BEP (70%-120%)، ومن
+// بين المرشحين دول بيختار الأقرب فعليًا لـ BEP نفسها (مش أول عائلة يلاقيها
+// بس). لو مفيش أي عائلة واقعة في النطاق الطبيعي أصلاً (حالة نادرة عند أطراف
+// خط الإنتاج)، بيختار الأقرب لحدود النطاق ده كأقل ضرر ممكن.
 function pickGfFamily(FR, wellDia) {
   const compatible = gfFamilies.filter(x => x.well <= wellDia);
   const pool = compatible.length ? compatible : gfFamilies;
-  const inRange = pool.filter(x => FR >= x.qMin && FR <= x.qMax);
-  if (inRange.length) return inRange[0];
-  // مفيش عائلة التصرف بره مداها تمامًا — نختار الأقرب بالمسافة عن حدود المدى
+
+  const ratioOf = x => FR / x.qBEP;
+  const inRange = pool.filter(x => { const r = ratioOf(x); return r >= 0.7 && r <= 1.2; });
+
+  if (inRange.length) {
+    // الأقرب فعليًا لنقطة BEP (ratio=1) من بين المرشحين المقبولين
+    return inRange.reduce((best, x) =>
+      Math.abs(ratioOf(x) - 1) < Math.abs(ratioOf(best) - 1) ? x : best
+    );
+  }
+
+  // مفيش عائلة في النطاق الطبيعي — نختار الأقرب لحدوده (أقل انحراف عن 70%-120%)
   let best = null, bestDist = Infinity;
   pool.forEach(x => {
-    const dist = FR < x.qMin ? (x.qMin - FR) : (FR - x.qMax);
+    const r = ratioOf(x);
+    const dist = r < 0.7 ? (0.7 - r) : (r > 1.2 ? (r - 1.2) : 0);
     if (dist < bestDist) { bestDist = dist; best = x; }
   });
   return best;
