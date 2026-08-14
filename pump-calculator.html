@@ -801,8 +801,8 @@ function renderGfSuggestion(FR, kw_c, wellDia, TDH) {
     const marker = isPrimaryPage ? gfMarkerPosition(pageKey, FR, TDH) : null;
     const cal = GF_CURVE_CALIB[pageKey];
     const markerHtml = marker ? `
-        <div class="curve-marker-vline" style="left:${marker.leftPct}%;top:${cal.t*100}%;height:${(cal.b-cal.t)*100}%;"></div>
-        <div class="curve-marker-hline" style="top:${marker.topPct}%;left:${cal.l*100}%;width:${(cal.r-cal.l)*100}%;"></div>
+        <div class="curve-marker-vline" style="left:${marker.leftPct}%;"></div>
+        <div class="curve-marker-hline" style="top:${marker.topPct}%;"></div>
         <div class="curve-marker-dot" style="left:${marker.leftPct}%;top:${marker.topPct}%;"></div>
         <div class="curve-marker-label" style="left:${marker.leftPct}%;top:${marker.topPct}%;">
           <strong>SP ${first.family.replace('SP ','')}-${first.stages}</strong><br>
