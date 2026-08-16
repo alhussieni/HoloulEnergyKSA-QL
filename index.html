@@ -409,6 +409,13 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .cart-panel-row .price{font-family:'Cairo';font-weight:700;font-size:12px;color:var(--teal-dark);white-space:nowrap;}
 .cart-panel-row .rm{background:none;border:none;color:var(--bad);font-size:14px;cursor:pointer;padding:2px 4px;}
 .cart-panel-total{display:flex;justify-content:space-between;font-family:'Cairo';font-weight:800;font-size:13.5px;color:var(--night);padding:8px 4px;border-top:1px solid var(--line);}
+.cart-panel-totals{border-top:1px solid var(--line);padding-top:6px;margin-top:2px;}
+.cart-panel-total-row{display:flex;justify-content:space-between;font-family:'Cairo';font-size:12px;color:var(--muted);padding:3px 4px;}
+.cart-panel-total-row.grand{font-weight:800;font-size:14px;color:var(--night);padding-top:6px;margin-top:2px;border-top:1px dashed var(--line);}
+.cart-qty-stepper{display:flex;align-items:center;gap:4px;flex:0 0 auto;}
+.cart-qty-btn{width:24px;height:24px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--night);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;line-height:1;}
+.cart-qty-btn:disabled{opacity:.4;cursor:not-allowed;}
+.cart-qty-input{width:38px;height:24px;text-align:center;border:1px solid var(--line);border-radius:6px;font-family:'Cairo';font-size:12px;font-weight:700;color:var(--ink);padding:0;}
 .cart-panel-actions{display:flex;gap:8px;padding-top:4px;}
 .cart-panel-actions .btn{flex:1;padding:10px;font-size:12.5px;justify-content:center;}
 @media print{.cart-panel-wrap{display:none;}}
@@ -2358,8 +2365,12 @@ function resetCategoryFilters(){
 
 // ---- Product cart: pick items across categories, then send one consolidated
 // quote request instead of one WhatsApp message per product. ----
-let productCart = [];     // [{catIdx, ri, name, category, price}]
+let productCart = [];     // [{catIdx, ri, name, category, price, qty}]
 let cartPanelOpen = false;
+let cartQuoteView = false;
+let cartClientName = '';
+let cartClientPhone = '';
+const CART_VAT_RATE = 0.15;
 function cartKey(catIdx, ri){ return `${catIdx}:${ri}`; }
 function cartHas(catIdx, ri){ return productCart.some(c=>c.catIdx===catIdx && c.ri===ri); }
 function cartToggle(cat, catIdx, ri){
@@ -2369,8 +2380,18 @@ function cartToggle(cat, catIdx, ri){
     const row = cat.rows[ri];
     const nCols = cat.columns.length;
     const price = nCols>=2 ? row[nCols-2] : row[nCols-1];
-    productCart.push({ catIdx, ri, name: row[0], category: cat.category, price });
+    productCart.push({ catIdx, ri, name: row[0], category: cat.category, price, qty: 1 });
   }
+}
+function cartSetQty(idx, qty){
+  qty = Math.max(1, Math.round(+qty) || 1);
+  if(productCart[idx]) productCart[idx].qty = qty;
+}
+function cartTotals(){
+  const subtotal = productCart.reduce((s,c)=>s + (parseFloat(c.price)||0) * (c.qty||1), 0);
+  const vat = subtotal * CART_VAT_RATE;
+  const total = subtotal + vat;
+  return { subtotal, vat, total };
 }
 
 // Known multi-word brand names checked before falling back to "first word",
@@ -2425,7 +2446,7 @@ function getFilteredCategoryRowIdxs(cat){
 // request instead of one message per product.
 function renderProductCartBar(){
   if(!productCart.length) return '';
-  const total = productCart.reduce((s,c)=>s + (parseFloat(c.price)||0), 0);
+  const { subtotal, vat, total } = cartTotals();
   return `
   <div class="cart-panel-wrap no-print">
     ${cartPanelOpen ? `
@@ -2441,19 +2462,29 @@ function renderProductCartBar(){
             <div class="name">${c.name}</div>
             <div class="cat">${c.category}</div>
           </div>
-          <div class="price">${c.price} ﷼</div>
+          <div class="cart-qty-stepper">
+            <button type="button" class="cart-qty-btn" data-cartqtydec="${idx}" ${c.qty<=1?'disabled':''}>−</button>
+            <input type="number" class="cart-qty-input" min="1" step="1" value="${c.qty}" data-cartqtyinput="${idx}">
+            <button type="button" class="cart-qty-btn" data-cartqtyinc="${idx}">+</button>
+          </div>
+          <div class="price">${(c.price*c.qty).toLocaleString('en-US')} ﷼</div>
           <button class="rm" data-cartremove="${idx}" title="إزالة">✕</button>
         </div>`).join('')}
       </div>
-      <div class="cart-panel-total"><span>الإجمالي (بدون ضريبة)</span><span>${total.toLocaleString('en-US')} ﷼</span></div>
+      <div class="cart-panel-totals">
+        <div class="cart-panel-total-row"><span>الإجمالي بدون ضريبة</span><span>${subtotal.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼</span></div>
+        <div class="cart-panel-total-row"><span>ضريبة القيمة المضافة (15%)</span><span>${vat.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼</span></div>
+        <div class="cart-panel-total-row grand"><span>الإجمالي شامل الضريبة</span><span>${total.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼</span></div>
+      </div>
       <div class="cart-panel-actions">
         <button class="btn ghost small" id="cartClearBtn" type="button">🗑 إفراغ السلة</button>
+        <button class="btn small" id="cartPrepareQuoteBtn" type="button">🧾 تجهيز عرض سعر</button>
         <button class="btn small pcard2-quote" id="cartRequestQuoteBtn" type="button">🗨️ طلب عرض سعر للسلة</button>
       </div>
     </div>` : ''}
     <button class="cart-bar" id="cartBarToggleBtn" type="button">
       <span class="cart-bar-ic">🛒</span>
-      <span class="cart-bar-txt">السلة: ${productCart.length} منتج — ${total.toLocaleString('en-US')} ﷼</span>
+      <span class="cart-bar-txt">السلة: ${productCart.length} منتج — ${total.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼ (شامل الضريبة)</span>
       <span class="cart-bar-chevron">${cartPanelOpen ? '▾' : '▴'}</span>
     </button>
   </div>`;
@@ -2578,7 +2609,154 @@ function renderSimilarProducts(catalog, catIdx, excludeRowIdx){
   </div>`;
 }
 
+/* =======================================================================
+   Product-cart quote document — lets a logged-in rep (or guest) turn the
+   product cart into a proper client-facing price quote: same banner/
+   itemized-table/VAT/print/PDF/WhatsApp pipeline as the main system quote
+   (reuses #quotePrintArea + downloadQuotePdf as-is), saved centrally via
+   save-quote so it shows up in the customer database and the rep's history.
+   ======================================================================= */
+function validateCartClient(){
+  if(!cartClientName.trim() || !cartClientPhone.trim()){
+    alert('من فضلك أدخل اسم العميل ورقم الهاتف أولًا');
+    return false;
+  }
+  return true;
+}
+function saveCartQuote(){
+  const { subtotal, vat, total } = cartTotals();
+  const snapshot = { type: 'product-cart', items: productCart.map(c=>({name:c.name, category:c.category, price:c.price, qty:c.qty})) };
+  const sheetLead = {name:cartClientName, phone:cartClientPhone, hp:null, total:Math.round(total), date:new Date().toISOString()};
+  logLead(sheetLead);
+  if(repUsername && repTokenMem){
+    callEngine('save-quote', {
+      token: repTokenMem,
+      clientName: cartClientName, clientPhone: cartClientPhone,
+      hp: null, finalTotal: Math.round(total), snapshot
+    }).catch(()=>{});
+  } else if(guestMode){
+    callEngine('save-quote', {
+      guest: true,
+      clientName: cartClientName, clientPhone: cartClientPhone,
+      hp: null, finalTotal: Math.round(total), snapshot
+    }).catch(()=>{});
+  }
+}
+function handleCartPrint(){
+  if(!validateCartClient()) return;
+  saveCartQuote();
+  const originalTitle = document.title;
+  document.title = ('عرض-سعر-منتجات-'+cartClientName).replace(/[\/\\?%*:|"<>]/g,'-');
+  window.print();
+  setTimeout(()=>{ document.title = originalTitle; }, 1000);
+}
+async function sendCartQuoteToClientWhatsapp(){
+  if(!validateCartClient()) return;
+  saveCartQuote();
+  const phone = normalizePhone(cartClientPhone);
+  if(phone.length<11){ alert('رقم هاتف العميل غير صحيح — تأكد إنه بالصيغة الصحيحة (05xxxxxxxx)'); return; }
+  const { total } = cartTotals();
+  const filename = ('عرض-سعر-منتجات-'+cartClientName).replace(/[^A-Za-z0-9\u0600-\u06FF\-]/g,'') + '.pdf';
+  const ok = await downloadQuotePdf(filename);
+  const msg = ok
+    ? `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\nالعميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: 966561274344+`
+    : `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nعرض سعر منتجات\nالعميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: 966561274344+`;
+  setTimeout(()=>window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank'), ok?600:0);
+}
+
+function renderCartQuoteDocument(){
+  const { subtotal, vat, total } = cartTotals();
+  return `
+  <div class="catalog-main" style="max-width:820px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px" class="no-print">
+      <button class="btn ghost small" id="cartQuoteBackBtn" type="button">→ رجوع للسلة</button>
+    </div>
+    <div id="quotePrintArea" class="quote-shell">
+      <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
+          <div>
+            <div style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">سجل تجاري: 7037810988 · الرقم الضريبي: 311386341200003</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--muted);letter-spacing:.02em">عرض سعر مُقدَّم إلى</div>
+          <div style="font-family:'Cairo',sans-serif;font-weight:800;font-size:18px;margin-top:1px">${cartClientName || '—'}</div>
+          <div class="num" style="font-size:12.5px;color:var(--muted);margin-top:1px">${cartClientPhone || '—'}</div>
+        </div>
+        <div style="text-align:left">
+          <div style="font-size:11px;color:var(--muted);letter-spacing:.02em">تاريخ العرض</div>
+          <div class="num" style="font-size:14px;font-weight:700;margin-top:1px">${new Date().toLocaleDateString('en-GB')}</div>
+        </div>
+      </div>
+
+      <div class="card no-print">
+        <h3 style="margin-bottom:8px">بيانات العميل</h3>
+        <div class="field-group g2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label style="font-size:12px;color:var(--muted)">اسم العميل</label><input type="text" id="cartQuoteClientName" value="${cartClientName}" placeholder="اسم العميل"></div>
+          <div><label style="font-size:12px;color:var(--muted)">رقم الجوال</label><input type="text" id="cartQuoteClientPhone" value="${cartClientPhone}" placeholder="05xxxxxxxx"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-bottom:2px">العرض المالي</h3>
+        <div style="font-size:13px;margin:8px 0 4px">تحية طيبة وبعد،</div>
+        <div style="font-size:13px;color:var(--ink);line-height:1.8">نتشرف بتقديم عرض السعر التالي للمنتجات المطلوبة.</div>
+        <div class="note" style="margin-top:8px">
+          ${repAuthed && repDisplayName ? `📋 قدّم هذا العرض: <b>${repDisplayName}</b>` : `🖥️ تم إصدار هذا العرض مباشرة عبر الحاسبة الإلكترونية`}
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>تفصيل عرض السعر</h3>
+        <table class="bom">
+          <thead><tr><th>#</th><th>المنتج</th><th>الفئة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
+          <tbody>
+            ${productCart.map((c,i)=>`
+              <tr>
+                <td>${i+1}</td>
+                <td class="bom-label">${c.name}</td>
+                <td style="font-size:11.5px;color:var(--muted)">${c.category}</td>
+                <td style="font-size:11.5px">${c.qty}</td>
+                <td style="font-size:11.5px" class="num">${(+c.price).toLocaleString('en-US')} ﷼</td>
+                <td style="font-size:11.5px;font-weight:700" class="num">${(c.price*c.qty).toLocaleString('en-US')} ﷼</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+        <div class="note" style="margin-top:10px">
+          <div style="display:flex;justify-content:space-between;padding:3px 0"><span>الإجمالي بدون ضريبة</span><span class="num" style="color:var(--ink)">${fmt(subtotal)} ﷼</span></div>
+          <div style="display:flex;justify-content:space-between;padding:3px 0"><span>ضريبة القيمة المضافة (15%)</span><span class="num" style="color:var(--ink)">${fmt(vat)} ﷼</span></div>
+        </div>
+        <div class="totalbar" style="justify-content:center">
+          <div class="line">
+            <div class="lbl">السعر النهائي شامل الضريبة</div>
+            <div class="big num">${fmt(total)} ﷼</div>
+          </div>
+        </div>
+
+        <div class="legal-note" style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
+          الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${new Date().toLocaleDateString('en-GB')}).
+        </div>
+        <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
+          <b style="color:var(--ink)">للتواصل</b><br>
+          info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
+          Website - LinkedIn - Youtube - FB - Tiktok : HoloulEnergy<br>
+          <span class="num">966561274344+</span>
+        </div>
+
+        <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" class="no-print">
+          <button class="btn" onclick="handleCartPrint()">🖨️ طباعة / حفظ PDF</button>
+          <button class="btn" style="background:#25D366;color:#fff" onclick="sendCartQuoteToClientWhatsapp()">📤 إرسال العرض للعميل (واتساب)</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderProducts(){
+  if(cartQuoteView) return renderCartQuoteDocument();
   if(!cachedProductCatalog && !productCatalogLoading && !productCatalogError){
     loadProductCatalog();
   }
@@ -4017,13 +4195,40 @@ function wire(){
       if(!productCart.length) cartPanelOpen = false;
       render();
     });
+    document.querySelectorAll('[data-cartqtyinc]').forEach(b=>b.onclick=()=>{
+      const idx = +b.dataset.cartqtyinc;
+      if(productCart[idx]) cartSetQty(idx, (productCart[idx].qty||1) + 1);
+      render();
+    });
+    document.querySelectorAll('[data-cartqtydec]').forEach(b=>b.onclick=()=>{
+      const idx = +b.dataset.cartqtydec;
+      if(productCart[idx]) cartSetQty(idx, (productCart[idx].qty||1) - 1);
+      render();
+    });
+    document.querySelectorAll('[data-cartqtyinput]').forEach(inp=>inp.onchange=()=>{
+      const idx = +inp.dataset.cartqtyinput;
+      cartSetQty(idx, inp.value);
+      render();
+    });
     const cartClearBtn = document.getElementById('cartClearBtn');
     if(cartClearBtn) cartClearBtn.onclick = ()=>{ productCart = []; cartPanelOpen = false; render(); };
+    const cartPrepareQuoteBtn = document.getElementById('cartPrepareQuoteBtn');
+    if(cartPrepareQuoteBtn) cartPrepareQuoteBtn.onclick = ()=>{
+      cartQuoteView = true; cartPanelOpen = false;
+      render();
+      window.scrollTo({top:0, behavior:'smooth'});
+    };
+    const cartQuoteBackBtn = document.getElementById('cartQuoteBackBtn');
+    if(cartQuoteBackBtn) cartQuoteBackBtn.onclick = ()=>{ cartQuoteView = false; render(); };
+    const cartQuoteClientName = document.getElementById('cartQuoteClientName');
+    if(cartQuoteClientName) cartQuoteClientName.oninput = e=>{ cartClientName = e.target.value; };
+    const cartQuoteClientPhone = document.getElementById('cartQuoteClientPhone');
+    if(cartQuoteClientPhone) cartQuoteClientPhone.oninput = e=>{ cartClientPhone = e.target.value; };
     const cartRequestQuoteBtn = document.getElementById('cartRequestQuoteBtn');
     if(cartRequestQuoteBtn) cartRequestQuoteBtn.onclick = ()=>{
-      const total = productCart.reduce((s,c)=>s + (parseFloat(c.price)||0), 0);
-      const lines = productCart.map((c,i)=>`${i+1}. ${c.name} (${c.category}) — ${c.price} ﷼`).join('\n');
-      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنتجات التالية:\n\n${lines}\n\nالإجمالي (بدون ضريبة): ${total.toLocaleString('en-US')} ﷼\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
+      const { subtotal, vat, total } = cartTotals();
+      const lines = productCart.map((c,i)=>`${i+1}. ${c.name} (${c.category}) — الكمية: ${c.qty} × ${c.price} ﷼ = ${(c.price*c.qty).toLocaleString('en-US')} ﷼`).join('\n');
+      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنتجات التالية:\n\n${lines}\n\nالإجمالي بدون ضريبة: ${subtotal.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼\nضريبة القيمة المضافة (15%): ${vat.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼\nالإجمالي شامل الضريبة: ${total.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
       window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
     };
     const globalSearchInput = document.getElementById('productGlobalSearch');
