@@ -2478,9 +2478,10 @@ function renderProductCartBar(){
       </div>
       <div class="cart-panel-actions">
         <button class="btn ghost small" id="cartClearBtn" type="button">🗑 إفراغ السلة</button>
-        <button class="btn small" id="cartPrepareQuoteBtn" type="button">🧾 تجهيز عرض سعر</button>
+        ${repAuthed ? `<button class="btn small" id="cartPrepareQuoteBtn" type="button">🧾 تجهيز عرض سعر</button>` : ''}
         <button class="btn small pcard2-quote" id="cartRequestQuoteBtn" type="button">🗨️ طلب عرض سعر للسلة</button>
       </div>
+      ${!repAuthed ? `<div class="note" style="margin-top:6px;font-size:11px;text-align:center">🧾 تجهيز عرض سعر رسمي (PDF) متاح للمناديب المسجّلين دخولهم فقط</div>` : ''}
     </div>` : ''}
     <button class="cart-bar" id="cartBarToggleBtn" type="button">
       <span class="cart-bar-ic">🛒</span>
@@ -2756,6 +2757,7 @@ function renderCartQuoteDocument(){
 }
 
 function renderProducts(){
+  if(cartQuoteView && !repAuthed){ cartQuoteView = false; }
   if(cartQuoteView) return renderCartQuoteDocument();
   if(!cachedProductCatalog && !productCatalogLoading && !productCatalogError){
     loadProductCatalog();
@@ -4214,6 +4216,7 @@ function wire(){
     if(cartClearBtn) cartClearBtn.onclick = ()=>{ productCart = []; cartPanelOpen = false; render(); };
     const cartPrepareQuoteBtn = document.getElementById('cartPrepareQuoteBtn');
     if(cartPrepareQuoteBtn) cartPrepareQuoteBtn.onclick = ()=>{
+      if(!repAuthed){ alert('تجهيز عرض سعر رسمي متاح للمناديب المسجّلين دخولهم فقط.'); return; }
       cartQuoteView = true; cartPanelOpen = false;
       render();
       window.scrollTo({top:0, behavior:'smooth'});
