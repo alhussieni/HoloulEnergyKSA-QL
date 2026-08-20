@@ -761,6 +761,21 @@ let cachedFeas = null;        // general feasibility-study assumptions (non-sens
 let cachedBomItemImages = {}; // admin-managed fallback images for generic BOM line items (by item key)
 let cachedPanelOptions = [];  // [{brand,power}] — never priceW
 let cachedInverterBrandOptions = []; // [{idx,brand}] — never list/cost/discount
+
+// Admin-configured defaults (D.defaultPanelKey "brand|power", D.defaultInverterBrand)
+// applied once per calculator on first successful load, so a rep's manual
+// re-selection afterwards is never silently overridden.
+let mainDefaultsApplied = false, offgridDefaultsApplied = false, ongridDefaultsApplied = false;
+function resolvePanelIdxByKey(options, key){
+  if(!key || !options || !options.length) return null;
+  const m = options.find(p => `${p.brand}|${p.power}` === key);
+  return m ? m.idx : null;
+}
+function resolveInverterIdxByBrand(options, brand){
+  if(!brand || !options || !options.length) return null;
+  const m = options.find(b => b.brand === brand);
+  return m ? m.idx : null;
+}
 let cachedProductCatalog = null; // fetched lazily when the products tab opens
 let productCatalogLoading = false;
 let productCatalogError = null;
@@ -858,6 +873,13 @@ async function refreshQuote(){
     cachedBomItemImages = data.bomItemImages || cachedBomItemImages;
     adminFinancials = adminData ? adminData.quote : null;
     let needsRetry = false;
+    if(!mainDefaultsApplied){
+      mainDefaultsApplied = true;
+      const defPanelIdx = resolvePanelIdxByKey(cachedPanelOptions, data.defaultPanelKey);
+      if(defPanelIdx !== null){ state.panelIdx = defPanelIdx; needsRetry = true; }
+      const defInvIdx = resolveInverterIdxByBrand(cachedInverterBrandOptions, data.defaultInverterBrand);
+      if(defInvIdx !== null){ state.inverterBrandIdx = defInvIdx; needsRetry = true; }
+    }
     if(!cachedPanelOptions.some(p=>p.idx===state.panelIdx) && cachedPanelOptions.length){
       state.panelIdx = cachedPanelOptions[0].idx; needsRetry = true;
     }
@@ -902,6 +924,11 @@ async function refreshOffgridQuote(){
         state.offgrid.appliances = data.applianceDefaults.map(a=>({...a}));
       }
     }
+    if(data.panelOptions && data.panelOptions.length && !offgridDefaultsApplied){
+      offgridDefaultsApplied = true;
+      const defPanelIdx = resolvePanelIdxByKey(data.panelOptions, data.defaultPanelKey);
+      if(defPanelIdx !== null) state.offgrid.panelIdx = defPanelIdx;
+    }
     if(data.panelOptions && data.panelOptions.length && !data.panelOptions.some(p=>p.idx===state.offgrid.panelIdx)){
       state.offgrid.panelIdx = data.panelOptions[0].idx;
     }
@@ -935,6 +962,11 @@ async function refreshOngridQuote(){
       : Promise.resolve(null);
     const [data, adminData] = await Promise.all([quotePromise, adminPromise]);
     cachedOngridQuote = data.quote;
+    if(data.panelOptions && data.panelOptions.length && !ongridDefaultsApplied){
+      ongridDefaultsApplied = true;
+      const defPanelIdx = resolvePanelIdxByKey(data.panelOptions, data.defaultPanelKey);
+      if(defPanelIdx !== null) state.ongrid.panelIdx = defPanelIdx;
+    }
     if(data.panelOptions && data.panelOptions.length && !data.panelOptions.some(p=>p.idx===state.ongrid.panelIdx)){
       state.ongrid.panelIdx = data.panelOptions[0].idx;
     }
@@ -3321,10 +3353,11 @@ function renderAdmin(){
   <div class="card">
     <h3>الألواح الشمسية</h3>
     <table class="admtable">
-      <thead><tr><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W (بدون ضريبة)</th><th>ظاهر للعميل</th><th></th></tr></thead>
+      <thead><tr><th>افتراضي</th><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W (بدون ضريبة)</th><th>ظاهر للعميل</th><th></th></tr></thead>
       <tbody id="adm_panels">
         ${adminConfig.panels.map((p,i)=>`
           <tr>
+            <td style="text-align:center"><input type="radio" name="defaultPanel" data-defpanel="${i}" ${(`${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||''))?'checked':''}></td>
             <td><input data-p="${i}" data-f="brand" value="${p.brand}"></td>
             <td><input data-p="${i}" data-f="power" type="number" value="${p.power}"></td>
             <td><input data-p="${i}" data-f="vimp" type="number" step="0.01" value="${p.vimp}"></td>
@@ -3338,7 +3371,7 @@ function renderAdmin(){
       </tbody>
     </table>
     <button class="btn ghost small" id="addPanel">+ إضافة لوح</button>
-    <div class="note" style="margin-top:8px">اللوح يظهر للعميل فقط لو كان "ظاهر للعميل" مفعّل ومعاه سعر أكبر من صفر. عطّل التكة لإخفاء لوح مؤقتًا بدون حذفه.</div>
+    <div class="note" style="margin-top:8px">اللوح يظهر للعميل فقط لو كان "ظاهر للعميل" مفعّل ومعاه سعر أكبر من صفر. عطّل التكة لإخفاء لوح مؤقتًا بدون حذفه.<br>اختَر لوح "افتراضي" ليكون هو المُحدَّد تلقائيًا للعميل عند فتح أي حاسبة (حتى لو أُضيفت ألواح جديدة بعد كده).</div>
   </div>
   </div>
 
@@ -3348,6 +3381,10 @@ function renderAdmin(){
     ${adminConfig.inverterBrands.map((brand,bi)=>`
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+          <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12.5px;color:var(--ink)">
+            <input type="radio" name="defaultInvBrand" data-definvbrand="${bi}" ${brand.brand===(adminConfig.defaultInverterBrand||'')?'checked':''}>
+            افتراضي
+          </label>
           <input data-brand="${bi}" style="max-width:220px;font-weight:600" value="${brand.brand}" placeholder="اسم النوع/البراند">
           ${adminConfig.inverterBrands.length>1 ? `<button class="btn danger small" data-delbrand="${bi}">🗑 حذف هذا النوع</button>` : ''}
         </div>
@@ -3372,7 +3409,7 @@ function renderAdmin(){
         <button class="btn ghost small" data-addtier="${bi}" style="margin-top:6px">+ إضافة قدرة KW</button>
       </div>`).join('')}
     <button class="btn ghost small" id="addInverterBrand">+ إضافة نوع انفرتر جديد</button>
-    <div class="note" style="margin-top:8px">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي). لو فيه أكتر من نوع، هيظهر للعميل اختيار "نوع الانفرتر" في الحاسبة.<br>"أقصى قدرة ألواح (KW)" — من الداتا شيت الرسمي للانفرتر (عمود Max solar power input). لو فاضية، الحاسبة مش هتنبّه لو الألواح زادت عن قدرة الانفرتر لهذا الموديل بالذات.</div>
+    <div class="note" style="margin-top:8px">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي). لو فيه أكتر من نوع، هيظهر للعميل اختيار "نوع الانفرتر" في الحاسبة.<br>"أقصى قدرة ألواح (KW)" — من الداتا شيت الرسمي للانفرتر (عمود Max solar power input). لو فاضية، الحاسبة مش هتنبّه لو الألواح زادت عن قدرة الانفرتر لهذا الموديل بالذات.<br>اختَر نوع انفرتر "افتراضي" ليكون هو المُحدَّد تلقائيًا للعميل عند فتح أي حاسبة (حتى لو أُضيفت أنواع جديدة بعد كده).</div>
   </div>
   </div>
 
@@ -4418,9 +4455,19 @@ function wire(){
       document.querySelectorAll('[data-pvis]').forEach(inp=>{
         adminConfig.panels[+inp.dataset.pvis].visible = inp.checked;
       });
+      const defPanelRadio = document.querySelector('[data-defpanel]:checked');
+      if(defPanelRadio){
+        const p = adminConfig.panels[+defPanelRadio.dataset.defpanel];
+        if(p) adminConfig.defaultPanelKey = `${p.brand}|${p.power}`;
+      }
       document.querySelectorAll('[data-brand]:not([data-tier])').forEach(inp=>{
         adminConfig.inverterBrands[+inp.dataset.brand].brand = inp.value;
       });
+      const defInvRadio = document.querySelector('[data-definvbrand]:checked');
+      if(defInvRadio){
+        const b = adminConfig.inverterBrands[+defInvRadio.dataset.definvbrand];
+        if(b) adminConfig.defaultInverterBrand = b.brand;
+      }
       const tierRows = {};
       document.querySelectorAll('[data-tier]').forEach(inp=>{
         const bi=+inp.dataset.brand, ti=+inp.dataset.tier, f=inp.dataset.f;
