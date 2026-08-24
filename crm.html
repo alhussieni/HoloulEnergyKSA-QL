@@ -552,6 +552,20 @@ document.getElementById('searchInput').addEventListener('input', ()=>{ clearTime
 document.getElementById('statusFilter').addEventListener('change', loadCustomers);
 document.getElementById('followFilter').addEventListener('change', loadCustomers);
 
+function computeCustomerDisplayStatus(c){
+  const opps = c.opportunities || [];
+  if(!opps.length){
+    const sm = metaOf(SETTINGS.statuses, c.status) || {label:c.status||'-', color:'#93a89c'};
+    return { hasOpps:false, label: sm.label, color: sm.color };
+  }
+  const counts = {};
+  opps.forEach(o=>{ counts[o.stage] = (counts[o.stage]||0)+1; });
+  const activeStages = Object.keys(counts).filter(s=>s!=='won'&&s!=='lost');
+  let headlineStage = activeStages.length ? activeStages[0] : (counts['won'] ? 'won' : 'lost');
+  const sm = metaOf(SETTINGS.opportunityStages, headlineStage) || {label:headlineStage, color:'#93a89c'};
+  return { hasOpps:true, label: sm.label, color: sm.color, count: opps.length };
+}
+
 async function loadCustomers(){
   const wrap = document.getElementById('customersTableWrap');
   wrap.innerHTML = '<div class="loadingNote">بيحمّل العملاء...</div>';
@@ -568,16 +582,16 @@ async function loadCustomers(){
       <th>العميل</th><th>الهاتف</th><th>الحالة</th><th>الأولوية</th><th>رأيه في السعر</th><th>المشكلة</th><th>متابعة قادمة</th>
       </tr></thead><tbody>
       ${d.customers.map(c=>{
-        const sm = metaOf(SETTINGS.statuses, c.status) || {label:c.status||'-', color:'#93a89c'};
+        const ds = computeCustomerDisplayStatus(c);
         const overdue = c.next_follow_up_date && c.next_follow_up_date < today && c.status!=='won' && c.status!=='lost';
         return `<tr data-id="${c.id}">
           <td>${c.name||'<span style="color:var(--muted)">بدون اسم</span>'}</td>
           <td>${c.phone}</td>
-          <td><span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span></td>
+          <td><span class="tag" style="background:${ds.color}22;color:${ds.color}">${ds.label}</span>${ds.hasOpps?` <span class="tag" style="background:var(--sand);color:var(--muted);">${ds.count} صفقة</span>`:''}</td>
           <td>${labelOf(SETTINGS.priorities, c.priority)}</td>
-          <td>${c.price_feedback ? labelOf(SETTINGS.priceFeedback, c.price_feedback) : '-'}</td>
-          <td>${c.blocker_reason ? labelOf(SETTINGS.blockerReasons, c.blocker_reason) : '-'}</td>
-          <td class="${overdue?'od':''}">${fmtDate(c.next_follow_up_date)}${overdue?' ⚠':''}</td>
+          <td>${ds.hasOpps ? '-' : (c.price_feedback ? labelOf(SETTINGS.priceFeedback, c.price_feedback) : '-')}</td>
+          <td>${ds.hasOpps ? '-' : (c.blocker_reason ? labelOf(SETTINGS.blockerReasons, c.blocker_reason) : '-')}</td>
+          <td class="${overdue?'od':''}">${ds.hasOpps ? '-' : (fmtDate(c.next_follow_up_date)+(overdue?' ⚠':''))}</td>
         </tr>`;
       }).join('')}
       </tbody></table>`;
@@ -602,6 +616,13 @@ async function openCustomer(id){
 function renderCustomerModal(c, quotes, interactions, contacts, sites, opportunities, assets){
   const m = document.getElementById('custModal');
   const canDelete = SESSION.role === 'admin';
+  const hasOpps = opportunities.length > 0;
+  const oppCounts = {};
+  opportunities.forEach(o=>{ oppCounts[o.stage] = (oppCounts[o.stage]||0)+1; });
+  const oppSummaryHtml = Object.entries(oppCounts).map(([stage,n])=>{
+    const sm = metaOf(SETTINGS.opportunityStages, stage) || {label:stage, color:'#93a89c'};
+    return `<span class="tag" style="background:${sm.color}22;color:${sm.color};margin-left:6px;">${sm.label}: ${n}</span>`;
+  }).join('');
   m.innerHTML = `
     <div class="mhead"><div><h2>${c.name || 'بدون اسم'}</h2><div class="phone">${c.phone}</div></div><button class="closeX" data-close>×</button></div>
     <div class="grid2">
@@ -613,6 +634,15 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       <div><label>المنطقة</label><select id="f_region">${optHtml(SETTINGS.regions, c.region)}</select></div>
       <div><label>مصدر العميل</label><select id="f_lead_source">${optHtml(SETTINGS.leadSources, c.lead_source)}</select></div>
       <div><label>المندوب المسؤول</label><input type="text" id="f_rep" value="${c.assigned_rep||''}"></div>
+    </div>
+
+    ${hasOpps ? `
+    <div class="section" style="margin-top:14px;padding-top:14px;">
+      <h4>الحالة الفعلية — متابَعة من خلال الصفقات تحت</h4>
+      <div>${oppSummaryHtml}</div>
+      <div class="emptyNote" style="margin-top:8px;">العميل ده عنده صفقة أو أكتر، فبقت الحالة وسبب التوقف ورأيه في السعر بتتابع من داخل كل صفقة على حدة (تحت) بدل حقل واحد عام.</div>
+    </div>` : `
+    <div class="grid2">
       <div><label>الحالة</label><select id="f_status">${optHtml(SETTINGS.statuses, c.status)}</select></div>
       <div><label>الأولوية</label><select id="f_priority">${optHtml(SETTINGS.priorities, c.priority)}</select></div>
       <div style="grid-column:1/-1;"><label>موعد المتابعة القادمة</label><input type="date" id="f_followup" value="${c.next_follow_up_date||''}"></div>
@@ -620,15 +650,17 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     <div id="stallReasonGroup" class="grid2" style="${c.status==='won'?'display:none':''}">
       <div><label>رأيه في السعر</label><select id="f_price">${optHtml(SETTINGS.priceFeedback, c.price_feedback)}</select></div>
       <div><label>سبب توقف التنفيذ</label><select id="f_blocker">${optHtml(SETTINGS.blockerReasons, c.blocker_reason)}</select></div>
-    </div>
-    <div class="grid2">
+    </div>`}
+
+    <div id="legalFieldsGroup" class="grid2" style="margin-top:14px;${c.customer_type==='individual'?'display:none':''}">
       <div><label>السجل التجاري</label><input type="text" id="f_cr" value="${c.commercial_registration||''}"></div>
       <div><label>الرقم الضريبي (VAT)</label><input type="text" id="f_vat" value="${c.vat_number||''}"></div>
       <div style="grid-column:1/-1;"><label>الرقم الموحد</label><input type="text" id="f_unified" value="${c.unified_number||''}"></div>
     </div>
+    ${!hasOpps ? `
     <div id="stallNotesGroup" style="${c.status==='won'?'display:none':''}">
       <label>ملاحظات عن المشكلة / السبب</label><textarea id="f_notes">${c.blocker_notes||''}</textarea>
-    </div>
+    </div>` : ''}
     <div class="saveBar">
       <div>${canDelete ? '<button class="btn danger small" id="delCustBtn">🗑 حذف العميل</button>' : ''}</div>
       <div class="right"><button class="btn" id="saveCustBtn">حفظ بيانات المتابعة</button></div>
@@ -657,6 +689,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
         <div><label>واتساب</label><input type="text" id="nc_whatsapp"></div>
         <div><label>الإيميل</label><input type="text" id="nc_email"></div>
         <div><label>قوة القرار</label><select id="nc_decision"><option value="">-- اختر --</option>${SETTINGS.decisionPowerLevels.map(o=>`<option value="${o.value}">${o.label}</option>`).join('')}</select></div>
+        <div><label>طريقة التواصل المفضلة</label><select id="nc_pref_method"><option value="">-- اختر --</option>${SETTINGS.contactMethods.map(o=>`<option value="${o.value}">${o.label}</option>`).join('')}</select></div>
       </div>
       <div class="saveBar" style="margin-top:10px;"><div></div><div class="right"><button class="btn ghost small" id="addContactBtn">+ إضافة جهة اتصال</button></div></div>
     </div>
@@ -716,12 +749,16 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
 
     <div class="section">
       <h4>سجل المتابعات والتواصل (${interactions.length})</h4>
+      ${hasOpps ? `
+      <div class="emptyNote" style="margin-bottom:10px;">العميل ده عنده صفقة أو أكتر — سجّل أي متابعة جديدة من داخل الصفقة نفسها (قسم "سجل الأنشطة") بدل هنا. السجل القديم تحت للمرجعية بس.</div>
+      ` : `
       <div class="grid2" style="margin-bottom:10px;">
         <div><label>نوع التواصل</label><select id="i_type">${optHtml(SETTINGS.interactionTypes, SETTINGS.interactionTypes[0] ? SETTINGS.interactionTypes[0].value : '')}</select></div>
         <div><label>النتيجة (اختياري)</label><input type="text" id="i_outcome" placeholder="مثال: هيرد بكرة"></div>
       </div>
       <label>ملاحظة</label><textarea id="i_note" placeholder="اكتب اللي حصل في المكالمة/الزيارة..."></textarea>
       <div class="saveBar" style="margin-top:10px;"><div></div><div class="right"><button class="btn ghost small" id="addIntBtn">+ إضافة متابعة</button></div></div>
+      `}
       <div id="intList" style="margin-top:14px;">
         ${interactions.length ? interactions.map(i=>`
           <div class="intRow"><div class="top"><span>${labelOf(SETTINGS.interactionTypes, i.interaction_type)} · ${i.rep_username||''}</span><span>${fmtDate(i.created_at)}</span></div>
@@ -732,7 +769,11 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     </div>
   `;
   m.querySelector('[data-close]').addEventListener('click', closeCustomer);
-  m.querySelector('#f_status').addEventListener('change', (e)=>{
+  m.querySelector('#f_ctype').addEventListener('change', (e)=>{
+    m.querySelector('#legalFieldsGroup').style.display = e.target.value === 'individual' ? 'none' : '';
+  });
+  const statusEl = m.querySelector('#f_status');
+  if(statusEl) statusEl.addEventListener('change', (e)=>{
     const won = e.target.value === 'won';
     m.querySelector('#stallReasonGroup').style.display = won ? 'none' : '';
     m.querySelector('#stallNotesGroup').style.display = won ? 'none' : '';
@@ -750,14 +791,16 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
         commercial_registration: m.querySelector('#f_cr').value.trim(),
         vat_number: m.querySelector('#f_vat').value.trim(),
         unified_number: m.querySelector('#f_unified').value.trim(),
-        status: m.querySelector('#f_status').value,
-        priority: m.querySelector('#f_priority').value,
-        price_feedback: m.querySelector('#f_price').value || null,
-        blocker_reason: m.querySelector('#f_blocker').value || null,
         assigned_rep: m.querySelector('#f_rep').value.trim(),
-        next_follow_up_date: m.querySelector('#f_followup').value || null,
-        blocker_notes: m.querySelector('#f_notes').value.trim(),
       };
+      if(!hasOpps){
+        fields.status = m.querySelector('#f_status').value;
+        fields.priority = m.querySelector('#f_priority').value;
+        fields.price_feedback = m.querySelector('#f_price').value || null;
+        fields.blocker_reason = m.querySelector('#f_blocker').value || null;
+        fields.next_follow_up_date = m.querySelector('#f_followup').value || null;
+        fields.blocker_notes = m.querySelector('#f_notes').value.trim();
+      }
       await crmApi('admin-crm-update', {customerId:c.id, fields});
       toast('اتحفظ ✅');
       loadCustomers(); loadDashboard(); openCustomer(c.id);
@@ -772,7 +815,8 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       closeCustomer(); loadCustomers(); loadDashboard();
     }catch(err){ toast('خطأ: '+err.message); }
   });
-  m.querySelector('#addIntBtn').addEventListener('click', async ()=>{
+  const addIntBtn = m.querySelector('#addIntBtn');
+  if(addIntBtn) addIntBtn.addEventListener('click', async ()=>{
     const note = m.querySelector('#i_note').value.trim();
     if(!note){ toast('اكتب ملاحظة الأول'); return; }
     try{
@@ -795,6 +839,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
         whatsapp: m.querySelector('#nc_whatsapp').value.trim(),
         email: m.querySelector('#nc_email').value.trim(),
         decisionPower: m.querySelector('#nc_decision').value,
+        preferredContactMethod: m.querySelector('#nc_pref_method').value,
       });
       toast('اتضافت جهة الاتصال ✅');
       openCustomer(c.id);
