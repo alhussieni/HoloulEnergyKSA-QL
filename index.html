@@ -761,6 +761,7 @@ let cachedFeas = null;        // general feasibility-study assumptions (non-sens
 let cachedBomItemImages = {}; // admin-managed fallback images for generic BOM line items (by item key)
 let cachedPanelOptions = [];  // [{brand,power}] — never priceW
 let cachedInverterBrandOptions = []; // [{idx,brand}] — never list/cost/discount
+let cachedBatteryVoltageOptions = []; // [12.8, 25.6, 51.2, ...] distinct voltages in the battery catalog
 
 // Admin-configured defaults (D.defaultPanelKey "brand|power", D.defaultInverterBrand)
 // applied once per calculator on first successful load, so a rep's manual
@@ -903,6 +904,7 @@ function buildOffgridInput(){
     dailyKwh: +o.dailyKwh || 0,
     autonomyDays: +o.autonomyDays || 0,
     appliances: o.appliances,
+    batteryVoltage: o.batteryVoltage || null,
     discountTierIdx: discountUnlocked ? state.discountOverrideIdx : null,
     specialDiscountAmt: state.specialDiscountAmt,
   };
@@ -934,6 +936,11 @@ async function refreshOffgridQuote(){
     }
     cachedPanelOptions = data.panelOptions || cachedPanelOptions;
     cachedBomItemImages = data.bomItemImages || cachedBomItemImages;
+    cachedBatteryVoltageOptions = data.batteryVoltageOptions || cachedBatteryVoltageOptions;
+    if(!state.offgrid.batteryVoltage && cachedBatteryVoltageOptions.length){
+      // default to the highest voltage (the "full bus" module) so no series-stacking is needed unless the rep changes it
+      state.offgrid.batteryVoltage = Math.max(...cachedBatteryVoltageOptions);
+    }
     adminFinancialsOffgrid = adminData ? adminData.quote : null;
   }catch(e){
     offgridEngineError = e.message || 'تعذر الاتصال بالخادم';
@@ -1079,7 +1086,8 @@ const state = {
     method: 'consumption', // 'consumption' | 'appliances'
     dailyKwh: 10,
     autonomyDays: 0,
-    appliances: [ {name:'ثلاجة', watts:150, hours:8, qty:1} ],
+    appliances: [ {name:'ثلاجة', watts:150, dayHours:4, nightHours:4, qty:1} ],
+    batteryVoltage: null, // null = server uses its own default (bus voltage)
   },
   ongrid: {
     panelIdx: 0,
@@ -1749,26 +1757,127 @@ function sendGenericQuoteWhatsapp(finalTotal){
 // (hours/day) for solar sizing purposes. Purely a UI convenience: the
 // customer can still edit every value, or add a fully custom device.
 const OFFGRID_APPLIANCE_PRESETS = [
-  {name:'لمبة إضاءة LED', watts:10, hours:6},
-  {name:'راوتر / شاحن', watts:15, hours:24},
-  {name:'كاميرا مراقبة', watts:10, hours:24},
-  {name:'DVR / NVR', watts:25, hours:24},
-  {name:'لابتوب', watts:65, hours:6},
-  {name:'مروحة', watts:70, hours:6},
-  {name:'شفاط مطبخ', watts:75, hours:1},
-  {name:'تلفاز LCD', watts:80, hours:4},
-  {name:'ثلاجة', watts:150, hours:8},
-  {name:'كشاف إنارة', watts:200, hours:8},
-  {name:'فريزر', watts:300, hours:8},
-  {name:'موتور 1 حصان', watts:740, hours:2},
-  {name:'ميكروويف', watts:1000, hours:0.5},
-  {name:'موتور 1.5 حصان / غاطس', watts:1100, hours:2},
-  {name:'تكييف 1.5 حصان', watts:1100, hours:8},
-  {name:'غسالة', watts:1500, hours:1},
-  {name:'تكييف 2.5 حصان', watts:1800, hours:8},
-  {name:'تكييف 3 حصان', watts:2200, hours:8},
-  {name:'سخان مياه', watts:9000, hours:2},
+  {name:'لمبة إضاءة LED', watts:10, dayHours:0, nightHours:6},
+  {name:'راوتر / شاحن', watts:15, dayHours:12, nightHours:12},
+  {name:'كاميرا مراقبة', watts:10, dayHours:12, nightHours:12},
+  {name:'DVR / NVR', watts:25, dayHours:12, nightHours:12},
+  {name:'لابتوب', watts:65, dayHours:6, nightHours:0},
+  {name:'مروحة', watts:70, dayHours:4, nightHours:2},
+  {name:'شفاط مطبخ', watts:75, dayHours:1, nightHours:0},
+  {name:'تلفاز LCD', watts:80, dayHours:2, nightHours:2},
+  {name:'ثلاجة', watts:150, dayHours:4, nightHours:4},
+  {name:'كشاف إنارة', watts:200, dayHours:0, nightHours:8},
+  {name:'فريزر', watts:300, dayHours:4, nightHours:4},
+  {name:'موتور 1 حصان', watts:740, dayHours:2, nightHours:0},
+  {name:'ميكروويف', watts:1000, dayHours:0.5, nightHours:0},
+  {name:'موتور 1.5 حصان / غاطس', watts:1100, dayHours:2, nightHours:0},
+  {name:'تكييف 1.5 حصان', watts:1100, dayHours:4, nightHours:4},
+  {name:'غسالة', watts:1500, dayHours:1, nightHours:0},
+  {name:'تكييف 2.5 حصان', watts:1800, dayHours:4, nightHours:4},
+  {name:'تكييف 3 حصان', watts:2200, dayHours:4, nightHours:4},
+  {name:'سخان مياه', watts:9000, dayHours:1, nightHours:1},
 ];
+
+function renderOffgridDayChart(q, o){
+  if(!q || !q.actualKw || !q.dailyKwh) return '';
+  const W = 680, H = 260, padL = 40, padR = 40, padT = 16, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const sunHours = q.sunHours || 5.5;
+  const systemEff = q.systemEfficiency || 0.8;
+  const producedDailyKwh = q.actualKw * sunHours * systemEff;
+  const batteryCapKwh = q.nameplateBatteryKwh || 0;
+
+  // نافذة سطوع افتراضية (لرسم الشكل بس — مش جزء من حساب السعر الفعلي)
+  const sunrise = 6, sunset = 18, windowH = sunset - sunrise; // 12h نهار، 12h ليل
+
+  // لو العميل مدخّل الأجهزة بساعات نهار/ليل منفصلة، نستخدمها فعليًا بدل
+  // افتراض استهلاك ثابت على مدار الساعة — بيدّي دقة حقيقية للرسم
+  let dayConsumptionKwh = null, nightConsumptionKwh = null;
+  if(o && o.method === 'appliances' && Array.isArray(o.appliances) && o.appliances.length){
+    dayConsumptionKwh = o.appliances.reduce((s,a)=> s + ((+a.watts||0)*(+a.dayHours||0)*(+a.qty||1))/1000, 0);
+    nightConsumptionKwh = o.appliances.reduce((s,a)=> s + ((+a.watts||0)*(+a.nightHours||0)*(+a.qty||1))/1000, 0);
+  }
+  const usingRealSplit = dayConsumptionKwh !== null && (dayConsumptionKwh + nightConsumptionKwh) > 0;
+  const dayKw = usingRealSplit ? dayConsumptionKwh / windowH : (q.dailyKwh/24);
+  const nightKw = usingRealSplit ? nightConsumptionKwh / (24-windowH) : (q.dailyKwh/24);
+
+  const N = 48;
+  const hours = [], prodKw = [];
+  for(let i=0;i<=N;i++){
+    const h = i * 24 / N;
+    hours.push(h);
+    let p = 0;
+    if(h>=sunrise && h<=sunset) p = Math.sin(Math.PI * (h - sunrise) / windowH);
+    prodKw.push(Math.max(0,p));
+  }
+  const stepH = 24/N;
+  const rawIntegral = prodKw.reduce((s,v)=>s+v,0) * stepH;
+  const scale = rawIntegral > 0 ? producedDailyKwh / rawIntegral : 0;
+  const prodScaled = prodKw.map(v=>v*scale);
+  const consKw = hours.slice(0,N).map(h => (h>=sunrise && h<sunset) ? dayKw : nightKw);
+
+  let soc = batteryCapKwh;
+  const socSeries = [soc];
+  let excessKwhTotal = 0, deficitKwhTotal = 0;
+  for(let i=0;i<N;i++){
+    const net = (prodScaled[i] - consKw[i]) * stepH;
+    soc += net;
+    if(soc > batteryCapKwh){ excessKwhTotal += (soc - batteryCapKwh); soc = batteryCapKwh; }
+    if(soc < 0){ deficitKwhTotal += (-soc); soc = 0; }
+    socSeries.push(soc);
+  }
+  const socPct = socSeries.map(v => batteryCapKwh>0 ? (v/batteryCapKwh*100) : 0);
+
+  const maxKw = Math.max(...prodScaled, dayKw, nightKw) * 1.15 || 1;
+  const xForH = h => padL + (h/24)*plotW;
+  const yForKw = kw => padT + plotH - (kw/maxKw)*plotH;
+  const yForPct = pct => padT + plotH - (pct/100)*plotH;
+
+  const prodPath = prodScaled.map((v,i)=>`${i===0?'M':'L'} ${xForH(hours[i]).toFixed(1)} ${yForKw(v).toFixed(1)}`).join(' ');
+  const prodAreaPath = prodPath + ` L ${xForH(24).toFixed(1)} ${yForKw(0).toFixed(1)} L ${xForH(0).toFixed(1)} ${yForKw(0).toFixed(1)} Z`;
+  const socPath = socPct.map((v,i)=>`${i===0?'M':'L'} ${xForH(i*stepH).toFixed(1)} ${yForPct(v).toFixed(1)}`).join(' ');
+  const consPath = [
+    `M ${xForH(0).toFixed(1)} ${yForKw(nightKw).toFixed(1)}`,
+    `L ${xForH(sunrise).toFixed(1)} ${yForKw(nightKw).toFixed(1)}`,
+    `L ${xForH(sunrise).toFixed(1)} ${yForKw(dayKw).toFixed(1)}`,
+    `L ${xForH(sunset).toFixed(1)} ${yForKw(dayKw).toFixed(1)}`,
+    `L ${xForH(sunset).toFixed(1)} ${yForKw(nightKw).toFixed(1)}`,
+    `L ${xForH(24).toFixed(1)} ${yForKw(nightKw).toFixed(1)}`,
+  ].join(' ');
+  const xTicks = [0,4,8,12,16,20,24];
+
+  return `
+  <div style="overflow-x:auto">
+  <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:720px;height:auto;font-family:'Cairo',sans-serif;display:block" xmlns="http://www.w3.org/2000/svg">
+    ${xTicks.map(h=>`<line x1="${xForH(h)}" y1="${padT}" x2="${xForH(h)}" y2="${padT+plotH}" stroke="#eee" stroke-width="1"/>`).join('')}
+    <line x1="${padL}" y1="${padT+plotH}" x2="${padL+plotW}" y2="${padT+plotH}" stroke="#ccc" stroke-width="1"/>
+    <path d="${prodAreaPath}" fill="#F3CB56" fill-opacity="0.45" stroke="none"/>
+    <path d="${prodPath}" fill="none" stroke="#E7AC12" stroke-width="2"/>
+    <path d="${consPath}" fill="none" stroke="#155E85" stroke-width="2" stroke-dasharray="5,4"/>
+    <path d="${socPath}" fill="none" stroke="#0FA98D" stroke-width="2"/>
+    ${xTicks.map(h=>`<text x="${xForH(h)}" y="${H-8}" font-size="10" fill="#63736F" text-anchor="middle">${h}</text>`).join('')}
+    <text x="${padL-8}" y="${padT+10}" font-size="10" fill="#63736F" text-anchor="end">${maxKw.toFixed(1)} kW</text>
+    <text x="${padL-8}" y="${padT+plotH}" font-size="10" fill="#63736F" text-anchor="end">0</text>
+    <text x="${padL+plotW+6}" y="${padT+10}" font-size="10" fill="#0B7A66" text-anchor="start">100%</text>
+    <text x="${padL+plotW+6}" y="${padT+plotH}" font-size="10" fill="#0B7A66" text-anchor="start">0%</text>
+  </svg>
+  </div>
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11.5px">
+    <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:3px;background:#E7AC12;display:inline-block"></span> إنتاج الألواح (kW)</span>
+    <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:2px;background:#155E85;display:inline-block"></span> الاستهلاك (kW)${usingRealSplit?' — نهار/ليل فعلي':' — افتراض ثابت'}</span>
+    <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:3px;background:#0FA98D;display:inline-block"></span> شحن البطارية (%)</span>
+  </div>
+  <div class="note" style="margin-top:8px">
+    ${deficitKwhTotal>0.05
+      ? `⚠️ البطارية ممكن توصل لصفر خلال اليوم (نقص تقريبي ${deficitKwhTotal.toFixed(1)} كيلوواط/ساعة) — يُنصح بمراجعة عدد أيام الاستقلالية أو حجم البطارية.`
+      : `البطارية بتغطي الاستهلاك الليلي بالكامل، وبيفضل هامش ${(100 - Math.min(...socPct)).toFixed(0)}% تقريبًا في أقل نقطة شحن.`}
+    ${excessKwhTotal>0.05 ? ` وفيه حوالي ${excessKwhTotal.toFixed(1)} كيلوواط/ساعة فائض إنتاج يوميًا بعد امتلاء البطارية.` : ''}
+    <br>⚠️ الرسم استرشادي: ${usingRealSplit
+      ? `الاستهلاك محسوب فعليًا من ساعات التشغيل النهارية/الليلية اللي أدخلتها لكل جهاز`
+      : `بيفترض استهلاك ثابت على مدار الساعة (اختر "قائمة الأجهزة" وحدد ساعات النهار/الليل لكل جهاز عشان دقة أعلى)`}، ونافذة سطوع شمس افتراضية من 6 صباحًا لـ6 مساءً بشكل جرسي لشكل منحنى الإنتاج — إجمالي الإنتاج اليومي محسوب فعليًا من نفس معادلة التسعير.
+  </div>`;
+}
 
 function renderOffgridCalc(){
   const q = cachedOffgridQuote;
@@ -1799,18 +1908,20 @@ function renderOffgridCalc(){
         <button type="button" class="btn small" id="ogAddPresetAppliance">+ إضافة من القائمة</button>
       </div>
       <table class="admtable" id="ogApplianceTable">
-        <thead><tr><th>الجهاز</th><th>واط</th><th>ساعات/يوم</th><th>العدد</th><th></th></tr></thead>
+        <thead><tr><th>الجهاز</th><th>واط</th><th>ساعات نهارية</th><th>ساعات ليلية</th><th>العدد</th><th></th></tr></thead>
         <tbody>
           ${o.appliances.map((a,i)=>`
             <tr>
               <td><input data-ogapp="${i}" data-af="name" value="${a.name}" style="width:100%"></td>
               <td><input data-ogapp="${i}" data-af="watts" type="number" value="${a.watts}" style="width:70px"></td>
-              <td><input data-ogapp="${i}" data-af="hours" type="number" value="${a.hours}" style="width:60px"></td>
+              <td><input data-ogapp="${i}" data-af="dayHours" type="number" value="${a.dayHours ?? 0}" min="0" max="12" step="0.5" style="width:60px"></td>
+              <td><input data-ogapp="${i}" data-af="nightHours" type="number" value="${a.nightHours ?? 0}" min="0" max="12" step="0.5" style="width:60px"></td>
               <td><input data-ogapp="${i}" data-af="qty" type="number" value="${a.qty}" style="width:55px"></td>
               <td><button type="button" class="btn ghost small" data-ogdelapp="${i}">✕</button></td>
             </tr>`).join('')}
         </tbody>
       </table>
+      <div class="note" style="margin-top:4px">النهار افتراضيًا من 6ص لـ6م (12 ساعة)، والليل من 6م لـ6ص (12 ساعة) — الفصل ده بيحسّن دقة رسم الإنتاج/الاستهلاك تحت.</div>
       <button type="button" class="btn ghost small" id="ogAddAppliance" style="margin-top:8px">+ إضافة جهاز مخصّص</button>
       <div class="note" style="margin-top:8px">إجمالي الاستهلاك اليومي المحسوب: <b>${q?fmt1(q.dailyKwh):'—'}</b> كيلوواط/ساعة</div>
       `}
@@ -1826,6 +1937,17 @@ function renderOffgridCalc(){
       <select id="og_panel">
         ${cachedPanelOptions.map(p=>`<option value="${p.idx}" ${p.idx==o.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
       </select>
+    </div>
+    <div class="card">
+      <h3>فولت البطارية</h3>
+      <select id="og_battery_voltage">
+        ${cachedBatteryVoltageOptions.map(v=>`<option value="${v}" ${v==o.batteryVoltage?'selected':''}>${v}V</option>`).join('')}
+      </select>
+      <div class="note" style="margin-top:6px">
+        ${q && q.batterySeriesCount>1
+          ? `لو اخترت بطارية ${fmt1(q.batteryUnitVoltage)}V، الحاسبة هتوصّل تلقائيًا <b>${q.batterySeriesCount} بطارية على التوالي</b> (= ${fmt1(q.batteryPackVoltage)}V) × <b>${q.batteryParallelCount} على التوازي</b> للوصول للسعة المطلوبة.`
+          : `اختيار بطارية بفولت أقل من فولت المنظومة الكامل هيخلي الحاسبة توصّل عدة بطاريات على التوالي تلقائيًا للوصول لنفس الفولت.`}
+      </div>
     </div>`;
 
   if(!q){
@@ -1850,6 +1972,12 @@ function renderOffgridCalc(){
           <div class="stat"><div class="v">${fmt1(q.nameplateBatteryKwh)}</div><div class="l">KWh بطارية</div></div>
           <div class="stat"><div class="v">${q.autonomyDays}</div><div class="l">يوم استقلالية</div></div>
         </div>
+        ${q.batteryCount ? `<div class="note" style="margin-top:10px">تكوين بنك البطاريات: <b>${q.batteryCount}</b> بطارية ${fmt1(q.batteryUnitVoltage)}V${q.batterySeriesCount>1?` (${q.batterySeriesCount} توالي × ${q.batteryParallelCount} توازي = ${fmt1(q.batteryPackVoltage)}V)`:''}</div>` : ''}
+      </div>
+      <div class="card no-print">
+        <h3 style="margin-bottom:6px">الطاقة اليومية: إنتاج مقابل استهلاك</h3>
+        <div class="note" style="margin-bottom:10px">رسم استرشادي لتوزيع الإنتاج والاستهلاك على مدار اليوم — بافتراض استهلاك شبه ثابت على مدار الساعة، عشان تتأكد إن الألواح والبطارية بيغطوا الاحتياج فعلًا.</div>
+        ${renderOffgridDayChart(q, o)}
       </div>
       ${renderQuoteBomAndTotal(q, `عرض سعر منظومة طاقة شمسية أوف-جريد (مستقلة عن الشبكة) بسعة ${fmt1(q.actualKw)} كيلوواط وبنك بطاريات ${fmt1(q.nameplateBatteryKwh)} كيلوواط/ساعة.`)}
       <div class="card no-print">
@@ -5025,6 +5153,8 @@ function wireOffgridCalc(){
   if(autoConfirmBtn) autoConfirmBtn.onclick = confirmAutonomy;
   const panelEl = document.getElementById('og_panel');
   if(panelEl) panelEl.onchange = e=>{ o.panelIdx = +e.target.value; scheduleRefreshOffgrid(); };
+  const battVoltEl = document.getElementById('og_battery_voltage');
+  if(battVoltEl) battVoltEl.onchange = e=>{ o.batteryVoltage = +e.target.value; scheduleRefreshOffgrid(0); };
   document.querySelectorAll('[data-ogapp]').forEach(inp=>{
     inp.oninput = ()=>{
       const i = +inp.dataset.ogapp, f = inp.dataset.af;
@@ -5036,13 +5166,13 @@ function wireOffgridCalc(){
     o.appliances.splice(+b.dataset.ogdelapp,1); scheduleRefreshOffgrid(0);
   });
   const addBtn = document.getElementById('ogAddAppliance');
-  if(addBtn) addBtn.onclick = ()=>{ o.appliances.push({name:'جهاز جديد',watts:100,hours:4,qty:1}); scheduleRefreshOffgrid(0); };
+  if(addBtn) addBtn.onclick = ()=>{ o.appliances.push({name:'جهاز جديد',watts:100,dayHours:2,nightHours:2,qty:1}); scheduleRefreshOffgrid(0); };
   const addPresetBtn = document.getElementById('ogAddPresetAppliance');
   if(addPresetBtn) addPresetBtn.onclick = ()=>{
     const sel = document.getElementById('ogAppliancePreset');
     const preset = OFFGRID_APPLIANCE_PRESETS[+sel.value];
     if(!preset) return;
-    o.appliances.push({name:preset.name, watts:preset.watts, hours:preset.hours, qty:1});
+    o.appliances.push({name:preset.name, watts:preset.watts, dayHours:preset.dayHours, nightHours:preset.nightHours, qty:1});
     scheduleRefreshOffgrid(0);
   };
   const unlockInfoBtn = document.getElementById('adminInfoTrigger');
