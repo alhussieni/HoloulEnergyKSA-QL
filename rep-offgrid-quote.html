@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#0d0b0a">
+  <title>عرض سعر أوف جريد | مناديب الأصل للطاقة الشمسية</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="rep-widgets.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="../supabase-config.js"></script>
+  <script defer src="../offgrid-calc-engine.js"></script>
+  <script defer src="rep-offgrid-quote.js"></script>
+  <style>
+    #printArea { display: none; }
+    @page { size: A4; margin: 0; }
+    @media print {
+      body * { visibility: hidden; }
+      #printArea, #printArea * { visibility: visible; }
+      #printArea {
+        display: block; position: absolute; top: 0; right: 0; left: 0;
+        width: 210mm; min-height: 297mm; box-sizing: border-box;
+        background: url('../letterhead.jpg') no-repeat top center / 210mm 297mm;
+        print-color-adjust: exact; -webkit-print-color-adjust: exact;
+        padding: 80mm 14mm 26mm 14mm;
+        direction: rtl; font-family: 'Cairo', sans-serif;
+      }
+
+      .print-header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #c8752d; padding-bottom: 10px; margin-bottom: 16px; }
+      .print-title { font-size: 19px; font-weight: 800; color: #17120f; }
+      .print-meta-line { font-size: 12px; color: #444; margin-top: 3px; }
+
+      .print-info-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+      .print-info-box { flex: 1 1 0; min-width: 100px; border: 1px solid #e4d8ca; border-radius: 8px; padding: 8px 6px; text-align: center; background: rgba(251,246,239,0.9); }
+      .print-info-box .lbl { font-size: 10px; color: #8a7a68; margin-bottom: 4px; }
+      .print-info-box .val { font-size: 12.5px; font-weight: 800; color: #17120f; }
+
+      .print-table { width: 100%; border-collapse: collapse; font-size: 12.5px; background: #fff; }
+      .print-table th, .print-table td { border: 1px solid #e4d8ca; padding: 6px 8px; text-align: center; }
+      .print-table th { background: #f3e4d4; }
+
+      .print-grand-box { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; background: rgba(251,246,239,0.9); border: 1.5px solid #c8752d; border-radius: 10px; padding: 12px 18px; page-break-inside: avoid; }
+      .print-grand-box .amount { font-size: 22px; font-weight: 800; color: #c8752d; }
+      .print-grand-box .note { font-size: 10.5px; color: #777; }
+
+      .print-terms { margin-top: 16px; page-break-inside: avoid; }
+      .print-terms h4 { font-size: 13px; margin: 0 0 6px; }
+      .print-terms .row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 4px 0; border-bottom: 1px dashed #eee; }
+      .print-terms .fine { font-size: 10.5px; color: #888; margin-top: 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<main class="dashboard-shell">
+  <section class="dashboard-hero">
+    <a class="dashboard-logo" href="index.html">
+      <img src="../logo-white.png" alt="الأصل للطاقة الشمسية">
+    </a>
+    <div class="dashboard-hero-text">
+      <a href="index.html" class="dashboard-home-btn" aria-label="بوابة المناديب">
+        <i class="fa fa-house" aria-hidden="true"></i>
+        <span>بوابة المناديب</span>
+      </a>
+      <p class="eyebrow" style="margin-bottom:2px">حاسبة أوف جريد <span data-user-name style="font-weight:400"></span></p>
+      <h1>إصدار عرض سعر</h1>
+    </div>
+  </section>
+
+  <section class="dashboard-card" data-auth-panel style="max-width:420px;text-align:center">
+    <h2>لازم تسجّل دخولك كمندوب الأول</h2>
+    <p class="form-note">سجّل دخولك من <a href="index.html">بوابة المناديب</a> ثم ارجع هنا.</p>
+  </section>
+
+  <div class="rep-main" data-rep-panel hidden style="padding-top:0">
+    <div class="grid2">
+
+      <!-- ===== عمود الإدخال ===== -->
+      <div class="input-rail">
+
+        <div class="card">
+          <div class="step-eyebrow"><span class="step-num">١</span><span class="step-label">بيانات العميل</span></div>
+          <label>اسم العميل *</label>
+          <input type="text" id="custName" required>
+          <label>رقم الهاتف / واتساب *</label>
+          <input type="tel" id="custPhone" required placeholder="01xxxxxxxxx">
+          <label>المدينة / المنطقة</label>
+          <input type="text" id="custCity">
+        </div>
+
+        <div class="card">
+          <div class="step-eyebrow"><span class="step-num">٢</span><span class="step-label">نوع العرض</span></div>
+          <div class="seg">
+            <button type="button" class="rq-type-btn active" data-quote-type="supply_only">توريد فقط</button>
+            <button type="button" class="rq-type-btn" data-quote-type="supply_install">توريد وتركيب</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="step-eyebrow"><span class="step-num">٣</span><span class="step-label">الأحمال المطلوب تشغيلها</span></div>
+          <label>إضافة جهاز من القائمة</label>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+            <select id="ogLoadPicker" style="flex:1"></select>
+            <button type="button" class="btn-outline" id="ogAddLoadBtn" style="min-height:44px;white-space:nowrap">+ إضافة</button>
+          </div>
+          <table class="admtable" id="ogLoadsTable">
+            <thead><tr><th>الجهاز</th><th>وات</th><th>العدد</th><th>نهار</th><th>ليل</th><th></th></tr></thead>
+            <tbody id="ogLoadsBody"></tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="step-eyebrow"><span class="step-num">٤</span><span class="step-label">إعدادات النظام</span></div>
+          <div class="row2">
+            <div><label>ماركة الإنفرتر</label><select id="ogInvBrand"></select></div>
+            <div><label>ماركة البطارية</label><select id="ogBattBrand"></select></div>
+          </div>
+          <label style="margin-top:6px">ماركة الألواح</label>
+          <div class="row2">
+            <select id="ogPanelBrand"></select>
+            <select id="ogPanelWatt"><option value="">تلقائي (الأنسب هندسيًا)</option></select>
+          </div>
+
+          <div class="advanced-group">
+            <div class="adv-label">تخصيص البطارية يدويًا (اختياري — افتراضيًا "تلقائي" يختار الأنسب هندسيًا)</div>
+            <div class="row2">
+              <div><label>نوع البطارية</label><select id="ogBattType"><option value="">كل الأنواع</option></select></div>
+              <div><label>فولت البطارية</label><select id="ogBattVoltage"><option value="">تلقائي</option></select></div>
+            </div>
+            <label>سعة البطارية (AH)</label>
+            <select id="ogBattAh"><option value="">تلقائي</option></select>
+          </div>
+
+          <div class="row2" style="margin-top:10px">
+            <div><label>الطور</label>
+              <select id="ogPhase"><option value="single">أحادي</option><option value="three">ثلاثي</option></select>
+            </div>
+            <div><label>ساعات الشمس (PSH)</label><input type="number" id="ogPsh" value="6" step="0.1"></div>
+          </div>
+          <label>أيام الاستقلالية</label>
+          <input type="number" id="ogAutonomy" value="0" step="1">
+          <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">
+            <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="ogMorning" checked style="width:auto;min-height:auto"> أحمال صباحية
+            </label>
+            <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="ogNight" checked style="width:auto;min-height:auto"> أحمال ليلية
+            </label>
+          </div>
+          <div style="border-top:1px solid var(--line);margin-top:18px;padding-top:14px">
+            <button type="button" class="btn btn-primary" id="ogCalcBtn" style="width:100%;min-height:56px;font-size:16px">
+              <i class="fa-solid fa-calculator"></i> احسب النظام
+            </button>
+          </div>
+          <p class="form-note" data-calc-message></p>
+        </div>
+
+      </div>
+
+      <!-- ===== عمود عرض السعر ===== -->
+      <div class="quote-shell" id="quoteShell">
+
+        <div class="card" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;align-items:center;padding:14px 18px;background:#faf7f2;box-shadow:none">
+          <div style="display:flex;align-items:center;gap:8px">
+            <img src="../logo.png" alt="الأصل للطاقة الشمسية" style="width:32px;height:32px;object-fit:contain">
+            <div style="font-family:'Cairo';font-weight:700;font-size:13px;color:var(--muted)">الأصل للطاقة الشمسية</div>
+          </div>
+          <div>
+            <div id="bannerName" style="font-family:'Cairo';font-weight:700;font-size:14px">—</div>
+            <div id="bannerPhone" class="num" style="font-size:11.5px;color:var(--muted)">—</div>
+          </div>
+          <div style="text-align:left">
+            <div class="num" style="font-size:12.5px;color:var(--muted)" id="bannerDate">—</div>
+          </div>
+        </div>
+
+        <div class="card" data-quote-section hidden>
+          <h3>تفصيل عرض السعر <span class="tag">قابل للتعديل والخصم</span></h3>
+          <table class="bom">
+            <thead><tr><th>البند</th><th>الكمية</th><th>سعر الوحدة</th><th>خصم %</th><th>الإجمالي</th></tr></thead>
+            <tbody id="quoteItemsBody"></tbody>
+          </table>
+          <div class="totalbar">
+            <div class="lbl">الإجمالي بعد الخصم</div>
+            <div class="big num"><span id="grandTotalDisplay">0</span> ج.م</div>
+          </div>
+          <button class="btn btn-primary" id="saveQuoteBtn" style="width:100%;margin-top:16px">
+            <i class="fa-solid fa-print"></i> حفظ العرض وطباعته
+          </button>
+          <p class="form-note" data-quote-message></p>
+        </div>
+
+        <div class="card" id="techBriefCard" hidden>
+          <div id="techBriefBody"></div>
+        </div>
+
+        <div class="card" data-quote-empty style="text-align:center;color:var(--muted);padding:40px 18px">
+          <i class="fa-solid fa-arrow-right" style="color:var(--brand);margin-left:6px"></i>
+          كمّل الخطوات ١–٤ في العمود الجانبي، وبعدين اضغط "احسب النظام" عشان يظهر عرض السعر هنا.
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<div class="sticky-total-bar" data-sticky-bar hidden onclick="document.getElementById('quoteShell')?.scrollIntoView({behavior:'smooth'})">
+  <div><div class="stb-lbl">الإجمالي بعد الخصم</div><div class="stb-val"><span id="stickyTotalDisplay">0</span> ج.م</div></div>
+  <div class="stb-cta">التفاصيل ↑</div>
+</div>
+
+<div id="printArea"></div>
+
+</body>
+</html>

@@ -1,0 +1,104 @@
+/* ============================================================
+   rep-widgets.css
+   تنسيقات إضافية صغيرة لعناصر خاصة بصفحات المناديب (جدول البنود،
+   شريط الإجمالي، تبديل نوع العرض) — بتستخدم نفس متغيرات ألوان
+   الموقع الأصلي المعرّفة في styles.css (--brand, --ink, --line...)
+   بدل أي نظام ألوان مستقل. لازم يتحمّل بعد styles.css.
+   ============================================================ */
+
+.dashboard-home-btn {
+  display: none; align-items: center; gap: 6px; margin-bottom: 12px; padding: 8px 16px;
+  border-radius: var(--radius); background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
+  color: #fff; text-decoration: none; font-size: 14px; font-weight: 700; width: fit-content; transition: background .18s;
+}
+.dashboard-home-btn:hover { background: rgba(255,255,255,0.2); }
+@media (max-width: 860px) { .dashboard-home-btn { display: flex; } .dashboard-logo { display: block !important; } }
+
+.rep-main { max-width: var(--container); margin: 0 auto; padding: var(--space-4) var(--space-2) var(--space-6); }
+
+.rep-main input:not([type=checkbox]):not([type=radio]), .rep-main select, .rep-main textarea {
+  width: 100%; min-height: 44px; padding: 8px 12px; border: 1.5px solid var(--line);
+  border-radius: var(--radius); font: inherit; background: #fff; color: var(--ink);
+}
+.rep-main label { display: block; font-weight: 700; font-size: 13px; color: var(--muted); margin: var(--space-2) 0 4px; }
+.rep-main label:first-child { margin-top: 0; }
+.rep-main .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+@media (max-width: 640px) { .rep-main .row2 { grid-template-columns: 1fr; } }
+
+.grid2 { display: grid; grid-template-columns: minmax(320px, 38%) minmax(0, 62%); gap: var(--space-3); align-items: start; }
+@media (max-width: 1020px) { .grid2 { grid-template-columns: 1fr; } .input-rail { position: static; } }
+.input-rail { position: sticky; top: var(--space-3); align-self: start; }
+
+.rw-field { margin-bottom: var(--space-2); }
+.rw-field label, .grid2 label { display: block; font-weight: 700; font-size: 13px; color: var(--muted); margin: var(--space-2) 0 4px; }
+.grid2 input:not([type=checkbox]), .grid2 select {
+  width: 100%; min-height: 44px; padding: 8px 12px; border: 1.5px solid var(--line);
+  border-radius: var(--radius); font: inherit; background: #fff; color: var(--ink);
+}
+.grid2 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+
+.seg { display: flex; border: 1.5px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.seg button { flex: 1; padding: 10px; border: 0; background: #fff; cursor: pointer; font: inherit; font-weight: 700; font-size: 13px; color: var(--muted); }
+.seg button.active { background: var(--brand); color: #fff; }
+
+table.admtable, table.bom { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.admtable th, table.bom th { font-size: 11px; color: var(--muted); text-align: center; padding: 6px; background: var(--brand-soft); }
+table.admtable td, table.bom td { padding: 7px 6px; text-align: center; border-bottom: 1px solid var(--line); }
+table.bom .bom-label, table.admtable td:first-child { text-align: right; }
+table.admtable input, table.bom input { padding: 5px 6px; font-size: 12.5px; border: 1px solid var(--line); border-radius: 6px; text-align: center; }
+
+.totalbar {
+  display: flex; justify-content: center; align-items: center; gap: var(--space-2);
+  background: linear-gradient(135deg, var(--charcoal), var(--graphite)); color: #fff;
+  border-radius: var(--radius-lg); padding: 12px var(--space-3); margin-top: var(--space-2);
+}
+.totalbar .lbl { font-size: 13px; color: rgba(255,255,255,.72); }
+.totalbar .big { font-family: 'Cairo'; font-weight: 800; font-size: 24px; color: #f2c98a; }
+
+.sticky-total-bar { display: none; }
+@media (max-width: 1020px) {
+  .sticky-total-bar {
+    display: flex; position: fixed; bottom: 0; left: 0; right: 0; z-index: 60;
+    background: var(--charcoal); color: #fff; padding: 12px 18px;
+    align-items: center; justify-content: space-between; box-shadow: 0 -8px 24px rgba(23,18,15,.25); cursor: pointer;
+  }
+  .sticky-total-bar .stb-lbl { font-size: 11px; color: rgba(255,255,255,.65); }
+  .sticky-total-bar .stb-val { font-family: 'Cairo'; font-weight: 800; font-size: 18px; color: #f2c98a; }
+  .sticky-total-bar .stb-cta { font-size: 12px; font-weight: 700; background: rgba(255,255,255,.12); padding: 6px 12px; border-radius: 8px; }
+}
+
+.rq-msg { min-height: var(--space-4); margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.rq-msg.error { color: #b23b23; }
+.rq-msg.ok { color: var(--forest); }
+
+/* زرار خفيف الوزن للأفعال الثانوية (زي "إضافة") على خلفيات فاتحة — .btn-secondary
+   الأساسي في الموقع مصمم للخلفيات الداكنة (نص أبيض) فبيختفي على كارت أبيض */
+.btn-outline {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1.5px solid var(--brand); background: var(--brand-soft); color: var(--brand-dark);
+  border-radius: var(--radius); font: inherit; font-weight: 700; font-size: 14px;
+  padding: 8px 16px; cursor: pointer; transition: background .18s, transform .18s;
+}
+.btn-outline:hover { background: var(--brand); color: #fff; transform: translateY(-1px); }
+.btn-outline:active { transform: scale(0.97); }
+
+/* بادج رقم الخطوة — بيستخدم بس لما الترتيب فعلًا يمثل تسلسل خطوات حقيقي (زي فورم إصدار عرض السعر) */
+.step-eyebrow { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.step-eyebrow .step-num {
+  display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+  border-radius: 50%; background: var(--brand); color: #fff; font-size: 12px; font-weight: 800; flex-shrink: 0;
+}
+.step-eyebrow .step-label { font-size: 12px; font-weight: 700; color: var(--muted); letter-spacing: .3px; }
+.card > h3.step-title { margin-top: 0; }
+
+/* تجميع الحقول المتقدمة/الاختيارية بوزن بصري أهدأ — عشان عين المستخدم تفضل على المسار
+   الأساسي، وميحتاجش يقرر في كل التفاصيل دي إلا لو فعلًا محتاج تخصيص يدوي */
+.advanced-group {
+  margin-top: 10px; padding: 10px 12px; background: #faf7f2; border: 1px dashed var(--line); border-radius: var(--radius);
+}
+.advanced-group > .adv-label { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-bottom: 8px; }
+.advanced-group label { font-size: 12px; }
+
+.tag { font-size: 11px; background: var(--brand-soft); color: var(--brand-dark); padding: 2px 9px; border-radius: 20px; font-weight: 700; margin-inline-start: 8px; }
+.num { font-variant-numeric: tabular-nums; }
+.rw-remove { background: none; border: none; color: #b23; cursor: pointer; font-size: 12px; }
