@@ -175,6 +175,132 @@ table.admtable tbody tr:hover td{background:var(--sand);}
 .gsEmpty{padding:14px;text-align:center;color:var(--muted);font-size:13px;}
 @media(max-width:860px){.gSearchWrap input{width:180px;}}
 
+/* ============ INVOICES (walk-in / POS) ============ */
+.itemsRowsWrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:10px 0;}
+.itemRow{display:grid;grid-template-columns:1fr 70px 110px 90px 100px 34px;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);}
+.itemRow:last-child{border-bottom:0;}
+.itemRow.head{background:var(--sand);font-size:11.5px;font-weight:700;color:var(--muted);padding:7px 10px;}
+.itemRow input{width:100%;}
+.itemRow .rmBtn{background:var(--bad-tint);color:var(--bad);border:0;border-radius:8px;width:28px;height:28px;cursor:pointer;font-weight:800;}
+.invTotals{display:flex;flex-direction:column;gap:6px;align-items:flex-end;margin-top:8px;padding:12px 14px;background:var(--sand);border-radius:10px;}
+.invTotals .row{display:flex;gap:14px;font-size:13px;color:var(--muted);}
+.invTotals .row b{color:var(--night);min-width:110px;text-align:left;}
+.invTotals .row.grand{font-size:17px;font-weight:800;color:var(--night);border-top:1px dashed var(--line);padding-top:8px;margin-top:4px;width:100%;justify-content:flex-end;}
+.custLinkNote{font-size:12px;color:var(--teal-dark);background:var(--teal-tint);border-radius:8px;padding:6px 10px;margin-top:4px;}
+.b2bToggle{display:flex;align-items:center;gap:8px;font-size:13px;margin:10px 0;cursor:pointer;user-select:none;}
+
+#invoicePrintArea{display:none;}
+body.printing-invoice{background:#fff!important;}
+body.printing-invoice > *:not(#invoicePrintArea){display:none!important;}
+body.printing-invoice #invoicePrintArea{display:block!important;}
+@media print{
+  @page{size:A4;margin:10mm;}
+  body.printing-invoice > *:not(#invoicePrintArea){display:none!important;}
+  body.printing-invoice #invoicePrintArea{display:block!important;}
+}
+
+#certPrintArea{display:none;}
+body.printing-cert{background:#fff!important;}
+body.printing-cert > *:not(#certPrintArea){display:none!important;}
+body.printing-cert #certPrintArea{display:block!important;}
+@media print{
+  body.printing-cert > *:not(#certPrintArea){display:none!important;}
+  body.printing-cert #certPrintArea{display:block!important;}
+}
+.certSheet{font-family:'Cairo',sans-serif;max-width:800px;margin:0 auto;padding:22px;color:var(--night);font-size:12.5px;}
+.certSheet .topBar{height:8px;background:var(--teal-dark,#0B6E5C);border-radius:3px;margin-bottom:16px;}
+.certSheet .head2{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;}
+.certSheet .coName{font-weight:800;font-size:15px;}
+.certSheet .coMeta{font-size:10.5px;color:var(--muted);margin-top:6px;line-height:1.7;}
+.certSheet .logoBlock img{width:66px;height:66px;object-fit:contain;}
+.certSheet .titleBlock{text-align:center;margin:16px 0 20px;}
+.certSheet .titleBlock .tAr{font-weight:800;font-size:20px;color:var(--teal-dark,#0B6E5C);}
+.certSheet .titleBlock .tEn{font-size:11.5px;color:var(--muted);letter-spacing:1px;margin-top:2px;}
+.certSheet .certNo{text-align:center;font-size:11.5px;color:var(--muted);margin-bottom:18px;}
+.certSheet .infoGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.certSheet .infoGrid .box{background:var(--sand);border-radius:10px;padding:12px 14px;}
+.certSheet .infoGrid .box .lbl{color:var(--muted);font-size:10.5px;margin-bottom:2px;}
+.certSheet .infoGrid .box .val{font-weight:700;margin-bottom:8px;}
+.certSheet table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;}
+.certSheet th{background:var(--teal-dark,#0B6E5C);color:#fff;padding:8px 10px;font-size:11px;text-align:right;}
+.certSheet td{padding:8px 10px;border-bottom:1px solid var(--line);}
+.certSheet .warrantyBox{background:var(--teal-tint);border:2px solid var(--teal-dark,#0B6E5C);border-radius:12px;padding:16px 18px;margin-bottom:16px;}
+.certSheet .warrantyBox .row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;}
+.certSheet .warrantyBox .row b{font-weight:800;}
+.certSheet .warrantyBox .title{font-weight:800;color:var(--teal-dark,#0B6E5C);margin-bottom:8px;font-size:14px;}
+.certSheet .termsBlock{font-size:10.5px;color:var(--muted);line-height:1.8;margin-top:14px;background:var(--sand);border-radius:10px;padding:12px 14px;}
+.certSheet .sigRow{display:flex;justify-content:space-between;margin-top:32px;font-size:12px;}
+.certSheet .footRow2{display:flex;justify-content:space-between;align-items:center;margin-top:20px;border-top:1px solid var(--line);padding-top:10px;font-size:10px;color:var(--muted);}
+.invSheet{font-family:'Cairo',sans-serif;max-width:760px;margin:0 auto;padding:18px;color:var(--night);}
+.invSheet .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--teal);padding-bottom:14px;margin-bottom:14px;gap:14px;}
+.invSheet .head .co{display:flex;gap:10px;align-items:center;}
+.invSheet .head .co img{width:52px;height:52px;object-fit:contain;}
+.invSheet .head .co .n{font-weight:800;font-size:15px;}
+.invSheet .head .co .m{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.5;}
+.invSheet .head .titleBox{text-align:left;}
+.invSheet .head .titleBox .t{font-weight:800;font-size:17px;color:var(--teal-dark);}
+.invSheet .head .titleBox .n{font-size:12.5px;color:var(--muted);margin-top:3px;}
+.invSheet .metaGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+.invSheet .metaGrid .box{background:var(--sand);border-radius:10px;padding:10px 12px;font-size:12.5px;}
+.invSheet .metaGrid .box .lbl{color:var(--muted);font-size:10.5px;margin-bottom:2px;}
+.invSheet table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:12px;}
+.invSheet th{background:var(--teal);color:#fff;padding:8px 10px;font-size:11px;text-align:right;}
+.invSheet td{padding:7px 10px;border-bottom:1px solid var(--line);}
+.invSheet .totalsBox{margin-inline-start:auto;width:280px;font-size:13px;}
+.invSheet .totalsBox .row{display:flex;justify-content:space-between;padding:5px 0;color:var(--muted);}
+.invSheet .totalsBox .row.grand{font-size:17px;font-weight:800;color:var(--teal-dark);border-top:2px solid var(--teal);padding-top:8px;margin-top:4px;}
+.invSheet .paidBadge{display:inline-block;background:var(--good-tint,#DFF3EA);color:var(--good,#0FA98D);font-weight:800;font-size:12px;padding:5px 14px;border-radius:20px;margin-top:6px;}
+.invSheet .footRow{display:flex;justify-content:space-between;align-items:flex-end;margin-top:18px;gap:14px;}
+.invSheet .footRow .legal{font-size:10px;color:var(--muted);line-height:1.6;max-width:480px;}
+.invSheet #invQrCanvas{border:1px solid var(--line);border-radius:8px;padding:6px;background:#fff;}
+/* ---- catalog picker / package builder ---- */
+.itPicker{position:relative;}
+.itSuggest{position:absolute;top:100%;right:0;left:0;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:260px;overflow:auto;z-index:40;margin-top:4px;}
+.itSuggestItem{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;font-size:12.5px;cursor:pointer;border-bottom:1px solid var(--line);}
+.itSuggestItem:last-child{border-bottom:0;}
+.itSuggestItem:hover{background:var(--sand);}
+.itSuggestItem .cat{color:var(--muted);font-size:11px;}
+.itSuggestItem .price{font-weight:700;white-space:nowrap;}
+.itSuggestItem.muted{color:var(--muted);cursor:default;}
+.pkgRow{display:block!important;grid-template-columns:none!important;padding:12px;background:var(--sand);}
+.pkgHead{display:flex;justify-content:space-between;align-items:center;}
+.pkgComponents{margin-top:8px;display:flex;flex-direction:column;gap:6px;}
+.pkgCompRow{display:grid;grid-template-columns:22px 1fr 160px;gap:6px;align-items:center;}
+.pkgCompNum{font-size:12px;color:var(--muted);}
+.tag.good{background:var(--good-tint,#DFF3EA);color:var(--good,#0FA98D);border-radius:12px;padding:3px 10px;font-size:11.5px;font-weight:700;}
+.tag.warn{background:#FDECD2;color:#B5720B;border-radius:12px;padding:3px 10px;font-size:11.5px;font-weight:700;}
+
+/* ---- print sheet v2 (matches the reference tax invoice) ---- */
+.invSheet2{font-family:'Cairo',sans-serif;max-width:800px;margin:0 auto;padding:16px;color:var(--night);font-size:12px;}
+.invSheet2 .topBar{height:8px;background:var(--teal-dark,#0B6E5C);border-radius:3px;margin-bottom:14px;}
+.invSheet2 .head2{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;}
+.invSheet2 .coName{font-weight:800;font-size:15px;}
+.invSheet2 .coMeta{font-size:10.5px;color:var(--muted);margin-top:6px;line-height:1.7;}
+.invSheet2 .coMeta span{color:var(--night);font-weight:600;}
+.invSheet2 .logoBlock img{width:66px;height:66px;object-fit:contain;}
+.invSheet2 .titleBlock{text-align:center;margin:12px 0 14px;}
+.invSheet2 .titleBlock .tAr{font-weight:800;font-size:16px;color:var(--teal-dark,#0B6E5C);}
+.invSheet2 .titleBlock .tEn{font-size:11px;color:var(--muted);letter-spacing:1px;}
+.invSheet2 .metaTable{width:100%;border-collapse:collapse;margin-bottom:14px;border:1px solid var(--line);}
+.invSheet2 .metaTable td{border:1px solid var(--line);padding:6px 10px;font-size:11.5px;}
+.invSheet2 .metaTable .lbl{background:var(--sand);font-weight:700;width:38%;text-align:right;}
+.invSheet2 .metaTable .val{text-align:center;}
+.invSheet2 .itemsTable2{width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:12px;}
+.invSheet2 .itemsTable2 th{background:var(--teal-dark,#0B6E5C);color:#fff;padding:6px 6px;font-size:9.5px;}
+.invSheet2 .itemsTable2 td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top;}
+.invSheet2 .itemsTable2 .num{text-align:center;}
+.invSheet2 .itemsTable2 tfoot .sumRow td{border-top:2px solid var(--teal-dark,#0B6E5C);background:var(--sand);}
+.invSheet2 .totalsTable2{width:280px;margin-inline-start:auto;border-collapse:collapse;font-size:11.5px;margin-bottom:10px;}
+.invSheet2 .totalsTable2 td{padding:6px 10px;border:1px solid var(--line);}
+.invSheet2 .totalsTable2 .lbl{background:var(--sand);text-align:right;}
+.invSheet2 .totalsTable2 .val{text-align:center;font-weight:700;}
+.invSheet2 .totalsTable2 .grandRow td{background:var(--teal-dark,#0B6E5C);color:#fff;font-weight:800;font-size:13px;}
+.invSheet2 .wordsLine{font-size:11.5px;margin:4px 0;text-align:center;}
+.invSheet2 .termsBlock{font-size:10px;color:var(--muted);margin-top:12px;line-height:1.7;text-align:center;}
+.invSheet2 .sigRow{display:flex;justify-content:space-between;margin-top:26px;font-size:11.5px;}
+.invSheet2 .footRow2{display:flex;justify-content:space-between;align-items:center;margin-top:18px;border-top:1px solid var(--line);padding-top:10px;}
+.invSheet2 .legal2{font-size:10px;color:var(--muted);}
+.invSheet2 #invQrCanvas{border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff;}
 </style>
 </head>
 <body>
@@ -218,6 +344,7 @@ table.admtable tbody tr:hover td{background:var(--sand);}
         <button data-tab="warranty">الضمانات</button>
         <button data-tab="projects">المشاريع</button>
         <button data-tab="maintenance">الصيانة</button>
+        <button data-tab="invoices">🧾 الفواتير</button>
         <button data-tab="settings" id="settingsTabBtn" class="hidden">الإعدادات</button>
         <button data-tab="audit" id="auditTabBtn" class="hidden">سجل التغييرات</button>
       </nav>
@@ -321,6 +448,14 @@ table.admtable tbody tr:hover td{background:var(--sand);}
       </div>
     </section>
 
+    <section id="view-invoices" class="view">
+      <div class="filterBar">
+        <input type="text" id="invoiceSearchInput" placeholder="دور برقم الفاتورة أو اسم العميل أو رقم الجوال...">
+        <button class="btn" id="newInvoiceBtn" type="button">+ فاتورة جديدة</button>
+      </div>
+      <div class="card" style="padding:0;overflow:auto;"><div id="invoicesTableWrap"><div class="loadingNote">بيحمّل الفواتير...</div></div></div>
+    </section>
+
     <section id="view-settings" class="view">
       <div class="card">
         <h3><span class="lbl">إعدادات قوائم الـCRM</span></h3>
@@ -370,7 +505,16 @@ table.admtable tbody tr:hover td{background:var(--sand);}
 <div class="overlay" id="ticketOverlay"><div class="modal" id="ticketModal" style="max-width:520px;"></div></div>
 <div class="overlay" id="maintOverlay"><div class="modal" id="maintModal" style="max-width:520px;"></div></div>
 
+<div class="overlay" id="invoiceOverlay"><div class="modal" id="invoiceModal" style="max-width:760px;"></div></div>
+
 <div class="toast" id="toast"></div>
+
+<!-- Printable invoice — hidden by default; shown full-screen only while printing.
+     Kept as a top-level sibling of #app so print CSS can hide everything else. -->
+<div id="invoicePrintArea"></div>
+<div id="certPrintArea"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 
 <script>
 /* ============ CONFIG (same project as index.html) ============ */
@@ -501,6 +645,7 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='warranty') loadWarranty();
   if(tab==='projects') loadProjects();
   if(tab==='maintenance') loadMaintenance();
+  if(tab==='invoices') loadInvoices();
   if(tab==='settings') loadSettingsScreen();
   if(tab==='audit') loadAuditLog();
 });
@@ -624,7 +769,12 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     return `<span class="tag" style="background:${sm.color}22;color:${sm.color};margin-left:6px;">${sm.label}: ${n}</span>`;
   }).join('');
   m.innerHTML = `
-    <div class="mhead"><div><h2>${c.name || 'بدون اسم'}</h2><div class="phone">${c.phone}</div></div><button class="closeX" data-close>×</button></div>
+    <div class="mhead"><div><h2>${c.name || 'بدون اسم'}</h2><div class="phone">${c.phone}</div></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn teal small" id="custInvoiceBtn" type="button">🧾 فاتورة جديدة</button>
+        <button class="closeX" data-close>×</button>
+      </div>
+    </div>
     <div class="grid2">
       <div><label>الاسم</label><input type="text" id="f_name" value="${c.name||''}"></div>
       <div><label>رقم الهاتف</label><input type="text" id="f_phone" value="${c.phone||''}"></div>
@@ -726,15 +876,22 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
         ${assets.length ? assets.map(a=>{
           const overdue = a.warranty_end_date && a.warranty_end_date < todayStr();
           const sm = metaOf(SETTINGS.assetStatuses, a.status) || {label:a.status, color:'#93a89c'};
-          return `<div class="quoteRow" data-asset-id="${a.id}" style="cursor:pointer;">
-            <div class="top"><span>${labelOf(SETTINGS.assetTypes, a.asset_type)}${a.model?' · '+escapeHtml(a.model):''}</span>
+          return `<div class="quoteRow assetPickRow" data-asset-id="${a.id}">
+            <div class="top">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;flex:1;">
+                <input type="checkbox" class="assetPickChk" value="${a.id}" onclick="event.stopPropagation()">
+                <span>${labelOf(SETTINGS.assetTypes, a.asset_type)}${a.model?' · '+escapeHtml(a.model):''}</span>
+              </label>
               <span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span></div>
-            <div>${a.serial_number?'S/N: '+escapeHtml(a.serial_number)+' · ':''}${a.manufacturer?escapeHtml(a.manufacturer)+' · ':''}الكمية: ${a.quantity??1}</div>
-            ${a.warranty_end_date?`<div style="color:${overdue?'var(--bad)':'var(--muted)'};font-size:11px;">الضمان لحد: ${fmtDate(a.warranty_end_date)}${overdue?' (منتهي)':''}</div>`:''}
+            <div style="cursor:pointer;">${a.serial_number?'S/N: '+escapeHtml(a.serial_number)+' · ':''}${a.manufacturer?escapeHtml(a.manufacturer)+' · ':''}الكمية: ${a.quantity??1}</div>
+            ${a.warranty_end_date?`<div style="cursor:pointer;color:${overdue?'var(--bad)':'var(--muted)'};font-size:11px;">الضمان لحد: ${fmtDate(a.warranty_end_date)}${overdue?' (منتهي)':''}</div>`:''}
           </div>`;
         }).join('') : '<div class="emptyNote">مفيش معدات مسجلة لهذا العميل</div>'}
       </div>
-      <div class="saveBar" style="margin-top:10px;"><div></div><div class="right"><button class="btn ghost small" id="addAssetBtn">+ تسجيل منتج مركّب</button></div></div>
+      <div class="saveBar" style="margin-top:10px;">
+        <div>${assets.length ? '<button type="button" class="btn ghost small" id="printGroupCertBtn">🖨️ شهادة ضمان مجمّعة للمحدد</button>' : ''}</div>
+        <div class="right"><button class="btn ghost small" id="addAssetBtn">+ تسجيل منتج مركّب</button></div>
+      </div>
     </div>
 
     <div class="section">
@@ -769,6 +926,9 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     </div>
   `;
   m.querySelector('[data-close]').addEventListener('click', closeCustomer);
+  m.querySelector('#custInvoiceBtn').addEventListener('click', ()=>{
+    openInvoiceModal({ name: c.name, phone: c.phone, city: c.city });
+  });
   m.querySelector('#f_ctype').addEventListener('change', (e)=>{
     m.querySelector('#legalFieldsGroup').style.display = e.target.value === 'individual' ? 'none' : '';
   });
@@ -871,6 +1031,15 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
   m.querySelector('#addAssetBtn').addEventListener('click', ()=>openAssetEditor(null, c.id));
   m.querySelectorAll('#assetsMiniList [data-asset-id]').forEach(row=>{
     row.addEventListener('click', ()=>openAssetEditor(row.dataset.assetId, c.id));
+  });
+  const groupCertBtn = m.querySelector('#printGroupCertBtn');
+  if(groupCertBtn) groupCertBtn.addEventListener('click', async ()=>{
+    const checkedIds = [...m.querySelectorAll('.assetPickChk:checked')].map(chk=>chk.value);
+    if(!checkedIds.length){ toast('⚠️ حدد صنف واحد على الأقل من قايمة المعدات'); return; }
+    const selected = assets.filter(a => checkedIds.includes(String(a.id)));
+    const missing = selected.filter(a => !a.warranty_start_date || !a.warranty_years);
+    if(missing.length){ toast('⚠️ الأصناف دي مفيهاش بداية أو مدة ضمان: '+missing.map(a=>a.model||a.asset_type).join('، ')); return; }
+    await printGroupWarrantyCertificate(selected, c);
   });
 }
 
@@ -1403,6 +1572,10 @@ async function openAssetEditor(assetId, customerId){
     }catch(e){ asset = {}; }
   }
   asset = asset || {};
+  let customerInfo = {};
+  try{ const cd = await crmApi('admin-crm-customer-detail', {customerId}); customerInfo = cd.customer || {}; }catch(e){ /* non-blocking */ }
+  const STD_WARRANTIES = SETTINGS.standardWarranties || {};
+  const pendingIncrease = asset.warranty_request_status === 'pending';
   m.innerHTML = `
     <div class="mhead"><h2>${assetId ? 'تعديل منتج مركّب' : 'تسجيل منتج مركّب'}</h2><button class="closeX" data-close-asset>×</button></div>
     <div class="grid2">
@@ -1417,18 +1590,118 @@ async function openAssetEditor(assetId, customerId){
       <div><label>تاريخ التركيب</label><input type="date" id="asf_install_date" value="${asset.installation_date||''}"></div>
       <div></div>
       <div><label>بداية الضمان</label><input type="date" id="asf_warranty_start" value="${asset.warranty_start_date||''}"></div>
-      <div><label>نهاية الضمان</label><input type="date" id="asf_warranty_end" value="${asset.warranty_end_date||''}"></div>
+      <div><label>مدة الضمان ضد عيوب الصناعة (بالسنين)</label><input type="number" id="asf_warranty_years" min="0" step="0.5" value="${asset.warranty_years??''}" placeholder="مثال: 1"></div>
+      <div><label>نهاية الضمان (تلقائي)</label><input type="date" id="asf_warranty_end" value="${asset.warranty_end_date||''}" readonly style="background:var(--sand);color:var(--muted);"></div>
+      <div id="asf_std_note" style="align-self:end;font-size:12px;color:var(--muted);"></div>
     </div>
+    <div id="asf_panel_perf" class="grid2 hidden" style="margin-top:4px;">
+      <div><label>مدة ضمان أداء الإنتاجية للألواح (بالسنين)</label><input type="number" id="asf_perf_years" min="0" step="1" value="${asset.performance_warranty_years??''}" placeholder="مثال: 30"></div>
+      <div><label>نهاية ضمان الأداء (تلقائي)</label><input type="date" id="asf_perf_end" value="${asset.performance_warranty_end_date||''}" readonly style="background:var(--sand);color:var(--muted);"></div>
+    </div>
+    <div id="asf_warranty_request_box"></div>
     <label>ملاحظات</label><textarea id="asf_notes">${escapeHtml(asset.notes||'')}</textarea>
     <div class="saveBar">
       <div>${assetId && SESSION.role==='admin' ? '<button class="btn danger small" id="delAssetBtn">🗑 حذف المنتج</button>' : ''}</div>
-      <div class="right"><button class="btn" id="saveAssetBtn">حفظ</button></div>
+      <div class="right">
+        ${assetId ? '<button type="button" class="btn ghost small" id="printCertBtn">🖨️ طباعة شهادة الضمان</button>' : ''}
+        <button class="btn" id="saveAssetBtn">حفظ</button>
+      </div>
     </div>
   `;
   m.querySelector('[data-close-asset]').addEventListener('click', ()=>assetOverlay.classList.remove('show'));
+  const printCertBtn = m.querySelector('#printCertBtn');
+  if(printCertBtn) printCertBtn.addEventListener('click', ()=>{
+    const liveAsset = Object.assign({}, asset, {
+      asset_type: m.querySelector('#asf_type').value || asset.asset_type,
+      manufacturer: m.querySelector('#asf_manufacturer').value.trim() || asset.manufacturer,
+      model: m.querySelector('#asf_model').value.trim() || asset.model,
+      serial_number: m.querySelector('#asf_serial').value.trim() || asset.serial_number,
+      capacity: m.querySelector('#asf_capacity').value.trim() || asset.capacity,
+      quantity: m.querySelector('#asf_quantity').value || asset.quantity,
+      location_note: m.querySelector('#asf_location').value.trim() || asset.location_note,
+      warranty_start_date: m.querySelector('#asf_warranty_start').value || null,
+      warranty_years: m.querySelector('#asf_warranty_years').value ? Number(m.querySelector('#asf_warranty_years').value) : null,
+      warranty_end_date: m.querySelector('#asf_warranty_end').value || null,
+      performance_warranty_years: m.querySelector('#asf_perf_years').value ? Number(m.querySelector('#asf_perf_years').value) : null,
+      performance_warranty_end_date: m.querySelector('#asf_perf_end').value || null,
+      notes: m.querySelector('#asf_notes').value.trim() || asset.notes,
+    });
+    printWarrantyCertificate(liveAsset, customerInfo);
+  });
+
+  function renderPendingBox(){
+    const box = m.querySelector('#asf_warranty_request_box');
+    if(!pendingIncrease){ box.innerHTML=''; return; }
+    box.innerHTML = `<div class="custLinkNote" style="background:#FDECD2;color:#B5720B;">
+      ⏳ في طلب زيادة ضمان استثنائي لـ <b>${asset.warranty_years_requested}</b> سنة من المندوب <b>${asset.warranty_requested_by||''}</b> — بانتظار موافقة الأدمن.
+      ${SESSION.role==='admin' ? `
+        <div style="margin-top:8px;display:flex;gap:8px;">
+          <button type="button" class="btn teal small" id="approveWarrantyBtn">✅ اعتماد الزيادة</button>
+          <button type="button" class="btn ghost small" id="rejectWarrantyBtn">❌ رفض</button>
+        </div>` : ''}
+    </div>`;
+    const appBtn = m.querySelector('#approveWarrantyBtn');
+    if(appBtn) appBtn.addEventListener('click', async ()=>{
+      try{ await crmApi('crm-approve-warranty-increase', {assetId}); toast('✅ اتوافقت زيادة الضمان'); assetOverlay.classList.remove('show'); if(document.getElementById('custOverlay').classList.contains('show')) openCustomer(customerId); }
+      catch(err){ toast('خطأ: '+err.message); }
+    });
+    const rejBtn = m.querySelector('#rejectWarrantyBtn');
+    if(rejBtn) rejBtn.addEventListener('click', async ()=>{
+      try{ await crmApi('crm-reject-warranty-increase', {assetId}); toast('❌ اترفضت زيادة الضمان'); assetOverlay.classList.remove('show'); if(document.getElementById('custOverlay').classList.contains('show')) openCustomer(customerId); }
+      catch(err){ toast('خطأ: '+err.message); }
+    });
+  }
+  renderPendingBox();
+
+  // Warranty end date is always derived: start date + N years. Never edited by hand.
+  function recalcEnd(startId, yearsId, endId){
+    const startVal = m.querySelector(startId).value;
+    const yearsVal = parseFloat(m.querySelector(yearsId).value);
+    const endInput = m.querySelector(endId);
+    if(!startVal || !yearsVal || yearsVal <= 0){ endInput.value = ''; return; }
+    const start = new Date(startVal+'T00:00:00');
+    const wholeYears = Math.floor(yearsVal);
+    const fractionMonths = Math.round((yearsVal - wholeYears) * 12);
+    const end = new Date(start);
+    end.setFullYear(end.getFullYear() + wholeYears);
+    end.setMonth(end.getMonth() + fractionMonths);
+    endInput.value = end.toISOString().slice(0,10);
+  }
+  function recalcWarrantyEnd(){ recalcEnd('#asf_warranty_start','#asf_warranty_years','#asf_warranty_end'); }
+  function recalcPerfEnd(){ recalcEnd('#asf_warranty_start','#asf_perf_years','#asf_perf_end'); }
+
+  function updateStdNoteAndPanelFields(){
+    const type = m.querySelector('#asf_type').value;
+    const std = STD_WARRANTIES[type];
+    const noteEl = m.querySelector('#asf_std_note');
+    const yearsInput = m.querySelector('#asf_warranty_years');
+    noteEl.textContent = std ? `الضمان القياسي لهذا الصنف: ${std.defectYears} سنة (بيتسجل تلقائي ما لم يتم تعديله)` : '';
+    if(std && !yearsInput.value){ yearsInput.value = std.defectYears; }
+    const perfBox = m.querySelector('#asf_panel_perf');
+    const isPanel = type === 'solar_panel';
+    perfBox.classList.toggle('hidden', !isPanel);
+    if(isPanel){
+      const perfInput = m.querySelector('#asf_perf_years');
+      if(std && std.performanceYears && !perfInput.value) perfInput.value = std.performanceYears;
+      recalcPerfEnd();
+    }
+    recalcWarrantyEnd();
+  }
+  m.querySelector('#asf_type').addEventListener('change', updateStdNoteAndPanelFields);
+  m.querySelector('#asf_warranty_start').addEventListener('input', ()=>{ recalcWarrantyEnd(); recalcPerfEnd(); });
+  m.querySelector('#asf_warranty_years').addEventListener('input', recalcWarrantyEnd);
+  m.querySelector('#asf_perf_years').addEventListener('input', recalcPerfEnd);
+  updateStdNoteAndPanelFields();
+
   m.querySelector('#saveAssetBtn').addEventListener('click', async ()=>{
+    const type = m.querySelector('#asf_type').value || null;
+    const requestedYears = m.querySelector('#asf_warranty_years').value ? Number(m.querySelector('#asf_warranty_years').value) : null;
+    const std = STD_WARRANTIES[type];
+    if(SESSION.role !== 'admin' && std && requestedYears != null && requestedYears > Number(std.defectYears)){
+      if(!confirm(`المدة اللي كتبتها (${requestedYears} سنة) أكبر من الضمان القياسي (${std.defectYears} سنة). هتتحفظ كطلب زيادة استثنائية وتستنى موافقة الأدمن قبل ما تتفعّل. تكمل؟`)) return;
+    }
     const fields = {
-      asset_type: m.querySelector('#asf_type').value || null,
+      asset_type: type,
       status: m.querySelector('#asf_status').value || 'active',
       manufacturer: m.querySelector('#asf_manufacturer').value.trim(),
       model: m.querySelector('#asf_model').value.trim(),
@@ -1438,19 +1711,30 @@ async function openAssetEditor(assetId, customerId){
       location_note: m.querySelector('#asf_location').value.trim(),
       installation_date: m.querySelector('#asf_install_date').value || null,
       warranty_start_date: m.querySelector('#asf_warranty_start').value || null,
+      warranty_years: requestedYears,
       warranty_end_date: m.querySelector('#asf_warranty_end').value || null,
+      performance_warranty_years: m.querySelector('#asf_perf_years').value ? Number(m.querySelector('#asf_perf_years').value) : null,
+      performance_warranty_end_date: m.querySelector('#asf_perf_end').value || null,
       notes: m.querySelector('#asf_notes').value.trim(),
     };
     try{
+      let result;
       if(assetId){
-        await crmApi('admin-crm-update-asset', {assetId, fields});
+        result = await crmApi('admin-crm-update-asset', {assetId, fields});
       } else {
-        await crmApi('admin-crm-add-asset', {customerId, fields});
+        result = await crmApi('admin-crm-add-asset', {customerId, fields});
       }
-      toast('اتحفظ المنتج ✅');
+      if(result.asset && result.asset.warranty_request_status === 'pending'){
+        toast('اتحفظ المنتج ✅ — طلب زيادة الضمان بانتظار موافقة الأدمن');
+      } else {
+        toast('اتحفظ المنتج ✅');
+      }
       assetOverlay.classList.remove('show');
       if(document.getElementById('custOverlay').classList.contains('show')) openCustomer(customerId);
       if(!document.getElementById('view-warranty').classList.contains('hidden')) loadWarranty();
+      if(result.asset && result.asset.warranty_start_date && result.asset.warranty_years){
+        printWarrantyCertificate(result.asset, customerInfo);
+      }
     }catch(err){ toast('خطأ: '+err.message); }
   });
   const delAssetBtn = m.querySelector('#delAssetBtn');
@@ -1466,7 +1750,180 @@ async function openAssetEditor(assetId, customerId){
   });
 }
 
-/* ============ SITE SURVEY + TECHNICAL STUDY (inside opportunity modal) ============ */
+function printWarrantyCertificate(asset, customer){
+  if(!asset || !asset.warranty_start_date || !asset.warranty_years){
+    toast('⚠️ لازم تحدد بداية ومدة الضمان قبل ما تطبع الشهادة');
+    return;
+  }
+  const typeLabel = (SETTINGS.assetTypes||[]).find(t=>t.value===asset.asset_type)?.label || asset.asset_type || '-';
+  const certNo = asset.warranty_number || `WC-${customer?.phone||customer?.id||''}-${asset.id||''}`;
+  const startStr = asset.warranty_start_date ? new Date(asset.warranty_start_date+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}) : '-';
+  const endStr = asset.warranty_end_date ? new Date(asset.warranty_end_date+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}) : '-';
+  const warrantyYearsStr = asset.warranty_years!=null ? asset.warranty_years : '-';
+  const isPanel = asset.asset_type === 'solar_panel' && asset.performance_warranty_years;
+  const perfEndStr = asset.performance_warranty_end_date ? new Date(asset.performance_warranty_end_date+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}) : '-';
+  const perfYearsStr = asset.performance_warranty_years!=null ? asset.performance_warranty_years : '-';
+
+  const area = document.getElementById('certPrintArea');
+  area.innerHTML = `
+    <div class="certSheet">
+      <div class="topBar"></div>
+      <div class="head2">
+        <div>
+          <div class="coName">${SELLER.name}</div>
+          <div class="coMeta">
+            ${SELLER.nameEn} · سجل تجاري: ${SELLER.cr} · الرقم الضريبي: ${SELLER.vat}<br>${SELLER.phone}
+          </div>
+        </div>
+        <div class="logoBlock"><img src="assets/logo.png" alt="logo" onerror="this.style.display='none'"></div>
+      </div>
+      <div class="titleBlock">
+        <div class="tAr">شهادة ضمان</div>
+        <div class="tEn">WARRANTY CERTIFICATE</div>
+      </div>
+      <div class="certNo">رقم الشهادة: ${certNo}</div>
+
+      <div class="infoGrid">
+        <div class="box">
+          <div class="lbl">اسم العميل</div><div class="val">${customer?.name||'-'}</div>
+          <div class="lbl">رقم الجوال</div><div class="val">${customer?.phone||'-'}</div>
+        </div>
+        <div class="box">
+          <div class="lbl">تاريخ الإصدار</div><div class="val">${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</div>
+          <div class="lbl">مكان التركيب</div><div class="val">${asset.location_note||'-'}</div>
+        </div>
+      </div>
+
+      <table>
+        <thead><tr><th>نوع المنتج</th><th>الشركة المصنّعة</th><th>الموديل</th><th>الرقم التسلسلي</th><th>الكمية</th><th>القدرة/السعة</th></tr></thead>
+        <tbody><tr>
+          <td>${typeLabel}</td><td>${asset.manufacturer||'-'}</td><td>${asset.model||'-'}</td>
+          <td>${asset.serial_number||'-'}</td><td>${asset.quantity||1}</td><td>${asset.capacity||'-'}</td>
+        </tr></tbody>
+      </table>
+
+      <div class="warrantyBox">
+        <div class="title">🛡️ ضمان ضد عيوب الصناعة</div>
+        <div class="row"><span>تاريخ بداية الضمان</span><b>${startStr}</b></div>
+        <div class="row"><span>مدة الضمان</span><b>${warrantyYearsStr} سنة</b></div>
+        <div class="row"><span>تاريخ انتهاء الضمان</span><b>${endStr}</b></div>
+      </div>
+
+      ${isPanel ? `
+      <div class="warrantyBox">
+        <div class="title">☀️ ضمان أداء الإنتاجية (الألواح الشمسية)</div>
+        <div class="row"><span>مدة ضمان الأداء</span><b>${perfYearsStr} سنة</b></div>
+        <div class="row"><span>تاريخ انتهاء ضمان الأداء</span><b>${perfEndStr}</b></div>
+      </div>` : ''}
+
+      <div class="termsBlock">
+        الشروط والأحكام: يغطي هذا الضمان عيوب التصنيع فقط، ولا يشمل الأضرار الناتجة عن سوء الاستخدام، التلاعب، الحوادث،
+        العوامل الجوية الاستثنائية، أو أي صيانة/تعديل تم بواسطة جهة غير معتمدة من ${SELLER.nameEn}.
+        يلتزم العميل بالإبلاغ عن أي عطل خلال فترة الضمان لضمان تغطيته.
+        ${asset.notes ? '<br>ملاحظات: '+asset.notes : ''}
+      </div>
+
+      <div class="sigRow">
+        <div>...................................... :ختم وتوقيع الشركة</div>
+        <div>...................................... :توقيع العميل</div>
+      </div>
+
+      <div class="footRow2">
+        <div>للتواصل: info@HoloulEnergy.com · Sales@HoloulEnergy.com</div>
+      </div>
+    </div>
+  `;
+  document.body.classList.add('printing-cert');
+  window.print();
+  setTimeout(()=> document.body.classList.remove('printing-cert'), 300);
+}
+
+async function printGroupWarrantyCertificate(assetsList, customer){
+  if(!assetsList || !assetsList.length) return;
+  let certNo = `CG-${customer?.phone||''}-${assetsList.length}`;
+  try{
+    const d = await crmApi('crm-generate-group-cert-number', {customerId: customer?.id, assetIds: assetsList.map(a=>a.id)});
+    certNo = d.reference || certNo;
+  }catch(err){ /* fall back to the locally-built label above */ }
+  const rowsHtml = assetsList.map(a=>{
+    const typeLabel = (SETTINGS.assetTypes||[]).find(t=>t.value===a.asset_type)?.label || a.asset_type || '-';
+    const startStr = a.warranty_start_date ? fmtDate(a.warranty_start_date) : '-';
+    const endStr = a.warranty_end_date ? fmtDate(a.warranty_end_date) : '-';
+    let perfRow = '';
+    if(a.asset_type === 'solar_panel' && a.performance_warranty_years){
+      const perfEndStr = a.performance_warranty_end_date ? fmtDate(a.performance_warranty_end_date) : '-';
+      perfRow = `<tr>
+        <td colspan="4" style="color:var(--muted);font-size:11px;">↳ ضمان أداء الإنتاجية</td>
+        <td>${a.performance_warranty_years} سنة</td><td>${perfEndStr}</td>
+      </tr>`;
+    }
+    return `<tr>
+      <td>${typeLabel}${a.model?' — '+escapeHtml(a.model):''}</td>
+      <td>${a.serial_number||'-'}</td>
+      <td>${a.quantity||1}</td>
+      <td>${startStr}</td>
+      <td>${a.warranty_years} سنة</td>
+      <td>${endStr}</td>
+    </tr>${perfRow}`;
+  }).join('');
+
+  const area = document.getElementById('certPrintArea');
+  area.innerHTML = `
+    <div class="certSheet">
+      <div class="topBar"></div>
+      <div class="head2">
+        <div>
+          <div class="coName">${SELLER.name}</div>
+          <div class="coMeta">
+            ${SELLER.nameEn} · سجل تجاري: ${SELLER.cr} · الرقم الضريبي: ${SELLER.vat}<br>${SELLER.phone}
+          </div>
+        </div>
+        <div class="logoBlock"><img src="assets/logo.png" alt="logo" onerror="this.style.display='none'"></div>
+      </div>
+      <div class="titleBlock">
+        <div class="tAr">شهادة ضمان — باكدج</div>
+        <div class="tEn">WARRANTY CERTIFICATE — PACKAGE</div>
+      </div>
+      <div class="certNo">رقم الشهادة: ${certNo}</div>
+
+      <div class="infoGrid">
+        <div class="box">
+          <div class="lbl">اسم العميل</div><div class="val">${customer?.name||'-'}</div>
+          <div class="lbl">رقم الجوال</div><div class="val">${customer?.phone||'-'}</div>
+        </div>
+        <div class="box">
+          <div class="lbl">تاريخ الإصدار</div><div class="val">${new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'})}</div>
+          <div class="lbl">عدد الأصناف المغطاة</div><div class="val">${assetsList.length}</div>
+        </div>
+      </div>
+
+      <table>
+        <thead><tr><th>الصنف</th><th>الرقم التسلسلي</th><th>الكمية</th><th>بداية الضمان</th><th>مدة الضمان</th><th>نهاية الضمان</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+
+      <div class="termsBlock">
+        الشروط والأحكام: تغطي هذه الشهادة كل الأصناف الموضحة أعلاه، كل صنف بمدة الضمان الخاصة به الموضحة في الجدول.
+        يغطي الضمان عيوب التصنيع فقط، ولا يشمل الأضرار الناتجة عن سوء الاستخدام، التلاعب، الحوادث،
+        العوامل الجوية الاستثنائية، أو أي صيانة/تعديل تم بواسطة جهة غير معتمدة من ${SELLER.nameEn}.
+        يلتزم العميل بالإبلاغ عن أي عطل خلال فترة الضمان لضمان تغطيته.
+      </div>
+
+      <div class="sigRow">
+        <div>...................................... :ختم وتوقيع الشركة</div>
+        <div>...................................... :توقيع العميل</div>
+      </div>
+
+      <div class="footRow2">
+        <div>للتواصل: info@HoloulEnergy.com · Sales@HoloulEnergy.com</div>
+      </div>
+    </div>
+  `;
+  document.body.classList.add('printing-cert');
+  window.print();
+  setTimeout(()=> document.body.classList.remove('printing-cert'), 300);
+}
+
 const SURVEY_FIELD_GROUPS = [
   { title: 'عام', fields: [
     ['engineer_name','المهندس المسؤول','text'], ['survey_date','تاريخ المسح','date'],
@@ -1576,6 +2033,7 @@ async function renderQuotationsPanel(wrap, opportunityId, customerQuotes, prefil
         const sm = metaOf(SETTINGS.quotationStatuses, q.status) || {label:q.status, color:'#93a89c'};
         return `<div class="quoteRow" data-quotation-id="${q.id}">
           <div class="top"><span><b>${q.quotation_number}</b> · نسخة ${q.version}</span><span>${fmtDate(q.created_at)}</span></div>
+          ${q.ql_reference?`<div style="font-size:11px;color:var(--muted);font-family:monospace;">${q.ql_reference}</div>`:''}
           <div>الإجمالي شامل الضريبة: <b>${fmtMoney(q.total)} ﷼</b>
             ${isAdmin && q.gross_margin!=null ? ` · هامش الربح: <b>${q.gross_margin.toFixed(1)}%</b>`:''}
           </div>
@@ -1594,6 +2052,29 @@ async function renderQuotationsPanel(wrap, opportunityId, customerQuotes, prefil
       <div class="grid2" style="margin-top:10px;">
         <div><label>صالح لغاية</label><input type="date" id="q_valid_until"></div>
         <div><label>المهندس المسؤول</label><input type="text" id="q_engineer"></div>
+      </div>
+      <div class="grid2" style="margin-top:10px;">
+        <div><label>نطاق العمل (Scope)</label>
+          <select id="q_scope">
+            <option value="">-- اختر --</option>
+            ${optHtml(SETTINGS.idScopeTypes, '')}
+          </select>
+        </div>
+        <div><label>نوع النظام (لترقيم عرض السعر QL)</label>
+          <select id="q_id_system_type">
+            <option value="">-- اختر --</option>
+            ${optHtml(SETTINGS.idSystemTypes, '')}
+          </select>
+        </div>
+      </div>
+      <div class="grid2">
+        <div><label>قدرة المنظومة (KW) — الرقم المستخدم في ترقيم العرض</label><input type="number" id="q_capacity_kw" min="0"></div>
+        <div id="q_pump_hp_wrap" class="hidden"><label>قدرة الطلمبة (HP) — بيانات تسجيل بس</label><input type="number" id="q_pump_hp" min="0"></div>
+      </div>
+      <div class="grid2" id="q_pump_spec_wrap">
+        <div><label>مواصفة الانفرتر (اختياري)</label><input type="text" id="q_inverter_spec" placeholder="مثال: VEICHI 400 KW"></div>
+        <div><label>مواصفة الألواح (اختياري)</label><input type="text" id="q_panel_spec" placeholder="مثال: Aiko665"></div>
+        <div><label>نوع التركيب (اختياري)</label><input type="text" id="q_structure_type" placeholder="مثال: FIXED أو TRACKING"></div>
       </div>
       <div id="itemRows" style="margin-top:10px;"></div>
       <button type="button" class="btn ghost small" id="addItemRowBtn">+ إضافة بند</button>
@@ -1663,6 +2144,14 @@ async function renderQuotationsPanel(wrap, opportunityId, customerQuotes, prefil
     recalcTotals();
   }
   wrap.querySelector('#addItemRowBtn').addEventListener('click', ()=>addItemRow());
+  function toggleQSystemTypeFields(){
+    const t = wrap.querySelector('#q_id_system_type').value;
+    const isPump = t === 'pump';
+    wrap.querySelector('#q_pump_hp_wrap').classList.toggle('hidden', !isPump);
+    wrap.querySelector('#q_pump_spec_wrap').classList.toggle('hidden', !isPump);
+  }
+  wrap.querySelector('#q_id_system_type').addEventListener('change', toggleQSystemTypeFields);
+  toggleQSystemTypeFields();
   if(prefillQuote && !history.length){
     addItemRow(`نظام طاقة شمسية${prefillQuote.hp ? ' - ' + prefillQuote.hp + ' HP' : ''}`, 1, prefillQuote.final_total, 0);
   } else {
@@ -1721,6 +2210,13 @@ async function renderQuotationsPanel(wrap, opportunityId, customerQuotes, prefil
       discountTotal: wrap.querySelector('#q_discount_total').value || 0,
       vatPercent: wrap.querySelector('#q_vat_percent').value || 15,
       notes: wrap.querySelector('#q_notes').value.trim(),
+      scopeType: wrap.querySelector('#q_scope').value || null,
+      idSystemType: wrap.querySelector('#q_id_system_type').value || null,
+      pumpHp: wrap.querySelector('#q_pump_hp').value || null,
+      capacityKw: wrap.querySelector('#q_capacity_kw').value || null,
+      inverterSpec: wrap.querySelector('#q_inverter_spec').value.trim(),
+      panelSpec: wrap.querySelector('#q_panel_spec').value.trim(),
+      structureType: wrap.querySelector('#q_structure_type').value.trim(),
     };
     if(isAdmin){
       const costVal = wrap.querySelector('#q_cost').value;
@@ -1747,10 +2243,17 @@ async function renderProjectPanel(wrap, opportunityId, opp){
       return;
     }
     wrap.innerHTML = `<div class="emptyNote" style="margin-bottom:10px;">الصفقة اتكسبت! حوّلها لمشروع فعلي عشان تتابع التنفيذ والتكاليف والدفعات.</div>
-      <button class="btn" id="createProjectBtn" type="button">🏗️ تحويل لمشروع</button>`;
+      <div class="grid2">
+        <div><label>نطاق العمل (Scope)</label><select id="newProjScope"><option value="">-- اختر --</option>${optHtml(SETTINGS.idScopeTypes, '')}</select></div>
+        <div><label>نوع النظام</label><select id="newProjType"><option value="">-- اختر --</option>${optHtml(SETTINGS.idSystemTypes, '')}</select></div>
+      </div>
+      <button class="btn" id="createProjectBtn" type="button" style="margin-top:10px;">🏗️ تحويل لمشروع</button>`;
     wrap.querySelector('#createProjectBtn').addEventListener('click', async ()=>{
       try{
-        await crmApi('admin-crm-create-project', {opportunityId});
+        await crmApi('admin-crm-create-project', {opportunityId, fields:{
+          scope_type: wrap.querySelector('#newProjScope').value || null,
+          id_system_type: wrap.querySelector('#newProjType').value || null,
+        }});
         toast('اتعمل المشروع ✅');
         renderProjectPanel(wrap, opportunityId, opp);
       }catch(err){ toast('خطأ: '+err.message); }
@@ -1765,7 +2268,8 @@ async function renderProjectPanel(wrap, opportunityId, opp){
     <div style="margin-bottom:10px;"><span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span> <b>${p.project_number}</b></div>
     <div class="grid2">
       <div><label>قيمة العقد (﷼)</label><input type="number" id="pf_contract_value" value="${p.contract_value??''}"></div>
-      <div><label>نطاق المشروع</label><select id="pf_scope">${optHtml(SETTINGS.projectScopeTypes, p.scope_type)}</select></div>
+      <div><label>نطاق المشروع (Scope)</label><select id="pf_scope">${optHtml(SETTINGS.idScopeTypes, p.scope_type)}</select></div>
+      <div><label>نوع النظام</label><select id="pf_id_system_type">${optHtml(SETTINGS.idSystemTypes, p.id_system_type)}</select></div>
       <div><label>حالة المشروع</label><select id="pf_status">${optHtml(SETTINGS.projectStatuses, p.status)}</select></div>
       <div><label>تاريخ توقيع العقد</label><input type="date" id="pf_signed" value="${p.contract_signed_date||''}"></div>
       <div><label>مدير المشروع</label><input type="text" id="pf_pm" value="${escapeHtml(p.project_manager||'')}"></div>
@@ -1842,6 +2346,7 @@ async function renderProjectPanel(wrap, opportunityId, opp){
     const fields = {
       contract_value: wrap.querySelector('#pf_contract_value').value || null,
       scope_type: wrap.querySelector('#pf_scope').value || null,
+      id_system_type: wrap.querySelector('#pf_id_system_type').value || null,
       status: wrap.querySelector('#pf_status').value,
       contract_signed_date: wrap.querySelector('#pf_signed').value || null,
       project_manager: wrap.querySelector('#pf_pm').value.trim(),
@@ -2287,6 +2792,604 @@ document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
       SETTINGS.statuses.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   }catch(err){ toast('خطأ: '+err.message); }
 });
+
+/* ============ INVOICES (walk-in / POS — من الكتالوج + باكدجات + موافقة الأدمن للطباعة) ============ */
+const invoiceOverlay = document.getElementById('invoiceOverlay');
+invoiceOverlay.addEventListener('click', (e)=>{ if(e.target===invoiceOverlay) closeInvoiceModal(); });
+function closeInvoiceModal(){ invoiceOverlay.classList.remove('show'); }
+
+document.getElementById('newInvoiceBtn').addEventListener('click', ()=> openInvoiceModal());
+
+const PAY_METHOD_LABELS = {cash:'نقدي', card:'شبكة / بطاقة', transfer:'تحويل بنكي', other:'أخرى'};
+const SELLER = { name: 'حلول الطاقة المتجددة والمقاولات', nameEn: 'HoloulEnergy', cr: '7037810988', vat: '311386341200003', nationalAddress: 'RDMC8001', phone: '966561274344+' };
+
+let CATALOG_PRODUCTS = null, CATALOG_PACKAGES = null;
+async function ensureCatalogLoaded(){
+  if(CATALOG_PRODUCTS && CATALOG_PACKAGES) return;
+  const d = await crmApi('crm-list-catalog', {});
+  CATALOG_PRODUCTS = d.products || [];
+  CATALOG_PACKAGES = d.packages || [];
+}
+
+/* -------- Arabic amount-in-words (تفقيط) for SAR + halalah -------- */
+function tafqitSar(amount){
+  const riyals = Math.floor(amount);
+  const halalas = Math.round((amount - riyals) * 100);
+  const ones = ['','واحد','اثنان','ثلاثة','أربعة','خمسة','ستة','سبعة','ثمانية','تسعة'];
+  const onesF = ['','واحدة','اثنتان','ثلاث','أربع','خمس','ست','سبع','ثمان','تسع'];
+  const teens = ['عشرة','أحد عشر','اثنا عشر','ثلاثة عشر','أربعة عشر','خمسة عشر','ستة عشر','سبعة عشر','ثمانية عشر','تسعة عشر'];
+  const tens = ['','','عشرون','ثلاثون','أربعون','خمسون','ستون','سبعون','ثمانون','تسعون'];
+  const hundreds = ['','مائة','مائتان','ثلاثمائة','أربعمائة','خمسمائة','ستمائة','سبعمائة','ثمانمائة','تسعمائة'];
+  function threeDigits(n, feminine){
+    if(n===0) return '';
+    const h = Math.floor(n/100), t = Math.floor((n%100)/10), o = n%10;
+    const parts = [];
+    if(h) parts.push(hundreds[h]);
+    if(t===1){ parts.push(teens[o]); }
+    else {
+      const unit = feminine ? onesF[o] : ones[o];
+      if(t>=2){ if(unit) parts.push(unit+' و'+tens[t]); else parts.push(tens[t]); }
+      else if(unit) parts.push(unit);
+    }
+    return parts.join(' و');
+  }
+  function numToWords(n, feminine){
+    if(n===0) return 'صفر';
+    const groups = [];
+    const million = Math.floor(n/1000000);
+    const thousand = Math.floor((n%1000000)/1000);
+    const rest = n%1000;
+    if(million){
+      groups.push(million===1?'مليون':(million===2?'مليونان':threeDigits(million,false)+' مليون'));
+    }
+    if(thousand){
+      groups.push(thousand===1?'ألف':(thousand===2?'ألفان':threeDigits(thousand,false)+' ألف'));
+    }
+    if(rest) groups.push(threeDigits(rest, feminine));
+    return groups.join(' و');
+  }
+  let out = numToWords(riyals, false) + ' ريال سعودي';
+  if(halalas>0) out += ' و' + numToWords(halalas, true) + ' هللة';
+  return out + ' لا غير';
+}
+
+/* -------- item rows: product picker + package builder -------- */
+let invItemSeq = 0;
+
+function invProductRowHtml(item){
+  invItemSeq++;
+  const id = 'it'+invItemSeq;
+  const code = item?.code || '', name = item?.name || '';
+  const label = code ? `${code}` : '';
+  return `<div class="itemRow" data-row="${id}" data-type="product">
+    <div class="itPicker">
+      <input type="text" class="itSearch" placeholder="دور باسم/كود الصنف..." value="${label.replace(/"/g,'&quot;')}" autocomplete="off">
+      <div class="itSuggest hidden"></div>
+      <input type="hidden" class="itCode" value="${code.replace(/"/g,'&quot;')}">
+      <input type="hidden" class="itName" value="${name.replace(/"/g,'&quot;')}">
+    </div>
+    <input type="number" class="itQty" min="0" step="1" value="${item&&item.qty!=null?item.qty:1}">
+    <input type="number" class="itPrice" min="0" step="0.01" placeholder="سعر الوحدة" value="${item&&item.unitPrice!=null?item.unitPrice:''}">
+    <input type="number" class="itDisc" min="0" step="0.01" placeholder="خصم" value="${item&&item.discount?item.discount:''}">
+    <div class="itLineTotal num" style="font-weight:700;">0</div>
+    <button type="button" class="rmBtn" title="حذف الصنف">×</button>
+  </div>`;
+}
+
+function invPackageRowHtml(pkg){
+  invItemSeq++;
+  const id = 'it'+invItemSeq;
+  const compRows = (pkg.components||[]).map((c,i)=>`
+    <div class="pkgCompRow" data-idx="${i}">
+      <span class="pkgCompNum">${i+1}-</span>
+      <input type="text" class="pkgCompName" value="${(c||'').replace(/"/g,'&quot;')}">
+      <input type="text" class="pkgCompSerial" placeholder="رقم تسلسلي (اختياري)">
+    </div>`).join('');
+  return `<div class="itemRow pkgRow" data-row="${id}" data-type="package" data-pkg-id="${pkg.id}">
+    <div class="pkgHead">
+      <div><b>📦 ${pkg.name}</b> <span style="color:var(--muted);font-size:11.5px;">(باكدج جاهز)</span></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <label style="font-size:11.5px;color:var(--muted);">السعر</label>
+        <input type="number" class="itPrice pkgPrice" min="0" step="0.01" value="${pkg.price||0}" style="width:110px;">
+        <button type="button" class="rmBtn" title="حذف الباكدج">×</button>
+      </div>
+    </div>
+    <div class="pkgComponents">${compRows || '<div style="color:var(--muted);font-size:12px;">مفيش مكونات محددة لهذا الباكدج — اكتبها يدوي لو حابب.</div>'}</div>
+    <button type="button" class="btn ghost small addPkgCompBtn" style="margin-top:6px;">+ إضافة مكوّن</button>
+    <div style="text-align:left;margin-top:6px;font-size:12.5px;">الإجمالي: <b class="itLineTotal num">0</b></div>
+    <input type="hidden" class="itCode" value="${('PKG-'+pkg.id)}">
+    <input type="hidden" class="itQty" value="1">
+    <input type="hidden" class="itDisc" value="0">
+  </div>`;
+}
+
+function openInvoiceModal(prefill){
+  prefill = prefill || {};
+  invoiceOverlay.classList.add('show');
+  document.getElementById('invoiceModal').innerHTML = `
+    <div class="mhead"><h2>🧾 فاتورة ضريبية جديدة</h2><button class="closeX" data-close-inv>×</button></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div><label>اسم العميل</label><input type="text" id="invCustName" value="${(prefill.name||'').replace(/"/g,'&quot;')}"></div>
+      <div><label>رقم الجوال</label><input type="text" id="invCustPhone" value="${prefill.phone||''}" placeholder="05xxxxxxxx"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div><label>المدينة</label><input type="text" id="invCustCity" value="${prefill.city||''}"></div>
+      <div><label>العنوان الوطني المختصر (اختياري)</label><input type="text" id="invCustAddress" placeholder="مثال: وادي الدواسر - OGAB3098"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div><label>طريقة السداد</label>
+        <select id="invPayMethod">
+          <option value="cash">نقدي</option>
+          <option value="card">شبكة / بطاقة</option>
+          <option value="transfer">تحويل بنكي</option>
+          <option value="other">أخرى</option>
+        </select>
+      </div>
+      <div></div>
+    </div>
+    <label class="b2bToggle"><input type="checkbox" id="invB2bToggle"> العميل منشأة/شركة (يحتاج رقم ضريبي أو سجل تجاري — فاتورة ضريبية غير مبسطة)</label>
+    <div id="invB2bFields" class="hidden" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div><label>الرقم الضريبي (VAT)</label><input type="text" id="invCustVat"></div>
+      <div><label>السجل التجاري (CR)</label><input type="text" id="invCustCr"></div>
+    </div>
+    <div id="invCustLinkNote"></div>
+
+    <label style="margin-top:14px;display:block;">الأصناف</label>
+    <div class="itemsRowsWrap">
+      <div class="itemRow head"><div>الصنف</div><div>الكمية</div><div>سعر الوحدة</div><div>خصم</div><div>الإجمالي</div><div></div></div>
+      <div id="invItemsRows"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button type="button" class="btn ghost small" id="invAddProductBtn">+ إضافة منتج</button>
+      <button type="button" class="btn ghost small" id="invAddPackageBtn">📦 إضافة باكدج</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
+      <div><label>خصم إجمالي (اختياري)</label><input type="number" id="invDiscountTotal" min="0" step="0.01" value="0"></div>
+      <div><label>ملاحظات</label><input type="text" id="invNotes"></div>
+    </div>
+
+    <div class="invTotals">
+      <div class="row">الإجمالي قبل الضريبة: <b id="invSubtotalOut">0 ﷼</b></div>
+      <div class="row">ضريبة القيمة المضافة (15%): <b id="invVatOut">0 ﷼</b></div>
+      <div class="row grand">الإجمالي شامل الضريبة: <span id="invTotalOut">0 ﷼</span></div>
+    </div>
+
+    <div class="errMsg" id="invErr"></div>
+    <div class="saveBar"><div></div><div class="right">
+      <button class="btn ghost" type="button" id="invCancelBtn">إلغاء</button>
+      <button class="btn teal" type="button" id="invSaveBtn">💾 حفظ الفاتورة</button>
+    </div></div>
+  `;
+
+  const rowsWrap = document.getElementById('invItemsRows');
+  if(!prefill.skipFirstRow){
+    // start empty — items must be picked explicitly from the catalog
+  }
+
+  document.querySelector('[data-close-inv]').addEventListener('click', closeInvoiceModal);
+  document.getElementById('invCancelBtn').addEventListener('click', closeInvoiceModal);
+
+  document.getElementById('invAddProductBtn').addEventListener('click', async ()=>{
+    try{
+      await ensureCatalogLoaded();
+      rowsWrap.insertAdjacentHTML('beforeend', invProductRowHtml());
+      wireLastProductRow();
+      recalcInvoiceTotals();
+    }catch(err){ toast('تعذر تحميل كتالوج المنتجات: '+err.message); }
+  });
+
+  document.getElementById('invAddPackageBtn').addEventListener('click', async ()=>{
+    try{
+      await ensureCatalogLoaded();
+      openPackagePicker((pkg)=>{
+        rowsWrap.insertAdjacentHTML('beforeend', invPackageRowHtml(pkg));
+        wireLastPackageRow();
+        recalcInvoiceTotals();
+      });
+    }catch(err){ toast('تعذر تحميل الباكدجات: '+err.message); }
+  });
+
+  document.getElementById('invB2bToggle').addEventListener('change', (e)=>{
+    document.getElementById('invB2bFields').classList.toggle('hidden', !e.target.checked);
+  });
+
+  rowsWrap.addEventListener('input', (e)=>{
+    if(e.target.matches('.itQty,.itPrice,.itDisc,.pkgPrice')) recalcInvoiceTotals();
+  });
+  document.getElementById('invDiscountTotal').addEventListener('input', recalcInvoiceTotals);
+  rowsWrap.addEventListener('click', (e)=>{
+    const rm = e.target.closest('.rmBtn');
+    if(rm){ rm.closest('.itemRow').remove(); recalcInvoiceTotals(); return; }
+    const addComp = e.target.closest('.addPkgCompBtn');
+    if(addComp){
+      const wrap = addComp.previousElementSibling; // .pkgComponents
+      const idx = wrap.querySelectorAll('.pkgCompRow').length;
+      wrap.insertAdjacentHTML('beforeend', `<div class="pkgCompRow" data-idx="${idx}">
+        <span class="pkgCompNum">${idx+1}-</span>
+        <input type="text" class="pkgCompName" placeholder="اسم المكوّن">
+        <input type="text" class="pkgCompSerial" placeholder="رقم تسلسلي (اختياري)">
+      </div>`);
+    }
+  });
+
+  let lookupTimer;
+  document.getElementById('invCustPhone').addEventListener('blur', async (e)=>{
+    const phone = e.target.value.trim();
+    const note = document.getElementById('invCustLinkNote');
+    note.innerHTML = '';
+    if(phone.length < 6) return;
+    try{
+      const d = await crmApi('admin-crm-list-customers', {search: phone});
+      const digits = phone.replace(/\D/g,'').slice(-9);
+      const match = (d.customers||[]).find(c => (c.phone||'').replace(/\D/g,'').slice(-9) === digits);
+      if(match){
+        note.innerHTML = `<div class="custLinkNote">🔗 اتربط بعميل موجود: ${match.name||'بدون اسم'} — هيتحدث ملفه تلقائيًا</div>`;
+        if(match.name && !document.getElementById('invCustName').value) document.getElementById('invCustName').value = match.name;
+      }
+    }catch(err){ /* silent lookup failure — not blocking */ }
+  });
+
+  recalcInvoiceTotals();
+}
+
+function wireLastProductRow(){
+  const row = document.querySelector('#invItemsRows .itemRow[data-type="product"]:last-child');
+  if(!row) return;
+  const search = row.querySelector('.itSearch');
+  const suggest = row.querySelector('.itSuggest');
+  const codeInp = row.querySelector('.itCode');
+  const nameInp = row.querySelector('.itName');
+  const priceInp = row.querySelector('.itPrice');
+
+  function renderSuggestions(term){
+    const t = term.trim().toLowerCase();
+    if(t.length < 1){ suggest.classList.add('hidden'); suggest.innerHTML=''; return; }
+    const matches = CATALOG_PRODUCTS.filter(p => p.code.toLowerCase().includes(t) || (p.category||'').toLowerCase().includes(t)).slice(0,25);
+    if(!matches.length){ suggest.innerHTML = '<div class="itSuggestItem muted">مفيش نتائج مطابقة</div>'; suggest.classList.remove('hidden'); return; }
+    suggest.innerHTML = matches.map(p=>`<div class="itSuggestItem" data-code="${p.code.replace(/"/g,'&quot;')}" data-price="${p.unitPrice}">
+      <b>${p.code}</b><span class="cat">${p.category}</span><span class="price">${fmtMoney(p.unitPrice)} ﷼</span>
+    </div>`).join('');
+    suggest.classList.remove('hidden');
+  }
+  search.addEventListener('input', ()=> renderSuggestions(search.value));
+  search.addEventListener('focus', ()=> renderSuggestions(search.value));
+  document.addEventListener('click', (e)=>{ if(!row.contains(e.target)) suggest.classList.add('hidden'); });
+  suggest.addEventListener('click', (e)=>{
+    const item = e.target.closest('.itSuggestItem');
+    if(!item || !item.dataset.code) return;
+    search.value = item.dataset.code;
+    codeInp.value = item.dataset.code;
+    nameInp.value = item.dataset.code;
+    if(!priceInp.value) priceInp.value = item.dataset.price;
+    suggest.classList.add('hidden');
+    recalcInvoiceTotals();
+  });
+  search.addEventListener('blur', ()=>{
+    // if the typed text doesn't match a selected code exactly, clear the link
+    // (keeps invoice items honestly tied to real catalog codes)
+    setTimeout(()=>{
+      if(search.value !== codeInp.value){ codeInp.value=''; nameInp.value=''; }
+    }, 150);
+  });
+}
+
+function wireLastPackageRow(){
+  // component inputs are read directly at save-time; nothing extra to wire.
+}
+
+function openPackagePicker(onPick){
+  const modalId = 'pkgPickerOverlay';
+  let ov = document.getElementById(modalId);
+  if(!ov){
+    ov = document.createElement('div');
+    ov.className = 'overlay';
+    ov.id = modalId;
+    ov.innerHTML = `<div class="modal" style="max-width:520px;"><div id="pkgPickerInner"></div></div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', (e)=>{ if(e.target===ov) ov.classList.remove('show'); });
+  }
+  document.getElementById('pkgPickerInner').innerHTML = `
+    <div class="mhead"><h2>📦 اختار باكدج جاهز</h2><button class="closeX" id="pkgPickerClose">×</button></div>
+    <input type="text" id="pkgPickerSearch" placeholder="دور باسم الباكدج..." style="margin-bottom:10px;">
+    <div id="pkgPickerList" style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:8px;"></div>
+  `;
+  document.getElementById('pkgPickerClose').addEventListener('click', ()=> ov.classList.remove('show'));
+  function renderList(term){
+    const t = (term||'').trim().toLowerCase();
+    const list = CATALOG_PACKAGES.filter(p=>!t || p.name.toLowerCase().includes(t));
+    document.getElementById('pkgPickerList').innerHTML = list.map(p=>`
+      <div class="pkgPickItem" data-id="${p.id}" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;">
+        <div style="display:flex;justify-content:space-between;"><b>${p.name}</b><span style="font-weight:700;">${fmtMoney(p.price)} ﷼</span></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${(p.components||[]).slice(0,3).join(' · ')}${p.components.length>3?' ...':''}</div>
+      </div>`).join('') || '<div class="loadingNote">مفيش باكدجات متاحة</div>';
+    document.querySelectorAll('.pkgPickItem').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        const pkg = CATALOG_PACKAGES.find(p=>String(p.id)===el.dataset.id);
+        ov.classList.remove('show');
+        if(pkg) onPick(pkg);
+      });
+    });
+  }
+  renderList('');
+  document.getElementById('pkgPickerSearch').addEventListener('input', (e)=> renderList(e.target.value));
+  ov.classList.add('show');
+}
+
+function recalcInvoiceTotals(){
+  let subtotal = 0;
+  document.querySelectorAll('#invItemsRows .itemRow').forEach(row=>{
+    const qty = Number(row.querySelector('.itQty').value)||0;
+    const price = Number(row.querySelector('.itPrice').value)||0;
+    const disc = Number(row.querySelector('.itDisc').value)||0;
+    const lineTotal = Math.max(0, qty*price - disc);
+    row.querySelector('.itLineTotal').textContent = fmtMoney(lineTotal);
+    subtotal += lineTotal;
+  });
+  const discountTotal = Number(document.getElementById('invDiscountTotal').value)||0;
+  subtotal = Math.max(0, subtotal - discountTotal);
+  const vat = subtotal * 0.15;
+  const total = subtotal + vat;
+  document.getElementById('invSubtotalOut').textContent = fmtMoney(subtotal)+' ﷼';
+  document.getElementById('invVatOut').textContent = fmtMoney(vat)+' ﷼';
+  document.getElementById('invTotalOut').textContent = fmtMoney(total)+' ﷼';
+}
+
+document.addEventListener('click', async (e)=>{
+  if(e.target && e.target.id === 'invSaveBtn'){
+    const errEl = document.getElementById('invErr');
+    errEl.textContent = '';
+    const items = [];
+    let invalid = false;
+    document.querySelectorAll('#invItemsRows .itemRow').forEach(row=>{
+      const type = row.dataset.type;
+      const code = row.querySelector('.itCode').value.trim();
+      const qty = Number(row.querySelector('.itQty').value)||0;
+      const unitPrice = Number(row.querySelector('.itPrice').value)||0;
+      const discount = Number(row.querySelector('.itDisc')?.value)||0;
+      if(type==='product'){
+        const name = row.querySelector('.itName').value.trim();
+        if(!code || !name){ invalid = true; return; }
+        if(qty<=0 || unitPrice<0){ invalid = true; return; }
+        items.push({type:'product', code, name, qty, unitPrice, discount});
+      } else {
+        const nameEl = row.querySelector('.pkgHead b');
+        const name = nameEl ? nameEl.textContent.trim() : 'باكدج';
+        const components = [...row.querySelectorAll('.pkgCompRow')].map(cr=>({
+          name: cr.querySelector('.pkgCompName').value.trim(),
+          serial: cr.querySelector('.pkgCompSerial').value.trim(),
+        })).filter(c=>c.name);
+        if(unitPrice<=0){ invalid = true; return; }
+        items.push({type:'package', code, name, qty:1, unitPrice, discount:0, components});
+      }
+    });
+    const customerPhone = document.getElementById('invCustPhone').value.trim();
+    if(!customerPhone){ errEl.textContent = 'رقم جوال العميل مطلوب'; return; }
+    if(!items.length){ errEl.textContent = 'لازم صنف واحد على الأقل من المنتجات أو الباكدجات'; return; }
+    if(invalid){ errEl.textContent = 'فيه صنف ناقص بيانات (لازم تختاره من الكتالوج بسعر صحيح)'; return; }
+
+    const payload = {
+      customerName: document.getElementById('invCustName').value.trim(),
+      customerPhone,
+      customerCity: document.getElementById('invCustCity').value.trim(),
+      customerAddress: document.getElementById('invCustAddress').value.trim(),
+      customerVatNumber: document.getElementById('invB2bToggle').checked ? document.getElementById('invCustVat').value.trim() : '',
+      customerCrNumber: document.getElementById('invB2bToggle').checked ? document.getElementById('invCustCr').value.trim() : '',
+      items,
+      discountTotal: Number(document.getElementById('invDiscountTotal').value)||0,
+      paymentMethod: document.getElementById('invPayMethod').value,
+      notes: document.getElementById('invNotes').value.trim(),
+    };
+    const btn = e.target;
+    btn.disabled = true; btn.textContent = 'بيحفظ...';
+    try{
+      const d = await crmApi('crm-create-pos-invoice', payload);
+      closeInvoiceModal();
+      if(SESSION.role === 'admin'){
+        toast('✅ اتحفظت واتوافقت الفاتورة رقم '+d.invoice.invoice_number);
+        printInvoice(d.invoice);
+      } else {
+        toast('✅ اتسجلت الفاتورة رقم '+d.invoice.invoice_number+' — بانتظار موافقة الأدمن قبل الطباعة');
+      }
+      if(document.getElementById('view-invoices').classList.contains('active')) loadInvoices();
+    }catch(err){
+      errEl.textContent = 'تعذر الحفظ: '+err.message;
+      btn.disabled = false; btn.textContent = '💾 حفظ الفاتورة';
+    }
+  }
+
+  if(e.target && e.target.classList.contains('approveInvBtn')){
+    const id = e.target.dataset.id;
+    e.target.disabled = true; e.target.textContent = 'بيعتمد...';
+    try{
+      await crmApi('crm-approve-pos-invoice', {invoiceId:id});
+      toast('✅ اتوافقت الفاتورة — جاهزة للطباعة');
+      loadInvoices();
+    }catch(err){ toast('تعذر الاعتماد: '+err.message); }
+  }
+
+  if(e.target && e.target.classList.contains('deleteInvBtn')){
+    const id = e.target.dataset.id;
+    if(!confirm('متأكد إنك عايز تحذف الفاتورة دي؟ الإجراء ده نهائي.')) return;
+    try{
+      await crmApi('admin-crm-delete-invoice', {invoiceId:id});
+      toast('🗑️ اتحذفت الفاتورة');
+      loadInvoices();
+    }catch(err){ toast('تعذر الحذف: '+err.message); }
+  }
+});
+
+async function loadInvoices(){
+  const wrap = document.getElementById('invoicesTableWrap');
+  wrap.innerHTML = '<div class="loadingNote">بيحمّل الفواتير...</div>';
+  try{
+    const search = document.getElementById('invoiceSearchInput').value.trim();
+    const d = await crmApi('crm-list-pos-invoices', {search});
+    const isAdmin = SESSION.role === 'admin';
+    if(!d.invoices.length){ wrap.innerHTML = '<div class="loadingNote">مفيش فواتير لسه</div>'; return; }
+    wrap.innerHTML = `<table class="admtable"><thead><tr>
+      <th>رقم الفاتورة</th><th>العميل</th><th>الهاتف</th><th>الإجمالي</th><th>طريقة السداد</th><th>المندوب</th><th>الحالة</th><th>التاريخ</th><th></th>
+      </tr></thead><tbody>
+      ${d.invoices.map(inv=>{
+        const approved = inv.approval_status === 'approved';
+        const badge = approved
+          ? '<span class="tag good">✅ معتمدة</span>'
+          : '<span class="tag warn">⏳ بانتظار الموافقة</span>';
+        const actions = [];
+        if(approved){
+          actions.push(`<button class="btn ghost small reprintBtn" data-id="${inv.id}">🖨️ طباعة</button>`);
+        } else if(isAdmin){
+          actions.push(`<button class="btn teal small approveInvBtn" data-id="${inv.id}">✅ اعتماد</button>`);
+        } else {
+          actions.push(`<span style="color:var(--muted);font-size:11.5px;">بانتظار الأدمن</span>`);
+        }
+        if(isAdmin) actions.push(`<button class="btn ghost small deleteInvBtn" data-id="${inv.id}" style="color:var(--bad);">🗑️</button>`);
+        return `<tr>
+          <td class="num">${inv.invoice_number}</td>
+          <td>${inv.customer_name||'<span style="color:var(--muted)">بدون اسم</span>'}</td>
+          <td class="num">${inv.customer_phone||'-'}</td>
+          <td class="num" style="font-weight:700;">${fmtMoney(inv.total)} ﷼</td>
+          <td>${PAY_METHOD_LABELS[inv.payment_method]||inv.payment_method||'-'}</td>
+          <td>${inv.rep_username||'-'}</td>
+          <td>${badge}</td>
+          <td>${fmtDate(inv.created_at)}</td>
+          <td style="display:flex;gap:6px;">${actions.join('')}</td>
+        </tr>`;
+      }).join('')}
+      </tbody></table>`;
+    wrap.querySelectorAll('.reprintBtn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const inv = d.invoices.find(x=>String(x.id)===String(btn.dataset.id));
+        if(inv) printInvoice(inv);
+      });
+    });
+  }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
+}
+function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+document.getElementById('invoiceSearchInput').addEventListener('input', debounce(loadInvoices, 400));
+
+function printInvoice(inv){
+  if(inv.approval_status !== 'approved'){
+    toast('⏳ الفاتورة دي لسه بانتظار موافقة الأدمن — مينفعش تتطبع للعميل قبل الاعتماد');
+    return;
+  }
+  const items = Array.isArray(inv.items) ? inv.items : [];
+  const invoiceTypeLabel = inv.invoice_type === 'standard' ? 'فاتورة مبيعات ضريبية' : 'فاتورة مبيعات ضريبية مبسطة';
+  const dateStr = new Date(inv.created_at || Date.now()).toLocaleDateString('en-GB', {day:'2-digit', month:'long', year:'numeric'});
+  const area = document.getElementById('invoicePrintArea');
+
+  const itemsRowsHtml = items.map((it, idx)=>{
+    const nameCell = it.type === 'package'
+      ? `<div style="font-weight:700;margin-bottom:4px;">${it.name}</div>
+         ${(it.components||[]).length ? '<div style="font-size:11px;color:var(--muted);">مكونات الباكدج:</div>'+
+           '<ol style="margin:2px 0 0 0;padding-inline-start:16px;font-size:11px;">'+
+           (it.components||[]).map(c=>`<li>${c.name}${c.serial?` <span style="color:var(--muted);">(S/N: ${c.serial})</span>`:''}</li>`).join('')+
+           '</ol>' : ''}`
+      : it.name;
+    const beforeTax = it.qty * it.unitPrice - (it.discount||0);
+    const vatVal = beforeTax * (inv.vat_percent/100);
+    return `<tr>
+      <td class="num">${idx+1}</td>
+      <td class="num">${it.code||''}</td>
+      <td>${nameCell}</td>
+      <td class="num">${it.type==='package' ? 'باكدج' : 'قطعة'}</td>
+      <td class="num">${it.qty}</td>
+      <td class="num">${fmtMoney(it.unitPrice)}</td>
+      <td class="num">${fmtMoney(beforeTax)}</td>
+      <td class="num">${inv.vat_percent}%</td>
+      <td class="num">${fmtMoney(vatVal)}</td>
+      <td class="num" style="font-weight:700;">${fmtMoney(beforeTax+vatVal)}</td>
+    </tr>`;
+  }).join('');
+
+  area.innerHTML = `
+    <div class="invSheet2">
+      <div class="topBar"></div>
+      <div class="head2">
+        <div class="coBlock">
+          <div class="coName">${SELLER.name}</div>
+          <div class="coMeta">
+            <div><span>العنوان الوطني:</span> ${SELLER.nationalAddress}</div>
+            <div><span>الرقم الوطني الموحد:</span> ${SELLER.cr}</div>
+            <div><span>الرقم الضريبي (VAT):</span> ${SELLER.vat}</div>
+            <div>SALES@HoloulEnergy.com</div>
+          </div>
+        </div>
+        <div class="logoBlock">
+          <img src="assets/logo.png" alt="logo" onerror="this.style.display='none'">
+        </div>
+      </div>
+      <div class="titleBlock">
+        <div class="tAr">${invoiceTypeLabel}</div>
+        <div class="tEn">TAX INVOICE</div>
+      </div>
+
+      <table class="metaTable">
+        <tr><td class="val">${dateStr}</td><td class="lbl">التاريخ</td></tr>
+        <tr><td class="val">${inv.invoice_number}</td><td class="lbl">رقم الفاتورة</td></tr>
+        <tr><td class="val">${inv.customer_name||'عميل نقدي'}</td><td class="lbl">اسم العميل</td></tr>
+        ${inv.customer_address?`<tr><td class="val">${inv.customer_address}</td><td class="lbl">عنوان العميل</td></tr>`:''}
+        ${inv.customer_vat_number?`<tr><td class="val">${inv.customer_vat_number}</td><td class="lbl">الرقم الضريبي للعميل</td></tr>`:''}
+        <tr><td class="val">${inv.customer_phone||'-'}</td><td class="lbl">رقم الجوال</td></tr>
+      </table>
+
+      <table class="itemsTable2">
+        <thead><tr>
+          <th>#</th><th>رمز الصنف</th><th>اسم الصنف</th><th>الوحدة</th><th>الكمية</th>
+          <th>سعر الوحدة قبل</th><th>الإجمالي قبل</th><th>نسبة الضريبة</th><th>قيمة الضريبة</th><th>الإجمالي شامل</th>
+        </tr></thead>
+        <tbody>${itemsRowsHtml}</tbody>
+        <tfoot><tr class="sumRow">
+          <td colspan="6" style="text-align:left;font-weight:700;">الإجمالي</td>
+          <td class="num" style="font-weight:700;">${fmtMoney(inv.subtotal + (inv.discount_total||0))}</td>
+          <td></td>
+          <td class="num" style="font-weight:700;">${fmtMoney(inv.vat_amount)}</td>
+          <td class="num" style="font-weight:700;">${fmtMoney(inv.total)}</td>
+        </tr></tfoot>
+      </table>
+
+      <table class="totalsTable2">
+        <tr><td class="val">${fmtMoney(inv.subtotal + (inv.discount_total||0))}</td><td class="lbl">الإجمالي قبل الخصم</td></tr>
+        ${inv.discount_total?`<tr><td class="val">${fmtMoney(inv.discount_total)}</td><td class="lbl">الخصم</td></tr>`:''}
+        <tr><td class="val">${fmtMoney(inv.subtotal)}</td><td class="lbl">الإجمالي بعد الخصم وقبل الضريبة</td></tr>
+        <tr><td class="val">${fmtMoney(inv.vat_amount)}</td><td class="lbl">ضريبة القيمة المضافة (${inv.vat_percent}%)</td></tr>
+        <tr class="grandRow"><td class="val">${fmtMoney(inv.total)}</td><td class="lbl">الإجمالي المستحق شامل</td></tr>
+      </table>
+
+      <div class="wordsLine">الإجمالي المستحق كتابة: ${tafqitSar(inv.total)}</div>
+      <div class="wordsLine" style="font-weight:700;color:var(--good,#0FA98D);">✅ مدفوعة بالكامل — ${PAY_METHOD_LABELS[inv.payment_method]||inv.payment_method||''}</div>
+
+      <div class="termsBlock">
+        الشروط والملاحظات:<br>
+        ${inv.notes ? inv.notes : 'لا يوجد ملاحظات إضافية على هذه الفاتورة.'}
+      </div>
+
+      <div class="sigRow">
+        <div>...................................... :المدير</div>
+        <div>...................................... :البائع</div>
+        <div>...................................... :العميل</div>
+      </div>
+
+      <div class="footRow2">
+        <div class="legal2">
+          للتواصل: info@HoloulEnergy.com · Sales@HoloulEnergy.com
+        </div>
+        <canvas id="invQrCanvas"></canvas>
+      </div>
+    </div>
+  `;
+  document.body.classList.add('printing-invoice');
+  const finishPrint = ()=>{
+    window.print();
+    setTimeout(()=> document.body.classList.remove('printing-invoice'), 300);
+  };
+  if(window.QRCode && inv.qr_base64){
+    QRCode.toCanvas(document.getElementById('invQrCanvas'), inv.qr_base64, {width:88, margin:0}, finishPrint);
+  } else {
+    finishPrint();
+  }
+}
+
 </script>
 </body>
 </html>
