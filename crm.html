@@ -1756,7 +1756,7 @@ function printWarrantyCertificate(asset, customer){
     return;
   }
   const typeLabel = (SETTINGS.assetTypes||[]).find(t=>t.value===asset.asset_type)?.label || asset.asset_type || '-';
-  const certNo = asset.warranty_number || `WC-${customer?.phone||customer?.id||''}-${asset.id||''}`;
+  const certNo = asset.warranty_number || `GC-${customer?.phone||customer?.id||''}-1-${asset.id||''}`;
   const startStr = asset.warranty_start_date ? new Date(asset.warranty_start_date+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}) : '-';
   const endStr = asset.warranty_end_date ? new Date(asset.warranty_end_date+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}) : '-';
   const warrantyYearsStr = asset.warranty_years!=null ? asset.warranty_years : '-';
@@ -1823,9 +1823,8 @@ function printWarrantyCertificate(asset, customer){
         ${asset.notes ? '<br>ملاحظات: '+asset.notes : ''}
       </div>
 
-      <div class="sigRow">
+      <div class="sigRow" style="justify-content:flex-start;">
         <div>...................................... :ختم وتوقيع الشركة</div>
-        <div>...................................... :توقيع العميل</div>
       </div>
 
       <div class="footRow2">
@@ -1840,25 +1839,27 @@ function printWarrantyCertificate(asset, customer){
 
 async function printGroupWarrantyCertificate(assetsList, customer){
   if(!assetsList || !assetsList.length) return;
-  let certNo = `CG-${customer?.phone||''}-${assetsList.length}`;
+  let certNo = `GC-${customer?.phone||''}-${assetsList.length}`;
   try{
     const d = await crmApi('crm-generate-group-cert-number', {customerId: customer?.id, assetIds: assetsList.map(a=>a.id)});
     certNo = d.reference || certNo;
   }catch(err){ /* fall back to the locally-built label above */ }
   const rowsHtml = assetsList.map(a=>{
     const typeLabel = (SETTINGS.assetTypes||[]).find(t=>t.value===a.asset_type)?.label || a.asset_type || '-';
+    const brandModel = [a.manufacturer, a.model].filter(Boolean).join(' ') || '-';
     const startStr = a.warranty_start_date ? fmtDate(a.warranty_start_date) : '-';
     const endStr = a.warranty_end_date ? fmtDate(a.warranty_end_date) : '-';
     let perfRow = '';
     if(a.asset_type === 'solar_panel' && a.performance_warranty_years){
       const perfEndStr = a.performance_warranty_end_date ? fmtDate(a.performance_warranty_end_date) : '-';
       perfRow = `<tr>
-        <td colspan="4" style="color:var(--muted);font-size:11px;">↳ ضمان أداء الإنتاجية</td>
+        <td colspan="5" style="color:var(--muted);font-size:11px;">↳ ضمان أداء الإنتاجية</td>
         <td>${a.performance_warranty_years} سنة</td><td>${perfEndStr}</td>
       </tr>`;
     }
     return `<tr>
-      <td>${typeLabel}${a.model?' — '+escapeHtml(a.model):''}</td>
+      <td>${typeLabel}</td>
+      <td style="font-weight:700;">${escapeHtml(brandModel)}</td>
       <td>${a.serial_number||'-'}</td>
       <td>${a.quantity||1}</td>
       <td>${startStr}</td>
@@ -1898,7 +1899,7 @@ async function printGroupWarrantyCertificate(assetsList, customer){
       </div>
 
       <table>
-        <thead><tr><th>الصنف</th><th>الرقم التسلسلي</th><th>الكمية</th><th>بداية الضمان</th><th>مدة الضمان</th><th>نهاية الضمان</th></tr></thead>
+        <thead><tr><th>الصنف</th><th>الماركة والموديل</th><th>الرقم التسلسلي</th><th>الكمية</th><th>بداية الضمان</th><th>مدة الضمان</th><th>نهاية الضمان</th></tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
 
@@ -1909,9 +1910,8 @@ async function printGroupWarrantyCertificate(assetsList, customer){
         يلتزم العميل بالإبلاغ عن أي عطل خلال فترة الضمان لضمان تغطيته.
       </div>
 
-      <div class="sigRow">
+      <div class="sigRow" style="justify-content:flex-start;">
         <div>...................................... :ختم وتوقيع الشركة</div>
-        <div>...................................... :توقيع العميل</div>
       </div>
 
       <div class="footRow2">
