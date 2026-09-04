@@ -654,6 +654,10 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
   .note{font-size:9.5px!important;font-weight:400!important;padding:6px 9px!important;line-height:1.36!important;}
   .legal-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
   .support-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
+  .warranty-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
+  .warranty-note .title{font-size:9.5px!important;margin-bottom:3px!important;}
+  .warranty-note ul{margin:0!important;padding-inline-start:16px!important;}
+  .warranty-note li{margin:1.5px 0!important;}
   .contact-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
 }
 /* Mirrors the @media print block above exactly (same values), so the
@@ -690,6 +694,10 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
 .pdf-compact .note{font-size:9.5px!important;font-weight:400!important;padding:6px 9px!important;line-height:1.36!important;}
 .pdf-compact .legal-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
 .pdf-compact .support-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
+.pdf-compact .warranty-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
+.pdf-compact .warranty-note .title{font-size:9.5px!important;margin-bottom:3px!important;}
+.pdf-compact .warranty-note ul{margin:0!important;padding-inline-start:16px!important;}
+.pdf-compact .warranty-note li{margin:1.5px 0!important;}
 .pdf-compact .contact-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
 </style>
 </head>
@@ -1626,6 +1634,7 @@ function renderIrrigationCalc(){
         <div class="support-note" style="margin-top:8px;background:#EAF7F1;border:1px solid #BFE6D6;border-radius:9px;padding:9px 12px;font-size:11.5px;color:#146C4C">
           نلتزم بتوفير الدعم الفني وقطع الغيار للمنظومة حتى 10 سنوات من تاريخ التشغيل.
         </div>
+        ${renderWarrantyNote()}
         <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
           <b style="color:var(--ink)">للتواصل</b><br>
           info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
@@ -1692,6 +1701,20 @@ function renderSupplyInstallSplit(q){
   </div>`;
 }
 
+function renderWarrantyNote(){
+  return `
+  <div class="warranty-note" style="margin-top:8px;background:#EFF5FB;border:1px solid #C7DCF0;border-radius:9px;padding:9px 12px;font-size:11.5px;color:#1E4E7A">
+    <div class="title" style="font-weight:700;margin-bottom:4px">🛡️ ملخص الضمانات</div>
+    <ul style="margin:0;padding-inline-start:18px;line-height:1.85">
+      <li>ضمان الألواح الشمسية: 30 عام على إنتاجية الطاقة، و12 عام ضد عيوب الصناعة.</li>
+      <li>ضمان المحولات (Inverters): عام واحد.</li>
+      <li>ضمان صناديق التجميع: عام واحد.</li>
+      <li>ضمان محولات الـ High Voltage: خمس أعوام.</li>
+      <li>ضمان بطاريات الـ High Voltage: عشر أعوام.</li>
+    </ul>
+  </div>`;
+}
+
 function renderStickyTotalBar(finalTotal){
   return `<div class="sticky-total-bar no-print" onclick="document.querySelector('.totalbar')?.scrollIntoView({behavior:'smooth',block:'center'})">
     <div><div class="stb-lbl">السعر النهائي شامل الضريبة</div><div class="stb-val">${fmt(finalTotal)} ﷼</div></div>
@@ -1733,6 +1756,7 @@ function renderQuoteBomAndTotal(q, introText){
     <div class="legal-note" style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
       الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${new Date().toLocaleDateString('en-GB')}).
     </div>
+    ${renderWarrantyNote()}
     <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
       <b style="color:var(--ink)">للتواصل</b><br>info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
       <span class="num">966561274344+</span>
@@ -2900,6 +2924,7 @@ function renderCartQuoteDocument(){
         <div class="legal-note" style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
           الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${new Date().toLocaleDateString('en-GB')}).
         </div>
+        ${renderWarrantyNote()}
         <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
           <b style="color:var(--ink)">للتواصل</b><br>
           info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>

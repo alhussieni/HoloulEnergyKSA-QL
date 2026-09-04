@@ -297,6 +297,10 @@ body.printing-cert #certPrintArea{display:block!important;}
 .invSheet2 .totalsTable2 .grandRow td{background:var(--teal-dark,#0B6E5C);color:#fff;font-weight:800;font-size:13px;}
 .invSheet2 .wordsLine{font-size:11.5px;margin:4px 0;text-align:center;}
 .invSheet2 .termsBlock{font-size:10px;color:var(--muted);margin-top:12px;line-height:1.7;text-align:center;}
+.invSheet2 .warrantyBlock{font-size:10px;color:#1E4E7A;background:#EFF5FB;border:1px solid #C7DCF0;border-radius:9px;margin-top:10px;padding:9px 12px;line-height:1.8;}
+.invSheet2 .warrantyBlock .wTitle{font-weight:700;margin-bottom:4px;}
+.invSheet2 .warrantyBlock ul{margin:0;padding-inline-start:16px;}
+.invSheet2 .warrantyBlock li{margin:1px 0;}
 .invSheet2 .sigRow{display:flex;justify-content:space-between;margin-top:26px;font-size:11.5px;}
 .invSheet2 .footRow2{display:flex;justify-content:space-between;align-items:center;margin-top:18px;border-top:1px solid var(--line);padding-top:10px;}
 .invSheet2 .legal2{font-size:10px;color:var(--muted);}
@@ -3362,6 +3366,17 @@ function printInvoice(inv){
       <div class="termsBlock">
         الشروط والملاحظات:<br>
         ${inv.notes ? inv.notes : 'لا يوجد ملاحظات إضافية على هذه الفاتورة.'}
+      </div>
+
+      <div class="warrantyBlock">
+        <div class="wTitle">🛡️ ملخص الضمانات</div>
+        <ul>
+          <li>ضمان الألواح الشمسية: 30 عام على إنتاجية الطاقة، و12 عام ضد عيوب الصناعة.</li>
+          <li>ضمان المحولات (Inverters): عام واحد.</li>
+          <li>ضمان صناديق التجميع: عام واحد.</li>
+          <li>ضمان محولات الـ High Voltage: خمس أعوام.</li>
+          <li>ضمان بطاريات الـ High Voltage: عشر أعوام.</li>
+        </ul>
       </div>
 
       <div class="sigRow">
