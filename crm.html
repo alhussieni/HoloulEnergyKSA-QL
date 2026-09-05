@@ -931,7 +931,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
   `;
   m.querySelector('[data-close]').addEventListener('click', closeCustomer);
   m.querySelector('#custInvoiceBtn').addEventListener('click', ()=>{
-    openInvoiceModal({ name: c.name, phone: c.phone, city: c.city });
+    openInvoiceModal({ customer: c });
   });
   m.querySelector('#f_ctype').addEventListener('change', (e)=>{
     m.querySelector('#legalFieldsGroup').style.display = e.target.value === 'individual' ? 'none' : '';
@@ -2808,6 +2808,8 @@ const PAY_METHOD_LABELS = {cash:'نقدي', card:'شبكة / بطاقة', transf
 const SELLER = { name: 'حلول الطاقة المتجددة والمقاولات', nameEn: 'HoloulEnergy', cr: '7037810988', vat: '311386341200003', nationalAddress: 'RDMC8001', phone: '966561274344+' };
 
 let CATALOG_PRODUCTS = null, CATALOG_PACKAGES = null;
+let invSelectedCustomer = null; // {id, name, phone, city, vat_number, commercial_registration} — must be an existing, registered customer
+let invSelectedQuotation = null; // {id, quotation_number, scope_type, items} — optional link to an existing quotation
 async function ensureCatalogLoaded(){
   if(CATALOG_PRODUCTS && CATALOG_PACKAGES) return;
   const d = await crmApi('crm-list-catalog', {});
@@ -2910,53 +2912,73 @@ function invPackageRowHtml(pkg){
 function openInvoiceModal(prefill){
   prefill = prefill || {};
   invoiceOverlay.classList.add('show');
+  invSelectedCustomer = prefill.customer || null;
+  invSelectedQuotation = null;
+  currentQuotationItemsTotal = 0;
+
   document.getElementById('invoiceModal').innerHTML = `
     <div class="mhead"><h2>🧾 فاتورة ضريبية جديدة</h2><button class="closeX" data-close-inv>×</button></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div><label>اسم العميل</label><input type="text" id="invCustName" value="${(prefill.name||'').replace(/"/g,'&quot;')}"></div>
-      <div><label>رقم الجوال</label><input type="text" id="invCustPhone" value="${prefill.phone||''}" placeholder="05xxxxxxxx"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div><label>المدينة</label><input type="text" id="invCustCity" value="${prefill.city||''}"></div>
-      <div><label>العنوان الوطني المختصر (اختياري)</label><input type="text" id="invCustAddress" placeholder="مثال: وادي الدواسر - OGAB3098"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div><label>طريقة السداد</label>
-        <select id="invPayMethod">
-          <option value="cash">نقدي</option>
-          <option value="card">شبكة / بطاقة</option>
-          <option value="transfer">تحويل بنكي</option>
-          <option value="other">أخرى</option>
-        </select>
+
+    <label>العميل <span style="color:var(--muted);font-weight:400;">(لازم يكون مسجّل مسبقًا في شاشة العملاء)</span></label>
+    <div id="invCustPickerWrap">
+      <div class="itPicker">
+        <input type="text" id="invCustSearch" placeholder="دور بالاسم أو رقم الجوال..." autocomplete="off">
+        <div class="itSuggest hidden" id="invCustSuggest"></div>
       </div>
-      <div></div>
-    </div>
-    <label class="b2bToggle"><input type="checkbox" id="invB2bToggle"> العميل منشأة/شركة (يحتاج رقم ضريبي أو سجل تجاري — فاتورة ضريبية غير مبسطة)</label>
-    <div id="invB2bFields" class="hidden" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-      <div><label>الرقم الضريبي (VAT)</label><input type="text" id="invCustVat"></div>
-      <div><label>السجل التجاري (CR)</label><input type="text" id="invCustCr"></div>
-    </div>
-    <div id="invCustLinkNote"></div>
-
-    <label style="margin-top:14px;display:block;">الأصناف</label>
-    <div class="itemsRowsWrap">
-      <div class="itemRow head"><div>الصنف</div><div>الكمية</div><div>سعر الوحدة</div><div>خصم</div><div>الإجمالي</div><div></div></div>
-      <div id="invItemsRows"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:8px;">
-      <button type="button" class="btn ghost small" id="invAddProductBtn">+ إضافة منتج</button>
-      <button type="button" class="btn ghost small" id="invAddPackageBtn">📦 إضافة باكدج</button>
+      <div id="invCustSelectedBox"></div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
-      <div><label>خصم إجمالي (اختياري)</label><input type="number" id="invDiscountTotal" min="0" step="0.01" value="0"></div>
-      <div><label>ملاحظات</label><input type="text" id="invNotes"></div>
-    </div>
+    <div id="invCustDetailsSection" class="hidden">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
+        <div><label>المدينة</label><input type="text" id="invCustCity"></div>
+        <div><label>العنوان الوطني المختصر (اختياري)</label><input type="text" id="invCustAddress" placeholder="مثال: وادي الدواسر - OGAB3098"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><label>طريقة السداد</label>
+          <select id="invPayMethod">
+            <option value="cash">نقدي</option>
+            <option value="card">شبكة / بطاقة</option>
+            <option value="transfer">تحويل بنكي</option>
+            <option value="other">أخرى</option>
+          </select>
+        </div>
+        <div></div>
+      </div>
+      <label class="b2bToggle"><input type="checkbox" id="invB2bToggle"> العميل منشأة/شركة (يحتاج رقم ضريبي أو سجل تجاري — فاتورة ضريبية غير مبسطة)</label>
+      <div id="invB2bFields" class="hidden" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><label>الرقم الضريبي (VAT)</label><input type="text" id="invCustVat"></div>
+        <div><label>السجل التجاري (CR)</label><input type="text" id="invCustCr"></div>
+      </div>
 
-    <div class="invTotals">
-      <div class="row">الإجمالي قبل الضريبة: <b id="invSubtotalOut">0 ﷼</b></div>
-      <div class="row">ضريبة القيمة المضافة (15%): <b id="invVatOut">0 ﷼</b></div>
-      <div class="row grand">الإجمالي شامل الضريبة: <span id="invTotalOut">0 ﷼</span></div>
+      <div id="invQuotationSection" style="margin-top:12px;">
+        <label>ربط بعرض سعر سابق للعميل (اختياري)</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="button" class="btn ghost small" id="invPickQuotationBtn">📄 اختار عرض سعر</button>
+          <span id="invQuotationLinkNote" style="font-size:12px;color:var(--muted);"></span>
+        </div>
+      </div>
+
+      <label style="margin-top:14px;display:block;">الأصناف</label>
+      <div id="invQuotationItemsPreview"></div>
+      <div class="itemsRowsWrap">
+        <div class="itemRow head"><div>الصنف</div><div>الكمية</div><div>سعر الوحدة</div><div>خصم</div><div>الإجمالي</div><div></div></div>
+        <div id="invItemsRows"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button type="button" class="btn ghost small" id="invAddProductBtn">+ إضافة منتج</button>
+        <button type="button" class="btn ghost small" id="invAddPackageBtn">📦 إضافة باكدج</button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
+        <div><label>خصم إجمالي (اختياري)</label><input type="number" id="invDiscountTotal" min="0" step="0.01" value="0"></div>
+        <div><label>ملاحظات</label><input type="text" id="invNotes"></div>
+      </div>
+
+      <div class="invTotals">
+        <div class="row">الإجمالي قبل الضريبة: <b id="invSubtotalOut">0 ﷼</b></div>
+        <div class="row">ضريبة القيمة المضافة (15%): <b id="invVatOut">0 ﷼</b></div>
+        <div class="row grand">الإجمالي شامل الضريبة: <span id="invTotalOut">0 ﷼</span></div>
+      </div>
     </div>
 
     <div class="errMsg" id="invErr"></div>
@@ -2967,9 +2989,108 @@ function openInvoiceModal(prefill){
   `;
 
   const rowsWrap = document.getElementById('invItemsRows');
-  if(!prefill.skipFirstRow){
-    // start empty — items must be picked explicitly from the catalog
+
+  function renderSelectedCustomerBox(){
+    const box = document.getElementById('invCustSelectedBox');
+    const detailsSection = document.getElementById('invCustDetailsSection');
+    const searchRow = document.querySelector('#invCustPickerWrap .itPicker');
+    if(!invSelectedCustomer){
+      box.innerHTML = '';
+      detailsSection.classList.add('hidden');
+      if(searchRow) searchRow.classList.remove('hidden');
+      return;
+    }
+    if(searchRow) searchRow.classList.add('hidden');
+    box.innerHTML = `<div class="custLinkNote">✅ العميل: <b>${invSelectedCustomer.name||'بدون اسم'}</b> — <span class="num">${invSelectedCustomer.phone||''}</span>
+      <button type="button" class="btn ghost small" id="invChangeCustBtn" style="padding:3px 8px;margin-inline-start:8px;">تغيير</button></div>`;
+    detailsSection.classList.remove('hidden');
+    document.getElementById('invCustCity').value = invSelectedCustomer.city || '';
+    document.getElementById('invCustVat').value = invSelectedCustomer.vat_number || '';
+    document.getElementById('invCustCr').value = invSelectedCustomer.commercial_registration || '';
+    if(invSelectedCustomer.vat_number || invSelectedCustomer.commercial_registration){
+      document.getElementById('invB2bToggle').checked = true;
+      document.getElementById('invB2bFields').classList.remove('hidden');
+    }
+    document.getElementById('invChangeCustBtn').addEventListener('click', ()=>{
+      invSelectedCustomer = null; invSelectedQuotation = null;
+      currentQuotationItemsTotal = 0;
+      document.getElementById('invCustSearch').value = '';
+      document.getElementById('invQuotationLinkNote').textContent = '';
+      document.getElementById('invQuotationItemsPreview').innerHTML = '';
+      renderSelectedCustomerBox();
+      recalcInvoiceTotals();
+    });
   }
+  renderSelectedCustomerBox();
+
+  const custSearchInp = document.getElementById('invCustSearch');
+  const custSuggest = document.getElementById('invCustSuggest');
+  let custSearchTimer;
+  custSearchInp.addEventListener('input', ()=>{
+    clearTimeout(custSearchTimer);
+    const term = custSearchInp.value.trim();
+    if(term.length < 2){ custSuggest.classList.add('hidden'); custSuggest.innerHTML=''; return; }
+    custSearchTimer = setTimeout(async ()=>{
+      try{
+        const d = await crmApi('admin-crm-list-customers', {search: term});
+        const list = (d.customers||[]).slice(0,20);
+        if(!list.length){
+          custSuggest.innerHTML = '<div class="itSuggestItem muted">مفيش عميل مسجّل بهذا الاسم/الرقم — سجّله أولًا من شاشة العملاء</div>';
+        } else {
+          custSuggest.innerHTML = list.map(c=>`<div class="itSuggestItem" data-id="${c.id}">
+            <b>${(c.name||'بدون اسم').replace(/</g,'&lt;')}</b><span class="num">${c.phone||''}</span>
+          </div>`).join('');
+        }
+        custSuggest.classList.remove('hidden');
+      }catch(err){ /* silent */ }
+    }, 250);
+  });
+  custSuggest.addEventListener('click', (e)=>{
+    const item = e.target.closest('.itSuggestItem');
+    if(!item || !item.dataset.id) return;
+    crmApi('admin-crm-list-customers', {search: custSearchInp.value.trim()}).then(d=>{
+      const c = (d.customers||[]).find(x=>String(x.id)===item.dataset.id);
+      if(c){ invSelectedCustomer = c; renderSelectedCustomerBox(); }
+    });
+    custSuggest.classList.add('hidden');
+  });
+  document.addEventListener('click', (e)=>{ if(!document.getElementById('invCustPickerWrap')?.contains(e.target)) custSuggest.classList.add('hidden'); });
+
+  document.getElementById('invPickQuotationBtn')?.addEventListener('click', async ()=>{
+    if(!invSelectedCustomer){ toast('اختار عميل الأول'); return; }
+    try{
+      const d = await crmApi('crm-list-customer-quotations', {customerId: invSelectedCustomer.id});
+      const list = d.quotations || [];
+      if(!list.length){ toast('العميل ده مفيش له أي عروض أسعار محفوظة'); return; }
+      const scopeLabel = (v)=> (SETTINGS.idScopeTypes||[]).find(s=>s.value===v)?.label || v || 'غير محدد';
+      openGenericPicker('📄 اختار عرض السعر', list.map(q=>({
+        id: q.id,
+        title: `${q.quotation_number} v${q.version||1}`,
+        subtitle: `${scopeLabel(q.scope_type)} · ${fmtMoney(q.total)} ﷼`,
+      })), (id)=>{
+        const q = list.find(x=>String(x.id)===String(id));
+        if(!q) return;
+        invSelectedQuotation = q;
+        currentQuotationItemsTotal = (q.items||[]).reduce((s,it)=> s + Math.max(0, (Number(it.quantity)||0)*(Number(it.unitPrice)||0) - (Number(it.discount)||0)), 0);
+        document.getElementById('invQuotationLinkNote').innerHTML = `🔗 مربوطة بـ <b>${q.quotation_number}</b> (${scopeLabel(q.scope_type)}) — أصنافه هتتضاف تلقائيًا للفاتورة
+          <button type="button" class="btn ghost small" id="invUnlinkQuotationBtn" style="padding:3px 8px;margin-inline-start:8px;">إلغاء الربط</button>`;
+        document.getElementById('invQuotationItemsPreview').innerHTML = `
+          <div style="background:var(--sand);border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px;font-size:12.5px;">
+            <b>أصناف من عرض السعر ${q.quotation_number}:</b>
+            <ul style="margin:6px 0 0;padding-inline-start:18px;">
+              ${(q.items||[]).map(it=>`<li>${(it.description||'بند').replace(/</g,'&lt;')} — ${it.quantity||0} × ${fmtMoney(it.unitPrice||0)} ﷼</li>`).join('')}
+            </ul>
+          </div>`;
+        document.getElementById('invUnlinkQuotationBtn').addEventListener('click', ()=>{
+          invSelectedQuotation = null; currentQuotationItemsTotal = 0;
+          document.getElementById('invQuotationLinkNote').textContent = '';
+          document.getElementById('invQuotationItemsPreview').innerHTML = '';
+          recalcInvoiceTotals();
+        });
+        recalcInvoiceTotals();
+      });
+    }catch(err){ toast('تعذر تحميل عروض الأسعار: '+err.message); }
+  });
 
   document.querySelector('[data-close-inv]').addEventListener('click', closeInvoiceModal);
   document.getElementById('invCancelBtn').addEventListener('click', closeInvoiceModal);
@@ -3017,24 +3138,35 @@ function openInvoiceModal(prefill){
     }
   });
 
-  let lookupTimer;
-  document.getElementById('invCustPhone').addEventListener('blur', async (e)=>{
-    const phone = e.target.value.trim();
-    const note = document.getElementById('invCustLinkNote');
-    note.innerHTML = '';
-    if(phone.length < 6) return;
-    try{
-      const d = await crmApi('admin-crm-list-customers', {search: phone});
-      const digits = phone.replace(/\D/g,'').slice(-9);
-      const match = (d.customers||[]).find(c => (c.phone||'').replace(/\D/g,'').slice(-9) === digits);
-      if(match){
-        note.innerHTML = `<div class="custLinkNote">🔗 اتربط بعميل موجود: ${match.name||'بدون اسم'} — هيتحدث ملفه تلقائيًا</div>`;
-        if(match.name && !document.getElementById('invCustName').value) document.getElementById('invCustName').value = match.name;
-      }
-    }catch(err){ /* silent lookup failure — not blocking */ }
-  });
-
   recalcInvoiceTotals();
+}
+
+// Small reusable single-column picker modal (title + subtitle per row).
+function openGenericPicker(title, options, onPick){
+  const modalId = 'genericPickerOverlay';
+  let ov = document.getElementById(modalId);
+  if(!ov){
+    ov = document.createElement('div');
+    ov.className = 'overlay';
+    ov.id = modalId;
+    ov.innerHTML = `<div class="modal" style="max-width:520px;"><div id="genericPickerInner"></div></div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', (e)=>{ if(e.target===ov) ov.classList.remove('show'); });
+  }
+  document.getElementById('genericPickerInner').innerHTML = `
+    <div class="mhead"><h2>${title}</h2><button class="closeX" id="genericPickerClose">×</button></div>
+    <div id="genericPickerList" style="max-height:340px;overflow:auto;display:flex;flex-direction:column;gap:8px;"></div>
+  `;
+  document.getElementById('genericPickerClose').addEventListener('click', ()=> ov.classList.remove('show'));
+  document.getElementById('genericPickerList').innerHTML = options.map(o=>`
+    <div class="pkgPickItem" data-id="${o.id}" style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;">
+      <div style="display:flex;justify-content:space-between;"><b>${o.title}</b></div>
+      ${o.subtitle?`<div style="font-size:11.5px;color:var(--muted);margin-top:4px;">${o.subtitle}</div>`:''}
+    </div>`).join('') || '<div class="loadingNote">مفيش خيارات متاحة</div>';
+  document.querySelectorAll('#genericPickerList .pkgPickItem').forEach(el=>{
+    el.addEventListener('click', ()=>{ ov.classList.remove('show'); onPick(el.dataset.id); });
+  });
+  ov.classList.add('show');
 }
 
 function wireLastProductRow(){
@@ -3120,8 +3252,9 @@ function openPackagePicker(onPick){
   ov.classList.add('show');
 }
 
+let currentQuotationItemsTotal = 0; // subtotal contributed by a linked quotation's items (server re-derives these; this is preview-only)
 function recalcInvoiceTotals(){
-  let subtotal = 0;
+  let subtotal = currentQuotationItemsTotal;
   document.querySelectorAll('#invItemsRows .itemRow').forEach(row=>{
     const qty = Number(row.querySelector('.itQty').value)||0;
     const price = Number(row.querySelector('.itPrice').value)||0;
@@ -3167,19 +3300,18 @@ document.addEventListener('click', async (e)=>{
         items.push({type:'package', code, name, qty:1, unitPrice, discount:0, components});
       }
     });
-    const customerPhone = document.getElementById('invCustPhone').value.trim();
-    if(!customerPhone){ errEl.textContent = 'رقم جوال العميل مطلوب'; return; }
-    if(!items.length){ errEl.textContent = 'لازم صنف واحد على الأقل من المنتجات أو الباكدجات'; return; }
+    if(!invSelectedCustomer){ errEl.textContent = 'اختار عميل مسجّل مسبقًا — الفاتورة مينفعش تتصدر لعميل غير مسجّل'; return; }
+    if(!items.length && !invSelectedQuotation){ errEl.textContent = 'لازم صنف واحد على الأقل من المنتجات/الباكدجات، أو اربط الفاتورة بعرض سعر للعميل'; return; }
     if(invalid){ errEl.textContent = 'فيه صنف ناقص بيانات (لازم تختاره من الكتالوج بسعر صحيح)'; return; }
 
     const payload = {
-      customerName: document.getElementById('invCustName').value.trim(),
-      customerPhone,
+      customerId: invSelectedCustomer.id,
       customerCity: document.getElementById('invCustCity').value.trim(),
       customerAddress: document.getElementById('invCustAddress').value.trim(),
       customerVatNumber: document.getElementById('invB2bToggle').checked ? document.getElementById('invCustVat').value.trim() : '',
       customerCrNumber: document.getElementById('invB2bToggle').checked ? document.getElementById('invCustCr').value.trim() : '',
       items,
+      quotationId: invSelectedQuotation ? invSelectedQuotation.id : null,
       discountTotal: Number(document.getElementById('invDiscountTotal').value)||0,
       paymentMethod: document.getElementById('invPayMethod').value,
       notes: document.getElementById('invNotes').value.trim(),
@@ -3389,7 +3521,16 @@ function printInvoice(inv){
         <div class="legal2">
           للتواصل: info@HoloulEnergy.com · Sales@HoloulEnergy.com
         </div>
-        <canvas id="invQrCanvas"></canvas>
+        <div style="display:flex;gap:14px;align-items:flex-end;">
+          <div style="text-align:center;">
+            <canvas id="invNumberQrCanvas"></canvas>
+            <div style="font-size:8.5px;color:var(--muted);margin-top:2px;">تحقق من رقم الفاتورة</div>
+          </div>
+          <div style="text-align:center;">
+            <canvas id="invQrCanvas"></canvas>
+            <div style="font-size:8.5px;color:var(--muted);margin-top:2px;">فاتورة ضريبية (ZATCA)</div>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -3398,11 +3539,22 @@ function printInvoice(inv){
     window.print();
     setTimeout(()=> document.body.classList.remove('printing-invoice'), 300);
   };
-  if(window.QRCode && inv.qr_base64){
-    QRCode.toCanvas(document.getElementById('invQrCanvas'), inv.qr_base64, {width:88, margin:0}, finishPrint);
-  } else {
-    finishPrint();
-  }
+  // Two separate QR codes:
+  //  - invNumberQrCanvas: plain text = the invoice number itself, so a staff
+  //    member can scan it with any phone camera and eyeball-match it against
+  //    the printed number — a quick tamper/mismatch check independent of ZATCA.
+  //  - invQrCanvas: the official ZATCA simplified-tax-invoice TLV payload.
+  const drawInvoiceNumberQr = (cb) => {
+    if(window.QRCode){
+      QRCode.toCanvas(document.getElementById('invNumberQrCanvas'), String(inv.invoice_number||''), {width:74, margin:0}, cb);
+    } else cb();
+  };
+  const drawZatcaQr = (cb) => {
+    if(window.QRCode && inv.qr_base64){
+      QRCode.toCanvas(document.getElementById('invQrCanvas'), inv.qr_base64, {width:74, margin:0}, cb);
+    } else cb();
+  };
+  drawInvoiceNumberQr(()=> drawZatcaQr(finishPrint));
 }
 
 </script>
