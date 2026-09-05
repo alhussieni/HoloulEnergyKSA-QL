@@ -760,21 +760,15 @@ let cachedQuote = null;       // public quote (sell prices only)
 let cachedFeas = null;        // general feasibility-study assumptions (non-sensitive)
 let cachedBomItemImages = {}; // admin-managed fallback images for generic BOM line items (by item key)
 let cachedPanelOptions = [];  // [{brand,power}] — never priceW
-let cachedInverterBrandOptions = []; // [{idx,brand}] — never list/cost/discount
 let cachedBatteryVoltageOptions = []; // [12.8, 25.6, 51.2, ...] distinct voltages in the battery catalog
 
-// Admin-configured defaults (D.defaultPanelKey "brand|power", D.defaultInverterBrand)
+// Admin-configured defaults (D.defaultPanelKey "brand|power")
 // applied once per calculator on first successful load, so a rep's manual
 // re-selection afterwards is never silently overridden.
 let mainDefaultsApplied = false, offgridDefaultsApplied = false, ongridDefaultsApplied = false;
 function resolvePanelIdxByKey(options, key){
   if(!key || !options || !options.length) return null;
   const m = options.find(p => `${p.brand}|${p.power}` === key);
-  return m ? m.idx : null;
-}
-function resolveInverterIdxByBrand(options, brand){
-  if(!brand || !options || !options.length) return null;
-  const m = options.find(b => b.brand === brand);
   return m ? m.idx : null;
 }
 let cachedProductCatalog = null; // fetched lazily when the products tab opens
@@ -862,7 +856,6 @@ let cachedOngridQuote = null, ongridEngineError = null, ongridLoading = false, a
 function buildEngineInput(){
   return {
     panelIdx: state.panelIdx,
-    inverterBrandIdx: state.inverterBrandIdx,
     hp: state.hp,
     structureType: 'FIXED',
     discountTierIdx: discountUnlocked ? state.discountOverrideIdx : null,
@@ -889,7 +882,6 @@ async function refreshQuote(){
     cachedQuote = data.quote;
     cachedFeas = data.feas;
     cachedPanelOptions = data.panelOptions;
-    cachedInverterBrandOptions = data.inverterBrandOptions || [];
     cachedBomItemImages = data.bomItemImages || cachedBomItemImages;
     adminFinancials = adminData ? adminData.quote : null;
     let needsRetry = false;
@@ -897,14 +889,9 @@ async function refreshQuote(){
       mainDefaultsApplied = true;
       const defPanelIdx = resolvePanelIdxByKey(cachedPanelOptions, data.defaultPanelKey);
       if(defPanelIdx !== null){ state.panelIdx = defPanelIdx; needsRetry = true; }
-      const defInvIdx = resolveInverterIdxByBrand(cachedInverterBrandOptions, data.defaultInverterBrand);
-      if(defInvIdx !== null){ state.inverterBrandIdx = defInvIdx; needsRetry = true; }
     }
     if(!cachedPanelOptions.some(p=>p.idx===state.panelIdx) && cachedPanelOptions.length){
       state.panelIdx = cachedPanelOptions[0].idx; needsRetry = true;
-    }
-    if(!cachedInverterBrandOptions.some(b=>b.idx===state.inverterBrandIdx) && cachedInverterBrandOptions.length){
-      state.inverterBrandIdx = cachedInverterBrandOptions[0].idx; needsRetry = true;
     }
     if(needsRetry){
       const retryData = await callEngine('quote', { input: buildEngineInput() });
@@ -1012,9 +999,6 @@ function logLead(lead){
    3) ADMIN AUTH — password is verified server-side, never in this file
    ======================================================================= */
 function normalizeAdminConfig(cfg){
-  if(!Array.isArray(cfg.inverterBrands) || !cfg.inverterBrands.length){
-    cfg.inverterBrands = [{ brand:'VEICHI', tiers: cfg.inverters || [] }];
-  }
   if(!Array.isArray(cfg.productCatalog)) cfg.productCatalog = [];
   // Defensive fallback only — the real defaults live in
   // 0013_offgrid_ongrid_ready_systems.sql. This just stops the admin panel
@@ -1089,7 +1073,6 @@ function computeFeasibility(capex, calcKW, opt){
 const state = {
   hp: 500,
   panelIdx: 0,
-  inverterBrandIdx: 0,
   structureType: 'FIXED',
   panelsPerStringAdjust: 0,
   stringsAdjust: 0,
@@ -1139,7 +1122,7 @@ const fmt2 = n => n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFra
 const LEADS_KEY = 'holoul_leads_v1'; // local convenience cache only, not the source of truth anymore
 function saveLead(q){
   const snapshot = {
-    hp: state.hp, panelIdx: state.panelIdx, inverterBrandIdx: state.inverterBrandIdx,
+    hp: state.hp, panelIdx: state.panelIdx,
     structureType: state.structureType, toggles: {...state.toggles}, specialDiscountAmt: state.specialDiscountAmt,
     discountOverrideIdx: state.discountOverrideIdx
   };
@@ -1218,7 +1201,6 @@ function loadPrevLead(lead){
   if(!s){ alert('هذا العرض القديم لا يحتوي على بيانات كافية لإعادة استخدامه تلقائيًا.'); return; }
   state.hp = s.hp;
   state.panelIdx = s.panelIdx;
-  state.inverterBrandIdx = s.inverterBrandIdx ?? 0;
   state.structureType = s.structureType || 'FIXED';
   state.toggles = {...s.toggles};
   state.specialDiscountAmt = s.specialDiscountAmt || 0;
@@ -1470,12 +1452,6 @@ function renderIrrigationCalc(){
         <select id="in_panel">
           ${cachedPanelOptions.map(p=>`<option value="${p.idx}" ${p.idx==state.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
         </select>
-
-        ${cachedInverterBrandOptions.length>1 ? `
-        <label>نوع الانفرتر</label>
-        <select id="in_invbrand">
-          ${cachedInverterBrandOptions.map(b=>`<option value="${b.idx}" ${b.idx==state.inverterBrandIdx?'selected':''}>${b.brand}</option>`).join('')}
-        </select>` : ''}
 
         <details class="adv">
           <summary>إعدادات متقدمة</summary>
@@ -3475,8 +3451,7 @@ function renderAdmin(){
   <div class="stats" style="margin-bottom:16px">
     <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.productCatalog.length}</div><div class="l">فئات المنتجات</div></div>
     <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.productCatalog.reduce((s,c)=>s+(c.rows?.length||0),0)}</div><div class="l">إجمالي المنتجات</div></div>
-    <div class="stat stat-click" data-admsec-jump="pricing"><div class="v">${adminConfig.panels.length}</div><div class="l">أنواع الألواح</div></div>
-    <div class="stat stat-click" data-admsec-jump="pricing"><div class="v">${adminConfig.inverterBrands.length}</div><div class="l">أنواع الانفرتر</div></div>
+    <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.panels.length}</div><div class="l">أنواع الألواح</div></div>
     <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.readyOffgridSystems.length}</div><div class="l">منظومات جاهزة</div></div>
     <div class="stat stat-click" data-admsec-jump="reps"><div class="v">${adminReps.filter(r=>r.active).length}/${adminReps.length}</div><div class="l">مناديب نشطون</div></div>
     <div class="stat stat-click" data-admsec-jump="leads"><div class="v" id="ovLeadsCount">${overviewStats ? overviewStats.totalCustomers : '…'}</div><div class="l">عملاء مسجّلون</div></div>
@@ -3571,76 +3546,10 @@ ${(function(){
 <section class="admsec ${currentAdminSection==='pricing'?'active':''}" data-admsec="pricing">
 <div class="admsub-shell">
   <aside class="admsub-sidebar no-print">
-    <button class="admsub-nav-btn ${currentAdminSubSection.pricing==='panels'?'active':''}" data-admsubparent="pricing" data-admsub="panels" type="button"><span class="ic">☀️</span><span class="lbl">الألواح الشمسية</span></button>
-    <button class="admsub-nav-btn ${currentAdminSubSection.pricing==='inverters'?'active':''}" data-admsubparent="pricing" data-admsub="inverters" type="button"><span class="ic">🔌</span><span class="lbl">أنواع الانفرتر</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.pricing==='otheritems'?'active':''}" data-admsubparent="pricing" data-admsub="otheritems" type="button"><span class="ic">🧾</span><span class="lbl">أسعار البنود الأخرى</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.pricing==='discounts'?'active':''}" data-admsubparent="pricing" data-admsub="discounts" type="button"><span class="ic">🏷️</span><span class="lbl">فئات الخصم</span></button>
   </aside>
   <div class="admsub-main">
-  <div class="admsubsec ${currentAdminSubSection.pricing==='panels'?'active':''}" data-admsub="panels">
-  <div class="card">
-    <h3>الألواح الشمسية</h3>
-    <table class="admtable">
-      <thead><tr><th>افتراضي</th><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W (بدون ضريبة)</th><th>ظاهر للعميل</th><th></th></tr></thead>
-      <tbody id="adm_panels">
-        ${adminConfig.panels.map((p,i)=>`
-          <tr>
-            <td style="text-align:center"><input type="radio" name="defaultPanel" data-defpanel="${i}" ${(`${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||''))?'checked':''}></td>
-            <td><input data-p="${i}" data-f="brand" value="${p.brand}"></td>
-            <td><input data-p="${i}" data-f="power" type="number" value="${p.power}"></td>
-            <td><input data-p="${i}" data-f="vimp" type="number" step="0.01" value="${p.vimp}"></td>
-            <td><input data-p="${i}" data-f="voc" type="number" step="0.01" value="${p.voc}"></td>
-            <td><input data-p="${i}" data-f="iimp" type="number" step="0.01" value="${p.iimp}"></td>
-            <td><input data-p="${i}" data-f="isc" type="number" step="0.01" value="${p.isc}"></td>
-            <td><input data-p="${i}" data-f="priceW" type="number" step="0.001" value="${p.priceW}"></td>
-            <td style="text-align:center"><input type="checkbox" data-pvis="${i}" ${p.visible!==false?'checked':''}></td>
-            <td class="op"><button class="btn danger small" data-delpanel="${i}">✕</button></td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-    <button class="btn ghost small" id="addPanel">+ إضافة لوح</button>
-    <div class="note" style="margin-top:8px">اللوح يظهر للعميل فقط لو كان "ظاهر للعميل" مفعّل ومعاه سعر أكبر من صفر. عطّل التكة لإخفاء لوح مؤقتًا بدون حذفه.<br>اختَر لوح "افتراضي" ليكون هو المُحدَّد تلقائيًا للعميل عند فتح أي حاسبة (حتى لو أُضيفت ألواح جديدة بعد كده).</div>
-  </div>
-  </div>
-
-  <div class="admsubsec ${currentAdminSubSection.pricing==='inverters'?'active':''}" data-admsub="inverters">
-  <div class="card">
-    <h3>أنواع الانفرتر</h3>
-    ${adminConfig.inverterBrands.map((brand,bi)=>`
-      <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
-          <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12.5px;color:var(--ink)">
-            <input type="radio" name="defaultInvBrand" data-definvbrand="${bi}" ${brand.brand===(adminConfig.defaultInverterBrand||'')?'checked':''}>
-            افتراضي
-          </label>
-          <input data-brand="${bi}" style="max-width:220px;font-weight:600" value="${brand.brand}" placeholder="اسم النوع/البراند">
-          ${adminConfig.inverterBrands.length>1 ? `<button class="btn danger small" data-delbrand="${bi}">🗑 حذف هذا النوع</button>` : ''}
-        </div>
-        <table class="admtable">
-          <thead><tr><th>KW</th><th>سعر البيع (Sell)</th><th>نسبة الخصم % (منها تُحسب التكلفة)</th><th>سعر التكلفة (محسوب تلقائيًا)</th><th>أقصى قدرة ألواح (KW)</th><th></th></tr></thead>
-          <tbody data-tierbody="${bi}">
-            ${brand.tiers.map((row,ti)=>{
-              const [kw,cost,list,maxSolarKw]=row;
-              const disc = list>0 ? ((1-cost/list)*100) : 0;
-              return `
-              <tr>
-                <td><input data-brand="${bi}" data-tier="${ti}" data-f="kw" type="number" value="${kw}"></td>
-                <td><input data-brand="${bi}" data-tier="${ti}" data-f="list" type="number" value="${list}"></td>
-                <td><input data-brand="${bi}" data-tier="${ti}" data-f="disc" type="number" step="0.1" value="${disc.toFixed(1)}"></td>
-                <td class="num" style="color:var(--muted)">${fmt(cost)}</td>
-                <td><input data-brand="${bi}" data-tier="${ti}" data-f="maxsolar" type="number" step="0.01" placeholder="غير معروف" value="${maxSolarKw!=null?maxSolarKw:''}"></td>
-                <td class="op"><button class="btn danger small" data-deltier="${bi}:${ti}">✕</button></td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-        <button class="btn ghost small" data-addtier="${bi}" style="margin-top:6px">+ إضافة قدرة KW</button>
-      </div>`).join('')}
-    <button class="btn ghost small" id="addInverterBrand">+ إضافة نوع انفرتر جديد</button>
-    <div class="note" style="margin-top:8px">التكلفة = سعر البيع × (1 - نسبة الخصم%). الافتراضي 10% (وهو نفس الخصم القياسي المستخدم في ملف الإكسل الأصلي). لو فيه أكتر من نوع، هيظهر للعميل اختيار "نوع الانفرتر" في الحاسبة.<br>"أقصى قدرة ألواح (KW)" — من الداتا شيت الرسمي للانفرتر (عمود Max solar power input). لو فاضية، الحاسبة مش هتنبّه لو الألواح زادت عن قدرة الانفرتر لهذا الموديل بالذات.<br>اختَر نوع انفرتر "افتراضي" ليكون هو المُحدَّد تلقائيًا للعميل عند فتح أي حاسبة (حتى لو أُضيفت أنواع جديدة بعد كده).</div>
-  </div>
-  </div>
-
   <div class="admsubsec ${currentAdminSubSection.pricing==='otheritems'?'active':''}" data-admsub="otheritems">
 
   <div class="card">
@@ -3657,7 +3566,7 @@ ${(function(){
       <div><label>هامش ربح الألواح <span style="color:var(--muted)">(﷼ ثابتة تُضاف فوق سعر الوات $/W)</span></label><input type="number" id="a_panelmargin" step="0.01" value="${adminConfig.panelMarginPerWatt||0}"></div>
       <div><label>هامش ربح الرياكتور <span style="color:var(--muted)">(% فوق سعر التكلفة)</span></label><input type="number" id="a_reactormargin" step="1" value="${adminConfig.reactorMarkupPct||0}"></div>
     </div>
-    <div class="note" style="margin-top:8px">هامش الانفرتر يُضبط لكل نوع/قدرة على حدة من تبويب <b>"أنواع الانفرتر"</b> المجاور (نسبة الخصم% لكل KW)، وليس رقمًا واحدًا هنا.</div>
+    <div class="note" style="margin-top:8px">هامش الانفرتر بقى محسوبًا تلقائيًا من صفحة "الخصومات" (خصم البيع لفئة "انفرتر مضخات VEICHI")، وليس رقمًا هنا.</div>
   </div>
 
   <div class="card">
@@ -3766,10 +3675,36 @@ ${(function(){
 <div class="admsub-shell">
   <aside class="admsub-sidebar no-print">
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='catalog'?'active':''}" data-admsubparent="products" data-admsub="catalog" type="button"><span class="ic">📋</span><span class="lbl">قائمة المنتجات</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.products==='panels'?'active':''}" data-admsubparent="products" data-admsub="panels" type="button"><span class="ic">☀️</span><span class="lbl">الألواح الشمسية</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='bomimages'?'active':''}" data-admsubparent="products" data-admsub="bomimages" type="button"><span class="ic">🖼️</span><span class="lbl">صور عناصر العرض</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='ready'?'active':''}" data-admsubparent="products" data-admsub="ready" type="button"><span class="ic">🧰</span><span class="lbl">منظومات جاهزة</span></button>
   </aside>
   <div class="admsub-main">
+  <div class="admsubsec ${currentAdminSubSection.products==='panels'?'active':''}" data-admsub="panels">
+  <div class="card">
+    <h3>الألواح الشمسية</h3>
+    <table class="admtable">
+      <thead><tr><th>افتراضي</th><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W (بدون ضريبة)</th><th>ظاهر للعميل</th><th></th></tr></thead>
+      <tbody id="adm_panels">
+        ${adminConfig.panels.map((p,i)=>`
+          <tr>
+            <td style="text-align:center"><input type="radio" name="defaultPanel" data-defpanel="${i}" ${(`${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||''))?'checked':''}></td>
+            <td><input data-p="${i}" data-f="brand" value="${p.brand}"></td>
+            <td><input data-p="${i}" data-f="power" type="number" value="${p.power}"></td>
+            <td><input data-p="${i}" data-f="vimp" type="number" step="0.01" value="${p.vimp}"></td>
+            <td><input data-p="${i}" data-f="voc" type="number" step="0.01" value="${p.voc}"></td>
+            <td><input data-p="${i}" data-f="iimp" type="number" step="0.01" value="${p.iimp}"></td>
+            <td><input data-p="${i}" data-f="isc" type="number" step="0.01" value="${p.isc}"></td>
+            <td><input data-p="${i}" data-f="priceW" type="number" step="0.001" value="${p.priceW}"></td>
+            <td style="text-align:center"><input type="checkbox" data-pvis="${i}" ${p.visible!==false?'checked':''}></td>
+            <td class="op"><button class="btn danger small" data-delpanel="${i}">✕</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <button class="btn ghost small" id="addPanel">+ إضافة لوح</button>
+    <div class="note" style="margin-top:8px">اللوح يظهر للعميل فقط لو كان "ظاهر للعميل" مفعّل ومعاه سعر أكبر من صفر. عطّل التكة لإخفاء لوح مؤقتًا بدون حذفه.<br>اختَر لوح "افتراضي" ليكون هو المُحدَّد تلقائيًا للعميل عند فتح أي حاسبة (حتى لو أُضيفت ألواح جديدة بعد كده).</div>
+  </div>
+  </div>
   <div class="admsubsec ${currentAdminSubSection.products==='catalog'?'active':''}" data-admsub="catalog">
   <div class="card no-print">
     <h3>قائمة المنتجات</h3>
@@ -3808,14 +3743,7 @@ ${(function(){
         </div>
       </div>`).join('')}
     <button class="btn ghost small" id="addProductCategory">+ إضافة فئة منتجات جديدة</button>
-    <div class="note" style="margin-top:8px">دي أسعار بيع مرجعية بدون خصم (منفصلة تمامًا عن أسعار محرك التسعير الداخلي للمحطات). هتظهر للمناديب في تبويب "قائمة المنتجات".</div>
-    <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
-      <label style="margin:0">زيادة كل الأسعار بنسبة</label>
-      <input type="number" id="bulkPricePct" value="5" step="0.1" style="width:80px">
-      <span>%</span>
-      <button class="btn ghost small" id="bulkPriceApply">تطبيق على كل المنتجات</button>
-    </div>
-    <div class="note" style="margin-top:6px">بيطبّق على أي عمود اسمه فيه "السعر" في كل الفئات. النتيجة بتتحدث في الجدول فورًا — راجعها واضغط "💾 حفظ التعديلات" تحت لتثبيتها.</div>
+    <div class="note" style="margin-top:8px">دي أسعار بيع مرجعية بدون خصم (منفصلة تمامًا عن أسعار محرك التسعير الداخلي للمحطات). هتظهر للمناديب في تبويب "قائمة المنتجات". أي خصم أو زيادة على هذه الأسعار يتم تسجيله من صفحة "الخصومات" فقط.</div>
     ${(adminConfig.productCatalog||[]).some(c=>c.category.includes('إكسسوارات')) ? `
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
       <button class="btn ghost small" id="splitAccessoriesBtn">🔀 تقسيم فئة "إكسسوارات VEICHI" لفئات منفصلة (ريأكتور / صناديق تجميع / كابلات ووصلات / قواطع وفيوزات)</button>
@@ -3849,6 +3777,8 @@ ${(function(){
     </label>
     <label>الماركة <span style="color:var(--muted);font-weight:400">(تُستخدم في ربط المنتج بصفحة الخصومات)</span></label>
     <input type="text" id="pde_brand" placeholder="مثال: VEICHI">
+    <label>أقصى قدرة ألواح مسموحة (KW) <span style="color:var(--muted);font-weight:400">(اختياري، لموديلات الانفرتر فقط — من الداتا شيت الرسمي، عمود Max solar power input)</span></label>
+    <input type="number" id="pde_maxsolarkw" step="0.01" placeholder="اتركه فاضي لو غير معروف">
     <label>وصف المنتج</label>
     <textarea id="pde_description" rows="3"></textarea>
     <label>مواصفات إضافية <span style="color:var(--muted);font-weight:400">(سطر لكل مواصفة، بصيغة: الاسم: القيمة)</span></label>
@@ -4557,8 +4487,6 @@ function wire(){
     document.getElementById('hp_confirm').onclick = confirmHp;
     document.getElementById('in_hp').onkeydown = e=>{ if(e.key==='Enter') confirmHp(); };
     document.getElementById('in_panel').onchange = e=>{state.panelIdx=+e.target.value; scheduleRefresh();};
-    const invBrandSel = document.getElementById('in_invbrand');
-    if(invBrandSel) invBrandSel.onchange = e=>{state.inverterBrandIdx=+e.target.value; scheduleRefresh();};
     const confirmAdv = ()=>{
       state.panelsPerStringAdjust = +document.getElementById('in_pps').value || 0;
       state.stringsAdjust = +document.getElementById('in_str').value || 0;
@@ -4747,30 +4675,9 @@ function wire(){
         const p = adminConfig.panels[+defPanelRadio.dataset.defpanel];
         if(p) adminConfig.defaultPanelKey = `${p.brand}|${p.power}`;
       }
-      document.querySelectorAll('[data-brand]:not([data-tier])').forEach(inp=>{
-        adminConfig.inverterBrands[+inp.dataset.brand].brand = inp.value;
-      });
-      const defInvRadio = document.querySelector('[data-definvbrand]:checked');
-      if(defInvRadio){
-        const b = adminConfig.inverterBrands[+defInvRadio.dataset.definvbrand];
-        if(b) adminConfig.defaultInverterBrand = b.brand;
-      }
-      const tierRows = {};
-      document.querySelectorAll('[data-tier]').forEach(inp=>{
-        const bi=+inp.dataset.brand, ti=+inp.dataset.tier, f=inp.dataset.f;
-        tierRows[bi] = tierRows[bi] || {};
-        tierRows[bi][ti] = tierRows[bi][ti] || {};
-        tierRows[bi][ti][f] = (f==='maxsolar' && inp.value==='') ? null : +inp.value;
-      });
-      Object.keys(tierRows).forEach(bi=>{
-        Object.keys(tierRows[bi]).forEach(ti=>{
-          const r = tierRows[bi][ti];
-          const cost = r.list * (1 - (r.disc||0)/100);
-          const maxSolarKw = (r.maxsolar!=null && !isNaN(r.maxsolar)) ? r.maxsolar : null;
-          adminConfig.inverterBrands[+bi].tiers[+ti] = maxSolarKw!=null ? [r.kw, +cost.toFixed(2), r.list, maxSolarKw] : [r.kw, +cost.toFixed(2), r.list];
-        });
-      });
       delete adminConfig.inverters;
+      delete adminConfig.inverterBrands;
+      delete adminConfig.defaultInverterBrand;
       document.querySelectorAll('[data-pcat]').forEach(inp=>{
         adminConfig.productCatalog[+inp.dataset.pcat].category = inp.value;
       });
@@ -4941,26 +4848,6 @@ function wire(){
       harvestAdminInputs();
       adminConfig.panels.splice(+b.dataset.delpanel,1); render();
     });
-    document.getElementById('addInverterBrand').onclick = ()=>{
-      harvestAdminInputs();
-      adminConfig.inverterBrands.push({brand:'نوع جديد', tiers:[[10,900,1000]]});
-      render();
-    };
-    document.querySelectorAll('[data-delbrand]').forEach(b=>b.onclick=()=>{
-      harvestAdminInputs();
-      adminConfig.inverterBrands.splice(+b.dataset.delbrand,1); render();
-    });
-    document.querySelectorAll('[data-addtier]').forEach(b=>b.onclick=()=>{
-      harvestAdminInputs();
-      adminConfig.inverterBrands[+b.dataset.addtier].tiers.push([10,900,1000]);
-      render();
-    });
-    document.querySelectorAll('[data-deltier]').forEach(b=>b.onclick=()=>{
-      harvestAdminInputs();
-      const [bi,ti] = b.dataset.deltier.split(':').map(Number);
-      adminConfig.inverterBrands[bi].tiers.splice(ti,1);
-      render();
-    });
     const splitBtn = document.getElementById('splitAccessoriesBtn');
     if(splitBtn) splitBtn.onclick = ()=>{
       harvestAdminInputs();
@@ -5002,26 +4889,6 @@ function wire(){
       harvestAdminInputs();
       adminConfig.productCatalog.push({category:'فئة جديدة', columns:['الصنف','السعر'], rows:[]});
       render();
-    };
-    document.getElementById('bulkPriceApply').onclick = ()=>{
-      const pct = +document.getElementById('bulkPricePct').value || 0;
-      if(!pct){ alert('اكتب نسبة صحيحة'); return; }
-      if(!confirm(`هيتم زيادة كل الأسعار في كل الفئات بنسبة ${pct}%. متأكد؟`)) return;
-      harvestAdminInputs();
-      adminConfig.productCatalog.forEach(cat=>{
-        const priceCols = cat.columns.map((c,i)=>c.includes('السعر')?i:-1).filter(i=>i>=0);
-        cat.rows.forEach(row=>{
-          priceCols.forEach(ci=>{
-            const num = parseFloat(String(row[ci]).replace(/[^\d.]/g,''));
-            if(!isNaN(num)){
-              const updated = num * (1 + pct/100);
-              row[ci] = Number.isInteger(num) && Number.isInteger(updated) ? String(Math.round(updated)) : updated.toFixed(2);
-            }
-          });
-        });
-      });
-      render();
-      alert('تم تحديث الأسعار في الجدول — راجعها واضغط "حفظ التعديلات" لتثبيتها.');
     };
     document.querySelectorAll('[data-delcat]').forEach(b=>b.onclick=()=>{
       harvestAdminInputs();
@@ -5165,6 +5032,7 @@ function wire(){
       document.getElementById('pde_specs').value = Object.entries(detail.specs||{}).map(([k,v])=>`${k}: ${v}`).join('\n');
       document.getElementById('pde_available').checked = detail.available !== false;
       document.getElementById('pde_brand').value = detail.brand || '';
+      document.getElementById('pde_maxsolarkw').value = (detail.maxSolarKw != null && detail.maxSolarKw !== '') ? detail.maxSolarKw : '';
       const preview = document.getElementById('pde_imgpreview');
       delete preview.dataset.uploadedUrl;
       if(detail.image){ preview.src = detail.image; preview.style.display='inline-block'; } else { preview.style.display='none'; preview.src=''; }
@@ -5192,11 +5060,13 @@ function wire(){
         if(idx>0){ specs[line.slice(0,idx).trim()] = line.slice(idx+1).trim(); }
       });
       const preview = document.getElementById('pde_imgpreview');
+      const maxSolarKwRaw = document.getElementById('pde_maxsolarkw').value;
       cat.productDetails[ri] = {
         image: preview.dataset.uploadedUrl || (preview.style.display!=='none' ? preview.src : (cat.productDetails[ri]||{}).image) || '',
         description: document.getElementById('pde_description').value,
         available: document.getElementById('pde_available').checked,
         brand: document.getElementById('pde_brand').value.trim(),
+        maxSolarKw: maxSolarKwRaw === '' ? null : (+maxSolarKwRaw || 0),
         specs
       };
       document.getElementById('productDetailEditor').style.display = 'none';

@@ -71,10 +71,6 @@ function pickLadder(ladder: number[], value: number) {
   for (const v of ladder) if (value <= v) return v;
   return ladder[ladder.length - 1];
 }
-function pickInverter(kwNeeded: number, list: number[][]) {
-  for (const row of list) if (kwNeeded <= row[0]) return row;
-  return list[list.length - 1];
-}
 function getInverterBrands(D: any) {
   if (Array.isArray(D.inverterBrands) && D.inverterBrands.length) return D.inverterBrands;
   return [{ brand: "VEICHI", tiers: D.inverters || [] }];
@@ -102,16 +98,17 @@ function computeQuote(D: any, inp: any) {
   const expectedVAC = Vimp * 0.88 / Math.SQRT2;
 
   const inverterCalcKW = Math.ceil(hp * 0.8) + (inp.inverterPowerIncrease ?? D.inverterPowerIncrease);
-  const invBrand = inp.invBrand;
-  const inv = pickInverter(inverterCalcKW, invBrand.tiers);
-  const invKW = inv[0], invCost = inv[1], invList = inv[2];
+  const pumpPick = pickPumpInverter(D, inverterCalcKW);
+  const inv = pumpPick.picked;
+  const invKW = inv.kw;
+  const invPricing = resolveCatalogPricing(D, inv.category, inv.brand, inv.listPrice, 0);
+  const invCost = invPricing.costBasis, invList = invPricing.sell;
 
-  const invMaxSolarKw: number | undefined = inv[3];
+  const invMaxSolarKw: number | null = inv.maxSolarKw;
   let inverterOversizeWarning: { message: string; recommendedInvKW: number | null } | null = null;
   if (invMaxSolarKw != null && calcKW > invMaxSolarKw) {
-    const idx = invBrand.tiers.indexOf(inv);
-    const nextTier = invBrand.tiers.slice(idx + 1).find((t: any[]) => t[3] == null || calcKW <= t[3]);
-    const recommendedInvKW = nextTier ? nextTier[0] : null;
+    const nextRow = pumpPick.rows.slice(pumpPick.idx + 1).find((r: any) => r.maxSolarKw == null || calcKW <= r.maxSolarKw);
+    const recommendedInvKW = nextRow ? nextRow.kw : null;
     inverterOversizeWarning = {
       recommendedInvKW,
       message: recommendedInvKW
@@ -168,7 +165,7 @@ function computeQuote(D: any, inp: any) {
     warranty: "12 سنة ضد عيوب الصناعة / 30 سنة ضد التناقص الإنتاجي عن %80",
   });
   push("inverter", "الانفرتر", t.inverter, invList, invCost, {
-    type: `${invBrand.brand} أو ما يعادلها ${invKW} KW`, qty: "#1#", warranty: "سنة واحدة",
+    type: `${inv.brand} أو ما يعادلها ${invKW} KW`, qty: "#1#", warranty: "سنة واحدة",
   });
   push("ip65", "لوحة الحماية IP65", t.ip65, steelPanelCost * 1.25, steelPanelCost, {
     type: `خاصة بانفرتر ${invKW} KW`, qty: "#1#", warranty: "سنة واحدة",
@@ -259,7 +256,7 @@ function computeQuote(D: any, inp: any) {
   return {
     panelsPerString, arrays, totalPanels, calcKW, efficiencyRatio,
     Iimp, Vimp, Voc, Isc, IscCalc, expectedVAC,
-    invBrandName: invBrand.brand,
+    invBrandName: inv.brand,
     inverterCalcKW, invKW, invMaxSolarKw: invMaxSolarKw ?? null, inverterOversizeWarning,
     reactorModel, reactorPrice, cbSize, combiner,
     items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt,
@@ -289,12 +286,9 @@ function adminView(q: any) {
 function resolveInput(D: any, rawInput: any) {
   const panel = D.panels[rawInput.panelIdx];
   if (!panel) throw new Error("invalid panelIdx");
-  const brands = getInverterBrands(D);
-  const invBrand = brands[rawInput.inverterBrandIdx ?? 0] || brands[0];
-  if (!invBrand) throw new Error("invalid inverterBrandIdx");
   const tierIdx = (rawInput.discountTierIdx ?? D.defaultDiscountIdx ?? 1);
   const tier = D.discountTiers[tierIdx] || D.discountTiers[D.defaultDiscountIdx ?? 1];
-  return { ...rawInput, panel, invBrand, discountFactor: tier.factor };
+  return { ...rawInput, panel, discountFactor: tier.factor };
 }
 
 function findCatalogCategory(D: any, nameIncludes: string) {
@@ -368,6 +362,34 @@ function getInverterCatalogRows(D: any) {
 function getInverterModelOptions(D: any) {
   return getInverterCatalogRows(D).map((r: any) => ({ model: r.model, kw: r.kw }));
 }
+// The main HP-based residential/commercial calculator (حاسبة الحصان) uses a
+// completely different product line — three-phase VEICHI pump/motor drives
+// ("انفرتر مضخات VEICHI", 0.75KW–710KW) — NOT the small hybrid battery
+// inverters above. This is now the single source of truth for that catalog
+// (previously duplicated as a separate "أنواع الانفرتر" price ladder).
+function getPumpInverterCatalogRows(D: any) {
+  const cat = findCatalogCategory(D, "انفرتر مضخات");
+  const priceIdx = cat.columns.length - 2;
+  return cat.rows
+    .map((r: any, idx: number) => {
+      const detail = cat.productDetails && cat.productDetails[String(idx)];
+      const maxSolarKw = detail && detail.maxSolarKw != null && detail.maxSolarKw !== "" ? Number(detail.maxSolarKw) : null;
+      return {
+        model: r[0], kw: parseKwFromModel(r[0]), listPrice: parseFloat(r[priceIdx]),
+        category: cat.category, brand: rowBrand(cat, idx), maxSolarKw,
+      };
+    })
+    .filter((r: any) => r.kw > 0 && isFinite(r.listPrice))
+    .sort((a: any, b: any) => a.kw - b.kw);
+}
+function pickPumpInverter(D: any, kwNeeded: number) {
+  const rows = getPumpInverterCatalogRows(D);
+  if (!rows.length) throw new Error('لا يوجد أي موديل انفرتر مضخات بسعر مسجل داخل كتالوج "انفرتر مضخات VEICHI"');
+  let idx = rows.findIndex((r: any) => r.kw >= kwNeeded);
+  if (idx === -1) idx = rows.length - 1;
+  return { picked: rows[idx], idx, rows };
+}
+
 function pickCatalogInverter(D: any, kwNeeded: number) {
   const rows = getInverterCatalogRows(D);
   if (!rows.length) throw new Error('لا يوجد أي موديل انفرتر هجين بقدرة (KW) واضحة في اسم الموديل داخل كتالوج "شواحن/انفرترات هجين MPPT"');
@@ -717,9 +739,9 @@ Deno.serve(async (req: Request) => {
 
   const SECTION_CONFIG_KEYS: Record<string, string[]> = {
     pricing: ["cableHighMultiplier", "cableLowMultiplier", "cableMarkup", "cablePerMeter", "combinerHeadroom",
-      "combinerMinSpareStrings", "concretePerUnit", "defaultDiscountIdx", "defaultInverterBrand", "defaultPanelKey",
+      "combinerMinSpareStrings", "concretePerUnit", "defaultDiscountIdx", "defaultPanelKey",
       "discountTiers", "earthingPerUnit",
-      "elecInstallPerPanel", "flexTubePerUnit", "hpCapacityRatio", "inverterBrands", "mc4PerUnit",
+      "elecInstallPerPanel", "flexTubePerUnit", "hpCapacityRatio", "mc4PerUnit",
       "mechInstallPerPanel", "panelMarginPerWatt", "panels", "reactorMarkupPct", "steelPanelPerHP", "structurePriceFixed", "structurePriceRotational",
       "transportMinimum", "transportPerTrip", "vat"],
     calcs: ["offgrid", "ongrid"],
@@ -1075,7 +1097,6 @@ Deno.serve(async (req: Request) => {
         .map((p: any) => ({ idx: p.idx, brand: p.brand, power: p.power })),
       applianceDefaults: D.offgrid.applianceDefaults || [],
       defaultPanelKey: D.defaultPanelKey || null,
-      defaultInverterBrand: D.defaultInverterBrand || null,
       batteryVoltageOptions: getBatteryVoltageOptions(D),
       inverterModelOptions: getInverterModelOptions(D),
     });
@@ -1093,7 +1114,6 @@ Deno.serve(async (req: Request) => {
         .filter((p: any) => p.visible && p.hasPrice)
         .map((p: any) => ({ idx: p.idx, brand: p.brand, power: p.power })),
       defaultPanelKey: D.defaultPanelKey || null,
-      defaultInverterBrand: D.defaultInverterBrand || null,
     });
   }
 
@@ -1121,8 +1141,6 @@ Deno.serve(async (req: Request) => {
       .map((p: any, idx: number) => ({ idx, brand: p.brand, power: p.power, visible: p.visible !== false, hasPrice: !!p.priceW }))
       .filter((p: any) => p.visible && p.hasPrice)
       .map((p: any) => ({ idx: p.idx, brand: p.brand, power: p.power })),
-    inverterBrandOptions: getInverterBrands(D).map((b: any, idx: number) => ({ idx, brand: b.brand })),
     defaultPanelKey: D.defaultPanelKey || null,
-    defaultInverterBrand: D.defaultInverterBrand || null,
   });
 });
