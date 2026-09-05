@@ -654,10 +654,6 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
   .note{font-size:9.5px!important;font-weight:400!important;padding:6px 9px!important;line-height:1.36!important;}
   .legal-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
   .support-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
-  .warranty-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
-  .warranty-note .title{font-size:9.5px!important;margin-bottom:3px!important;}
-  .warranty-note ul{margin:0!important;padding-inline-start:16px!important;}
-  .warranty-note li{margin:1.5px 0!important;}
   .contact-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
 }
 /* Mirrors the @media print block above exactly (same values), so the
@@ -694,10 +690,6 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
 .pdf-compact .note{font-size:9.5px!important;font-weight:400!important;padding:6px 9px!important;line-height:1.36!important;}
 .pdf-compact .legal-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
 .pdf-compact .support-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
-.pdf-compact .warranty-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
-.pdf-compact .warranty-note .title{font-size:9.5px!important;margin-bottom:3px!important;}
-.pdf-compact .warranty-note ul{margin:0!important;padding-inline-start:16px!important;}
-.pdf-compact .warranty-note li{margin:1.5px 0!important;}
 .pdf-compact .contact-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
 </style>
 </head>
@@ -839,6 +831,25 @@ let adminConfig = null;       // full rates object — only after admin auth
 let adminReps = [];           // rep accounts — only after admin auth
 let adminTokenMem = null;     // short-lived session token; held in memory only, lost on page reload
 let currentAdminSection = 'overview'; // which sidebar section is showing inside the admin panel
+let discountFormState = { category:'', brand:'', supplierDiscountPct:0, sellDiscountPct:0, promoDiscountPct:0, promoActive:false, editKey:null };
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
+
+// Every (category, brand) pair that exists in the product catalog right now,
+// derived from productDetails[i].brand on each row. Used to populate the
+// dropdowns in the "الخصومات" admin section.
+function getCatalogBrandOptions(cfg){
+  const byCategory = {};
+  (cfg.productCatalog||[]).forEach(cat=>{
+    const brands = new Set();
+    (cat.rows||[]).forEach((r,idx)=>{
+      const b = (cat.productDetails && cat.productDetails[String(idx)] && cat.productDetails[String(idx)].brand) || '';
+      if(b) brands.add(b);
+    });
+    if(brands.size) byCategory[cat.category] = Array.from(brands).sort();
+  });
+  return byCategory;
+}
 let currentAdminSubSection = { pricing:'panels', products:'catalog' }; // secondary in-page sidebar for long sections
 let engineError = null;
 let quoteLoading = false;
@@ -1011,6 +1022,7 @@ function normalizeAdminConfig(cfg){
   if(!cfg.offgrid) cfg.offgrid = { sunHours:5.5, systemEfficiency:0.80, batteryDoD:0.90, defaultAutonomyDays:1, peakLoadDivisor:6, batteryMarkupPct:30, inverterMarkupPct:30, structurePerPanelCost:250, structurePerPanelSell:350, cablingFixedCost:800, cablingFixedSell:1200, installPerKwCost:150, installPerKwSell:250 };
   if(!cfg.ongrid) cfg.ongrid = { sunHours:5.5, performanceRatio:0.80, tariffRate:0.18, inverterMarkupPct:30, structurePerPanelCost:250, structurePerPanelSell:350, cablingFixedCost:800, cablingFixedSell:1200, netMeteringFeeCost:0, netMeteringFeeSell:0, installPerKwCost:150, installPerKwSell:250 };
   if(!Array.isArray(cfg.readyOffgridSystems)) cfg.readyOffgridSystems = [];
+  if(!Array.isArray(cfg.discounts)) cfg.discounts = [];
   return cfg;
 }
 
@@ -1634,7 +1646,6 @@ function renderIrrigationCalc(){
         <div class="support-note" style="margin-top:8px;background:#EAF7F1;border:1px solid #BFE6D6;border-radius:9px;padding:9px 12px;font-size:11.5px;color:#146C4C">
           نلتزم بتوفير الدعم الفني وقطع الغيار للمنظومة حتى 10 سنوات من تاريخ التشغيل.
         </div>
-        ${renderWarrantyNote()}
         <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
           <b style="color:var(--ink)">للتواصل</b><br>
           info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
@@ -1701,20 +1712,6 @@ function renderSupplyInstallSplit(q){
   </div>`;
 }
 
-function renderWarrantyNote(){
-  return `
-  <div class="warranty-note" style="margin-top:8px;background:#EFF5FB;border:1px solid #C7DCF0;border-radius:9px;padding:9px 12px;font-size:11.5px;color:#1E4E7A">
-    <div class="title" style="font-weight:700;margin-bottom:4px">🛡️ ملخص الضمانات</div>
-    <ul style="margin:0;padding-inline-start:18px;line-height:1.85">
-      <li>ضمان الألواح الشمسية: 30 عام على إنتاجية الطاقة، و12 عام ضد عيوب الصناعة.</li>
-      <li>ضمان المحولات (Inverters): عام واحد.</li>
-      <li>ضمان صناديق التجميع: عام واحد.</li>
-      <li>ضمان محولات الـ High Voltage: خمس أعوام.</li>
-      <li>ضمان بطاريات الـ High Voltage: عشر أعوام.</li>
-    </ul>
-  </div>`;
-}
-
 function renderStickyTotalBar(finalTotal){
   return `<div class="sticky-total-bar no-print" onclick="document.querySelector('.totalbar')?.scrollIntoView({behavior:'smooth',block:'center'})">
     <div><div class="stb-lbl">السعر النهائي شامل الضريبة</div><div class="stb-val">${fmt(finalTotal)} ﷼</div></div>
@@ -1756,7 +1753,6 @@ function renderQuoteBomAndTotal(q, introText){
     <div class="legal-note" style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
       الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${new Date().toLocaleDateString('en-GB')}).
     </div>
-    ${renderWarrantyNote()}
     <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
       <b style="color:var(--ink)">للتواصل</b><br>info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
       <span class="num">966561274344+</span>
@@ -2924,7 +2920,6 @@ function renderCartQuoteDocument(){
         <div class="legal-note" style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
           الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${new Date().toLocaleDateString('en-GB')}).
         </div>
-        ${renderWarrantyNote()}
         <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
           <b style="color:var(--ink)">للتواصل</b><br>
           info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
@@ -3448,7 +3443,7 @@ const BOM_GENERIC_ITEM_KEYS = [
 ];
 
 function renderAdmin(){
-  const admSectionTitles = {'overview':'نظرة عامة','pricing':'الأسعار والهوامش','calcs':'حاسبات الأنظمة','products':'المنتجات والكتالوج','portfolio':'البورتفوليو','leads':'قاعدة العملاء','reps':'إدارة المناديب','security':'الحماية والنظام'};
+  const admSectionTitles = {'overview':'نظرة عامة','discounts':'الخصومات','pricing':'الأسعار والهوامش','calcs':'حاسبات الأنظمة','products':'المنتجات والكتالوج','portfolio':'البورتفوليو','leads':'قاعدة العملاء','reps':'إدارة المناديب','security':'الحماية والنظام'};
   return `
   <div class="admin-shell">
   <aside class="admin-sidebar no-print">
@@ -3458,6 +3453,7 @@ function renderAdmin(){
     </div>
     <nav class="admin-nav">
       <button class="admin-nav-btn ${currentAdminSection==='overview'?'active':''}" data-admsec="overview" type="button"><span class="ic">📊</span><span class="lbl">نظرة عامة</span></button>
+      <button class="admin-nav-btn ${currentAdminSection==='discounts'?'active':''}" data-admsec="discounts" type="button"><span class="ic">🏷️</span><span class="lbl">الخصومات</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='pricing'?'active':''}" data-admsec="pricing" type="button"><span class="ic">💰</span><span class="lbl">الأسعار والهوامش</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='calcs'?'active':''}" data-admsec="calcs" type="button"><span class="ic">🧮</span><span class="lbl">حاسبات الأنظمة</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='products'?'active':''}" data-admsec="products" type="button"><span class="ic">📦</span><span class="lbl">المنتجات والكتالوج</span></button>
@@ -3491,6 +3487,85 @@ function renderAdmin(){
     <div class="stat stat-click" data-admsec-jump="leads"><div class="v">${overviewStats ? fmt(overviewStats.avgQuoteValue)+' ﷼' : '…'}</div><div class="l">متوسط قيمة العرض (الشهر)</div></div>
     <div class="stat stat-click" data-admsec-jump="reps"><div class="v" style="font-size:14px">${overviewStats ? overviewStats.mostActiveRep : '…'}</div><div class="l">الأكثر نشاطًا هذا الشهر (${overviewStats?overviewStats.mostActiveRepCount:0} عرض)</div></div>
   </div>
+</section>
+
+<section class="admsec ${currentAdminSection==='discounts'?'active':''}" data-admsec="discounts">
+${(function(){
+  const brandOptions = getCatalogBrandOptions(adminConfig);
+  const categories = Object.keys(brandOptions);
+  const selCategory = discountFormState.category || categories[0] || '';
+  const brandsForSel = brandOptions[selCategory] || [];
+  const selBrand = brandsForSel.includes(discountFormState.brand) ? discountFormState.brand : (brandsForSel[0] || '');
+  const catOptsHtml = categories.map(c=>`<option value="${escAttr(c)}" ${c===selCategory?'selected':''}>${esc(c)}</option>`).join('') || '<option value="">لا توجد فئات</option>';
+  const brandOptsHtml = brandsForSel.map(b=>`<option value="${escAttr(b)}" ${b===selBrand?'selected':''}>${esc(b)}</option>`).join('') || '<option value="">لا توجد ماركات</option>';
+  const rows = (adminConfig.discounts||[]);
+  const rowsHtml = rows.length ? rows.map((d,i)=>`
+    <tr>
+      <td>${esc(d.category)}</td>
+      <td>${esc(d.brand)}</td>
+      <td>${(Number(d.supplierDiscountPct)||0)}%</td>
+      <td>${(Number(d.sellDiscountPct)||0)}%</td>
+      <td>${d.promoActive ? `${(Number(d.promoDiscountPct)||0)}% (شغّال) <button class="btn ghost small" data-disc-clearpromo="${i}" type="button">حذف الترويجي</button>` : `${(Number(d.promoDiscountPct)||0)}% (متوقف)`}</td>
+      <td style="white-space:nowrap">
+        <button class="btn ghost small" data-disc-edit="${i}" type="button">تعديل</button>
+        <button class="btn ghost small" data-disc-del="${i}" type="button">حذف</button>
+      </td>
+    </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted)">لا توجد خصومات مسجّلة بعد</td></tr>`;
+  return `
+  <div class="card" style="margin-bottom:16px">
+    <h3 style="margin-top:0">🏷️ الخصومات</h3>
+    <p style="color:var(--muted);font-size:14px;line-height:1.9;margin-bottom:16px">
+      الخصم مسجّل على مستوى (الفئة + الماركة) — يعني يغطي كل موديلات نفس الماركة تلقائيًا، من غير ما تحتاج تسجّل كل موديل لوحده.
+      يتحسب على سعر البيع المعروض على الموقع، ويُستخدم بس داخليًا لحساب هامش الربح في عروض أسعار المناديب — مش ظاهر للعميل ولا المندوب أبدًا.
+    </p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <div style="flex:1;min-width:180px">
+        <label>الفئة</label>
+        <select id="disc_category">${catOptsHtml}</select>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <label>الماركة</label>
+        <select id="disc_brand">${brandOptsHtml}</select>
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label>خصم المورد % (تكلفة الشركة)</label>
+        <input type="number" id="disc_supplier" value="${discountFormState.supplierDiscountPct}" step="0.1">
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label>خصم البيع % (للعميل)</label>
+        <input type="number" id="disc_sell" value="${discountFormState.sellDiscountPct}" step="0.1">
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:14px">
+      <div style="flex:1;min-width:200px">
+        <label>خصم ترويجي % (صفحة المنتجات فقط)</label>
+        <input type="number" id="disc_promo" value="${discountFormState.promoDiscountPct}" step="0.1">
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+          <input type="checkbox" id="disc_promo_active" ${discountFormState.promoActive?'checked':''}> الترويجي شغّال
+        </label>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <button class="btn" id="disc_save_btn" type="button">💾 حفظ الخصومات</button>
+      ${discountFormState.editKey ? '<button class="btn ghost" id="disc_cancel_edit" type="button">إلغاء التعديل</button>' : ''}
+    </div>
+    <p style="color:var(--muted);font-size:13px;margin-top:14px;line-height:1.9">
+      خصم البيع لازم يكون أقل من أو يساوي خصم المورد دايمًا (عشان الشركة نفسها متبقاش بتخسر) — القاعدة نفسها بترفض أي قيمة مخالفة.
+      الخصم الترويجي مستقل تمامًا ويؤثر بس على السعر الظاهر في صفحة المنتجات لنفس الفئة والماركة المختارة فوق — مبيلمسش خصم المورد ولا سعر عروض أسعار المناديب.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">الخصومات المسجّلة حاليًا</h3>
+    <table class="admtable">
+      <thead><tr><th>الفئة</th><th>الماركة</th><th>خصم المورد</th><th>خصم البيع</th><th>خصم ترويجي</th><th></th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  </div>
+  `;
+})()}
 </section>
 
 <section class="admsec ${currentAdminSection==='pricing'?'active':''}" data-admsec="pricing">
@@ -3772,6 +3847,8 @@ function renderAdmin(){
       <input type="checkbox" id="pde_available" checked style="width:auto">
       <span>المنتج متاح حاليًا</span>
     </label>
+    <label>الماركة <span style="color:var(--muted);font-weight:400">(تُستخدم في ربط المنتج بصفحة الخصومات)</span></label>
+    <input type="text" id="pde_brand" placeholder="مثال: VEICHI">
     <label>وصف المنتج</label>
     <textarea id="pde_description" rows="3"></textarea>
     <label>مواصفات إضافية <span style="color:var(--muted);font-weight:400">(سطر لكل مواصفة، بصيغة: الاسم: القيمة)</span></label>
@@ -4531,7 +4608,7 @@ function wire(){
     });
   }
   if(currentView==='admin'){
-    const admSectionTitles = {overview:'نظرة عامة',pricing:'الأسعار والهوامش',calcs:'حاسبات الأنظمة',products:'المنتجات والكتالوج',portfolio:'البورتفوليو',leads:'قاعدة العملاء',reps:'إدارة المناديب',security:'الحماية والنظام'};
+    const admSectionTitles = {overview:'نظرة عامة',discounts:'الخصومات',pricing:'الأسعار والهوامش',calcs:'حاسبات الأنظمة',products:'المنتجات والكتالوج',portfolio:'البورتفوليو',leads:'قاعدة العملاء',reps:'إدارة المناديب',security:'الحماية والنظام'};
     function goToAdminSection(id){
       if(id === 'leads'){ window.location.href = 'crm.html'; return; }
       currentAdminSection = id;
@@ -4557,6 +4634,63 @@ function wire(){
     if(admLogoutSide) admLogoutSide.onclick = ()=>document.getElementById('adm_logout').click();
     const admSaveTop = document.getElementById('admSaveTop');
     if(admSaveTop) admSaveTop.onclick = ()=>document.getElementById('admSave').click();
+
+    // --- الخصومات (discounts) section ---
+    const discCategoryEl = document.getElementById('disc_category');
+    if(discCategoryEl){
+      discCategoryEl.onchange = ()=>{
+        discountFormState.category = discCategoryEl.value;
+        discountFormState.brand = '';
+        discountFormState.editKey = null;
+        render();
+      };
+      document.getElementById('disc_brand').onchange = (e)=>{ discountFormState.brand = e.target.value; };
+      const cancelBtn = document.getElementById('disc_cancel_edit');
+      if(cancelBtn) cancelBtn.onclick = ()=>{
+        discountFormState = { category: discCategoryEl.value, brand:'', supplierDiscountPct:0, sellDiscountPct:0, promoDiscountPct:0, promoActive:false, editKey:null };
+        render();
+      };
+      document.getElementById('disc_save_btn').onclick = ()=>{
+        const category = document.getElementById('disc_category').value;
+        const brand = document.getElementById('disc_brand').value;
+        const supplierDiscountPct = +document.getElementById('disc_supplier').value || 0;
+        const sellDiscountPct = +document.getElementById('disc_sell').value || 0;
+        const promoDiscountPct = +document.getElementById('disc_promo').value || 0;
+        const promoActive = document.getElementById('disc_promo_active').checked;
+        if(!category || !brand){ alert('اختار الفئة والماركة أولًا'); return; }
+        if(sellDiscountPct > supplierDiscountPct){
+          alert('خصم البيع لازم يكون أقل من أو يساوي خصم المورد (عشان الشركة متبيعش بخسارة)'); return;
+        }
+        adminConfig.discounts = adminConfig.discounts || [];
+        const existingIdx = adminConfig.discounts.findIndex(d=>d.category===category && d.brand===brand);
+        const row = { category, brand, supplierDiscountPct, sellDiscountPct, promoDiscountPct, promoActive };
+        if(existingIdx > -1) adminConfig.discounts[existingIdx] = row; else adminConfig.discounts.push(row);
+        discountFormState = { category, brand:'', supplierDiscountPct:0, sellDiscountPct:0, promoDiscountPct:0, promoActive:false, editKey:null };
+        callEngine('update-config', { adminToken: adminTokenMem, config: adminConfig }).then(()=>{
+          alert('تم حفظ الخصم ✔'); render();
+        }).catch(err=>alert('تعذر الحفظ: '+err.message));
+      };
+      document.querySelectorAll('[data-disc-edit]').forEach(b=>b.onclick=()=>{
+        const d = adminConfig.discounts[+b.dataset.discEdit];
+        if(!d) return;
+        discountFormState = { category: d.category, brand: d.brand, supplierDiscountPct: d.supplierDiscountPct||0, sellDiscountPct: d.sellDiscountPct||0, promoDiscountPct: d.promoDiscountPct||0, promoActive: !!d.promoActive, editKey: d.category+'|'+d.brand };
+        render();
+      });
+      document.querySelectorAll('[data-disc-del]').forEach(b=>b.onclick=()=>{
+        const idx = +b.dataset.discDel;
+        const d = adminConfig.discounts[idx]; if(!d) return;
+        if(!confirm(`متأكد من حذف خصم (${d.category} / ${d.brand})؟`)) return;
+        adminConfig.discounts.splice(idx,1);
+        callEngine('update-config', { adminToken: adminTokenMem, config: adminConfig }).then(()=>{ render(); }).catch(err=>alert('تعذر الحذف: '+err.message));
+      });
+      document.querySelectorAll('[data-disc-clearpromo]').forEach(b=>b.onclick=()=>{
+        const idx = +b.dataset.discClearpromo;
+        const d = adminConfig.discounts[idx]; if(!d) return;
+        d.promoActive = false;
+        callEngine('update-config', { adminToken: adminTokenMem, config: adminConfig }).then(()=>{ render(); }).catch(err=>alert('تعذر الحفظ: '+err.message));
+      });
+    }
+
     document.getElementById('addRepBtn').onclick = async ()=>{
       const username = document.getElementById('newrep_username').value.trim();
       const displayName = document.getElementById('newrep_displayname').value.trim();
@@ -5030,6 +5164,7 @@ function wire(){
       document.getElementById('pde_description').value = detail.description || '';
       document.getElementById('pde_specs').value = Object.entries(detail.specs||{}).map(([k,v])=>`${k}: ${v}`).join('\n');
       document.getElementById('pde_available').checked = detail.available !== false;
+      document.getElementById('pde_brand').value = detail.brand || '';
       const preview = document.getElementById('pde_imgpreview');
       delete preview.dataset.uploadedUrl;
       if(detail.image){ preview.src = detail.image; preview.style.display='inline-block'; } else { preview.style.display='none'; preview.src=''; }
@@ -5061,6 +5196,7 @@ function wire(){
         image: preview.dataset.uploadedUrl || (preview.style.display!=='none' ? preview.src : (cat.productDetails[ri]||{}).image) || '',
         description: document.getElementById('pde_description').value,
         available: document.getElementById('pde_available').checked,
+        brand: document.getElementById('pde_brand').value.trim(),
         specs
       };
       document.getElementById('productDetailEditor').style.display = 'none';
