@@ -842,6 +842,13 @@ function getCatalogBrandOptions(cfg){
     });
     if(brands.size) byCategory[cat.category] = Array.from(brands).sort();
   });
+  // Solar panels live in cfg.panels (a separate list, not productCatalog),
+  // but they go through the same discount registry as every other product
+  // — so their brands must show up here too, under a fixed category name
+  // that matches exactly what the backend uses (findDiscount / panelPricing).
+  const panelBrands = new Set();
+  (cfg.panels||[]).forEach(p=>{ if(p.brand) panelBrands.add(p.brand); });
+  if(panelBrands.size) byCategory['الألواح الشمسية'] = Array.from(panelBrands).sort();
   return byCategory;
 }
 let currentAdminSubSection = { products:'catalog' }; // secondary in-page sidebar for long sections
