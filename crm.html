@@ -303,6 +303,7 @@ body.printing-cert #certPrintArea{display:block!important;}
 .invSheet2 .warrantyBlock li{margin:1px 0;}
 .invSheet2 .sigRow{display:flex;justify-content:space-between;margin-top:26px;font-size:11.5px;}
 .invSheet2 .footRow2{display:flex;justify-content:space-between;align-items:center;margin-top:18px;border-top:1px solid var(--line);padding-top:10px;}
+.invSheet2 .printQr{width:66px;height:66px;}
 .invSheet2 .legal2{font-size:10px;color:var(--muted);}
 .invSheet2 #invQrCanvas{border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff;}
 </style>
@@ -2909,6 +2910,99 @@ function invPackageRowHtml(pkg){
   </div>`;
 }
 
+// A package built on the spot for one customer — not part of the shared
+// ready-made-packages catalog. Every line inside it still has to be a real,
+// currently-available catalog product (picked via the same search used for
+// regular product rows), so the invoice stays honest even though the
+// bundling/name/price is one-off. Server re-validates every component code.
+function invCustomPackageRowHtml(){
+  invItemSeq++;
+  const id = 'it'+invItemSeq;
+  return `<div class="itemRow pkgRow" data-row="${id}" data-type="package" data-custom="1">
+    <div class="pkgHead">
+      <div style="flex:1;">
+        <input type="text" class="pkgCustomName" placeholder="اسم الباكدج المخصص (مثال: باكدج مزرعة العميل)" style="width:100%;font-weight:700;border:1px solid var(--line);border-radius:8px;padding:6px 8px;">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <label style="font-size:11.5px;color:var(--muted);">السعر الإجمالي</label>
+        <input type="number" class="itPrice pkgPrice" min="0" step="0.01" value="0" style="width:110px;">
+        <button type="button" class="rmBtn" title="حذف الباكدج">×</button>
+      </div>
+    </div>
+    <div class="pkgCustomComponents"></div>
+    <button type="button" class="btn ghost small addPkgCustomCompBtn" style="margin-top:6px;">+ إضافة صنف من الكتالوج</button>
+    <div style="text-align:left;margin-top:6px;font-size:12.5px;">الإجمالي: <b class="itLineTotal num">0</b></div>
+    <input type="hidden" class="itCode" value="">
+    <input type="hidden" class="itQty" value="1">
+    <input type="hidden" class="itDisc" value="0">
+  </div>`;
+}
+
+function invCustomPackageCompRowHtml(idx){
+  return `<div class="pkgCustomCompRow" data-idx="${idx}">
+    <div class="itPicker" style="flex:2;">
+      <input type="text" class="compSearch" placeholder="دور باسم/كود الصنف..." autocomplete="off">
+      <div class="itSuggest hidden"></div>
+      <input type="hidden" class="compCode">
+      <input type="hidden" class="compName">
+    </div>
+    <input type="number" class="compQty" min="1" step="1" value="1" style="width:60px;">
+    <input type="number" class="compPrice" min="0" step="0.01" style="width:95px;" placeholder="سعر الوحدة">
+    <button type="button" class="rmCompBtn" title="حذف الصنف">×</button>
+  </div>`;
+}
+
+function wireCustomPackageCompRow(compRow){
+  const search = compRow.querySelector('.compSearch');
+  const suggest = compRow.querySelector('.itSuggest');
+  const codeInp = compRow.querySelector('.compCode');
+  const nameInp = compRow.querySelector('.compName');
+  const priceInp = compRow.querySelector('.compPrice');
+  function renderSuggestions(term){
+    const t = term.trim().toLowerCase();
+    if(t.length < 1){ suggest.classList.add('hidden'); suggest.innerHTML=''; return; }
+    const matches = CATALOG_PRODUCTS.filter(p => p.code.toLowerCase().includes(t) || (p.category||'').toLowerCase().includes(t)).slice(0,25);
+    if(!matches.length){ suggest.innerHTML = '<div class="itSuggestItem muted">مفيش نتائج مطابقة</div>'; suggest.classList.remove('hidden'); return; }
+    suggest.innerHTML = matches.map(p=>`<div class="itSuggestItem" data-code="${p.code.replace(/"/g,'&quot;')}" data-price="${p.unitPrice}">
+      <b>${p.code}</b><span class="cat">${p.category}</span><span class="price">${fmtMoney(p.unitPrice)} ﷼</span>
+    </div>`).join('');
+    suggest.classList.remove('hidden');
+  }
+  search.addEventListener('input', ()=> renderSuggestions(search.value));
+  search.addEventListener('focus', ()=> renderSuggestions(search.value));
+  document.addEventListener('click', (e)=>{ if(!compRow.contains(e.target)) suggest.classList.add('hidden'); });
+  suggest.addEventListener('click', (e)=>{
+    const item = e.target.closest('.itSuggestItem');
+    if(!item || !item.dataset.code) return;
+    search.value = item.dataset.code;
+    codeInp.value = item.dataset.code;
+    nameInp.value = item.dataset.code;
+    if(!priceInp.value) priceInp.value = item.dataset.price;
+    suggest.classList.add('hidden');
+    recalcCustomPackagePrice(compRow.closest('.pkgRow'));
+    recalcInvoiceTotals();
+  });
+  search.addEventListener('blur', ()=>{
+    setTimeout(()=>{
+      if(search.value !== codeInp.value){ codeInp.value=''; nameInp.value=''; }
+    }, 150);
+  });
+}
+
+// Sums the picked components (qty × unit price) and refreshes the package's
+// own price field — the rep can still tweak that price by hand afterwards
+// (e.g. to give the customer a rounder/negotiated number).
+function recalcCustomPackagePrice(pkgRowEl){
+  if(!pkgRowEl) return;
+  let sum = 0;
+  pkgRowEl.querySelectorAll('.pkgCustomCompRow').forEach(cr=>{
+    const qty = Number(cr.querySelector('.compQty').value)||0;
+    const price = Number(cr.querySelector('.compPrice').value)||0;
+    sum += qty*price;
+  });
+  pkgRowEl.querySelector('.pkgPrice').value = sum ? sum.toFixed(2) : 0;
+}
+
 function openInvoiceModal(prefill){
   prefill = prefill || {};
   invoiceOverlay.classList.add('show');
@@ -2967,6 +3061,7 @@ function openInvoiceModal(prefill){
       <div style="display:flex;gap:8px;margin-top:8px;">
         <button type="button" class="btn ghost small" id="invAddProductBtn">+ إضافة منتج</button>
         <button type="button" class="btn ghost small" id="invAddPackageBtn">📦 إضافة باكدج</button>
+        <button type="button" class="btn ghost small" id="invAddCustomPackageBtn">🧩 باكدج مخصص للعميل</button>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px;">
@@ -3115,17 +3210,37 @@ function openInvoiceModal(prefill){
     }catch(err){ toast('تعذر تحميل الباكدجات: '+err.message); }
   });
 
+  document.getElementById('invAddCustomPackageBtn').addEventListener('click', async ()=>{
+    try{
+      await ensureCatalogLoaded();
+      rowsWrap.insertAdjacentHTML('beforeend', invCustomPackageRowHtml());
+      recalcInvoiceTotals();
+    }catch(err){ toast('تعذر تحميل كتالوج المنتجات: '+err.message); }
+  });
+
   document.getElementById('invB2bToggle').addEventListener('change', (e)=>{
     document.getElementById('invB2bFields').classList.toggle('hidden', !e.target.checked);
   });
 
   rowsWrap.addEventListener('input', (e)=>{
     if(e.target.matches('.itQty,.itPrice,.itDisc,.pkgPrice')) recalcInvoiceTotals();
+    if(e.target.matches('.compQty,.compPrice')){
+      recalcCustomPackagePrice(e.target.closest('.pkgRow'));
+      recalcInvoiceTotals();
+    }
   });
   document.getElementById('invDiscountTotal').addEventListener('input', recalcInvoiceTotals);
   rowsWrap.addEventListener('click', (e)=>{
     const rm = e.target.closest('.rmBtn');
     if(rm){ rm.closest('.itemRow').remove(); recalcInvoiceTotals(); return; }
+    const rmComp = e.target.closest('.rmCompBtn');
+    if(rmComp){
+      const pkgRowEl = rmComp.closest('.pkgRow');
+      rmComp.closest('.pkgCustomCompRow').remove();
+      recalcCustomPackagePrice(pkgRowEl);
+      recalcInvoiceTotals();
+      return;
+    }
     const addComp = e.target.closest('.addPkgCompBtn');
     if(addComp){
       const wrap = addComp.previousElementSibling; // .pkgComponents
@@ -3135,6 +3250,15 @@ function openInvoiceModal(prefill){
         <input type="text" class="pkgCompName" placeholder="اسم المكوّن">
         <input type="text" class="pkgCompSerial" placeholder="رقم تسلسلي (اختياري)">
       </div>`);
+      return;
+    }
+    const addCustomComp = e.target.closest('.addPkgCustomCompBtn');
+    if(addCustomComp){
+      const wrap = addCustomComp.previousElementSibling; // .pkgCustomComponents
+      const idx = wrap.querySelectorAll('.pkgCustomCompRow').length;
+      wrap.insertAdjacentHTML('beforeend', invCustomPackageCompRowHtml(idx));
+      wireCustomPackageCompRow(wrap.lastElementChild);
+      return;
     }
   });
 
@@ -3289,6 +3413,17 @@ document.addEventListener('click', async (e)=>{
         if(!code || !name){ invalid = true; return; }
         if(qty<=0 || unitPrice<0){ invalid = true; return; }
         items.push({type:'product', code, name, qty, unitPrice, discount});
+      } else if(row.dataset.custom==='1'){
+        const name = row.querySelector('.pkgCustomName').value.trim() || 'باكدج مخصص';
+        const components = [...row.querySelectorAll('.pkgCustomCompRow')].map(cr=>({
+          code: cr.querySelector('.compCode').value.trim(),
+          name: cr.querySelector('.compName').value.trim(),
+          qty: Number(cr.querySelector('.compQty').value)||0,
+          unitPrice: Number(cr.querySelector('.compPrice').value)||0,
+        }));
+        if(!components.length || components.some(c=>!c.code || c.qty<=0)){ invalid = true; return; }
+        if(unitPrice<=0){ invalid = true; return; }
+        items.push({type:'package', code:'', name, qty:1, unitPrice, discount:0, custom:true, components});
       } else {
         const nameEl = row.querySelector('.pkgHead b');
         const name = nameEl ? nameEl.textContent.trim() : 'باكدج';
@@ -3511,25 +3646,10 @@ function printInvoice(inv){
         </ul>
       </div>
 
-      <div class="sigRow">
-        <div>...................................... :المدير</div>
-        <div>...................................... :البائع</div>
-        <div>...................................... :العميل</div>
-      </div>
-
-      <div class="footRow2">
-        <div class="legal2">
-          للتواصل: info@HoloulEnergy.com · Sales@HoloulEnergy.com
-        </div>
+      <div class="footRow2" style="justify-content:flex-end;border-top:none;margin-top:14px;padding-top:0;">
         <div style="display:flex;gap:14px;align-items:flex-end;">
-          <div style="text-align:center;">
-            <canvas id="invNumberQrCanvas"></canvas>
-            <div style="font-size:8.5px;color:var(--muted);margin-top:2px;">تحقق من رقم الفاتورة</div>
-          </div>
-          <div style="text-align:center;">
-            <canvas id="invQrCanvas"></canvas>
-            <div style="font-size:8.5px;color:var(--muted);margin-top:2px;">فاتورة ضريبية (ZATCA)</div>
-          </div>
+          <canvas id="invNumberQrCanvas" class="printQr"></canvas>
+          <canvas id="invQrCanvas" class="printQr"></canvas>
         </div>
       </div>
     </div>
@@ -3539,19 +3659,25 @@ function printInvoice(inv){
     window.print();
     setTimeout(()=> document.body.classList.remove('printing-invoice'), 300);
   };
-  // Two separate QR codes:
+  // Two separate QR codes, each rendered at a high internal bitmap resolution
+  // (300px) then scaled DOWN to a small display size via CSS (.printQr).
+  // Printing/PDF export rasterizes at much higher DPI than screen — a QR
+  // drawn small (e.g. 74px) gets stretched back up for print and turns into
+  // a blurry, unscannable noise block. Rendering large and letting the
+  // browser downscale keeps every module sharp at print resolution.
   //  - invNumberQrCanvas: plain text = the invoice number itself, so a staff
   //    member can scan it with any phone camera and eyeball-match it against
-  //    the printed number — a quick tamper/mismatch check independent of ZATCA.
-  //  - invQrCanvas: the official ZATCA simplified-tax-invoice TLV payload.
+  //    the printed number — a quick tamper/mismatch check independent of the tax QR.
+  //  - invQrCanvas: the official simplified-tax-invoice TLV payload.
+  const QR_RENDER_PX = 300;
   const drawInvoiceNumberQr = (cb) => {
     if(window.QRCode){
-      QRCode.toCanvas(document.getElementById('invNumberQrCanvas'), String(inv.invoice_number||''), {width:74, margin:0}, cb);
+      QRCode.toCanvas(document.getElementById('invNumberQrCanvas'), String(inv.invoice_number||''), {width:QR_RENDER_PX, margin:1}, cb);
     } else cb();
   };
   const drawZatcaQr = (cb) => {
     if(window.QRCode && inv.qr_base64){
-      QRCode.toCanvas(document.getElementById('invQrCanvas'), inv.qr_base64, {width:74, margin:0}, cb);
+      QRCode.toCanvas(document.getElementById('invQrCanvas'), inv.qr_base64, {width:QR_RENDER_PX, margin:1}, cb);
     } else cb();
   };
   drawInvoiceNumberQr(()=> drawZatcaQr(finishPrint));
