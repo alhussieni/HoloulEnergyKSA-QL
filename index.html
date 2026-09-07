@@ -3342,30 +3342,6 @@ function findCatalogEntryByModel(catalog, categoryNameIncludes, model){
   return { catIdx, rowIdx, row: cat.rows[rowIdx], columns: cat.columns, image: details.image || cat.categoryImage, specs: details.specs || {}, description: details.description || '' };
 }
 
-function renderComponentDetailCard(title, entry, fallbackLabel){
-  if(!entry){
-    return `<div class="ready-card static" style="flex-direction:row;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3)">
-      <div class="visual" style="aspect-ratio:auto;width:64px;height:64px;flex:0 0 64px;border-radius:9px"><div class="noimg" style="font-size:22px">📦</div></div>
-      <div class="body" style="padding:0;flex:1;min-width:0">
-        <h3 class="name" style="font-size:13.5px">${title}</h3>
-        <div class="note" style="margin-top:2px">${fallbackLabel}</div>
-      </div>
-    </div>`;
-  }
-  const specChips = Object.entries(entry.specs||{}).slice(0,6).map(([k,v])=>`<span class="chip">${k}: ${v}</span>`).join('');
-  return `
-  <div class="ready-card static" style="flex-direction:row;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3)">
-    <div class="visual" style="aspect-ratio:auto;width:64px;height:64px;flex:0 0 64px;border-radius:9px">
-      ${entry.image ? `<img src="${entry.image}" alt="${entry.row[0]}">` : `<div class="noimg" style="font-size:22px">📦</div>`}
-    </div>
-    <div class="body" style="padding:0;flex:1;min-width:0">
-      <h3 class="name" style="font-size:13.5px">${title} — ${entry.row[0]}</h3>
-      ${entry.description ? `<div class="note" style="margin-top:2px">${entry.description}</div>` : ''}
-      ${specChips ? `<div class="specs" style="margin-top:6px">${specChips}</div>` : ''}
-    </div>
-  </div>`;
-}
-
 function renderReadySystemDetail(id){
   if((!cachedReadySystems || !cachedProductCatalog) && !readySystemsLoading && !readySystemsError && !productCatalogLoading && !productCatalogError){
     if(!cachedReadySystems) loadReadySystems();
@@ -3386,31 +3362,68 @@ function renderReadySystemDetail(id){
   }
   const invEntry = findCatalogEntryByModel(cachedProductCatalog, 'انفرتر', s.inverterModel);
   const batEntry = findCatalogEntryByModel(cachedProductCatalog, 'بطاريات ليثيوم', s.batteryModel);
-  if(!cachedPanelsPublic) ensurePanelsPublicLoaded();
-  const panelPublic = (cachedPanelsPublic||[]).find(p=>p.brand===s.panelBrand && +p.power===+s.panelPowerW);
-  const panelEntry = panelPublic ? { row: [`${panelPublic.brand} ${panelPublic.power}W`], image: panelPublic.image, description: panelPublic.description, specs: panelPublic.specs || {} } : null;
+
+  // Compact facts only — count/power/voltage/capacity, no images, specs or
+  // descriptions. Inverter kW isn't a stored field; it's parsed from the
+  // model name (matches the same convention the pricing engine itself uses).
+  const invKw = s.inverterModel ? (String(s.inverterModel).match(/([\d.]+)\s*KW/i)||[])[1] : null;
+  const invVoltage = (()=>{
+    if(!invEntry) return null;
+    const specText = (invEntry.specs && (invEntry.specs['جهد البطارية الاسمي'] || invEntry.specs['الجهد الاسمي'])) || '';
+    const nums = Array.from(new Set((specText.match(/\d+(\.\d+)?/g)||[]).map(Number).filter(n=>n===12||n===24||n===48)));
+    if(nums.length) return nums.join('/')+'V';
+    const fromName = String(s.inverterModel||'').match(/\b(12|24|48)V\b/i);
+    return fromName ? fromName[1]+'V' : null;
+  })();
+  const batVoltage = batEntry ? batEntry.row[2] : null;
+  const batAh = batEntry ? batEntry.row[1] : null;
+
+  const facts = [
+    { ico:'☀️', label:'الألواح الشمسية', value:`${s.panelCount}× ${s.panelPowerW||'-'}W` },
+    { ico:'🔌', label:'الإنفرتر', value: s.inverterModel ? `1×${invKw?` ${invKw}KW`:''}${invVoltage?` — جهد التشغيل ${invVoltage}`:''}` : 'بدون إنفرتر — منظم شحن فقط' },
+    { ico:'🔋', label:'البطاريات', value:`${s.batteryCount}×${batVoltage?` ${batVoltage}V`:''}${batAh?` — ${batAh}Ah`:''}` },
+  ];
+
   return `
   <div class="card">
-    ${s.image ? `<img src="${s.image}" alt="${s.name}" style="width:100%;aspect-ratio:1.618/1;object-fit:cover;border-radius:var(--radius);margin-bottom:var(--sp-2)">` : ''}
-    <h3 style="margin:0">${s.name}</h3>
-    <div class="big num" style="font-size:24px;margin-top:6px">${fmt(s.priceSar)} ﷼</div>
-    <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
+    <div class="detail-split">
+      <div class="photo">${s.image ? `<img src="${s.image}" alt="${s.name}">` : `<div class="noimg">🗂️</div>`}</div>
+      <div>
+        <span class="detail-cat-badge">منظومة أوف-جريد جاهزة</span>
+        <div style="display:flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap;margin-top:var(--sp-1)">
+          <h2 style="margin:0">${s.name}</h2>
+          <span class="${s.status==='متوفر'?'tag':'unavail-chip'}">${s.status}</span>
+        </div>
+        <div class="detail-price-block">
+          <div class="big-price">${fmt(s.priceSar)} ﷼</div>
+          <div class="note" style="display:inline-block;margin-top:4px">* توريد المعدات فقط — بدون تركيب أو شاسيه</div>
+        </div>
+        ${renderReadySystemAppliancesBlock(s)}
+      </div>
+    </div>
   </div>
-  <div class="card" style="padding:0;display:flex;flex-direction:column">
-    <div style="padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line)">${renderComponentDetailCard('الألواح الشمسية', panelEntry, `${s.panelCount}× ${s.panelBrand||''} ${s.panelPowerW}W${panelDatasheetLink(s.panelBrand, s.panelPowerW)}`)}</div>
-    <div style="padding:var(--sp-2) var(--sp-3);border-bottom:1px solid var(--line)">${s.inverterModel ? renderComponentDetailCard('الإنفرتر', invEntry, `${s.inverterBrand} ${s.inverterModel}`) : renderComponentDetailCard('الإنفرتر', null, 'لا يوجد إنفرتر — منظم شحن فقط')}</div>
-    <div style="padding:var(--sp-2) var(--sp-3)">${renderComponentDetailCard(`البطارية (${s.batteryCount}×)`, batEntry, `${s.batteryType} ${s.batteryModel||''}`)}</div>
+  <div class="card">
+    <h3>المكوّنات</h3>
+    <div style="display:flex;flex-direction:column;gap:var(--sp-1)">
+      ${facts.map((f,i)=>`
+        <div style="display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-1) 0;${i<facts.length-1?'border-bottom:1px solid var(--line)':''}">
+          <span style="font-size:20px">${f.ico}</span>
+          <div>
+            <div style="font-weight:700;font-size:13.5px">${f.label}</div>
+            <div class="note" style="margin-top:2px">${f.value}</div>
+          </div>
+        </div>`).join('')}
+    </div>
   </div>
-  ${renderReadySystemAppliancesCard(s)}
   `;
 }
 
 // The admin already records, per ready off-grid package, roughly what
 // devices it's sized to run (AC type/count, fridge, lighting, other
-// devices) — this was previously admin-only reference info. Customers
-// picking between packages need to see it too, so it's rendered here as
-// its own card on the public package-details page.
-function renderReadySystemAppliancesCard(s){
+// devices) — this is the single thing customers care about most when
+// comparing packages, so it sits right inside the hero, immediately under
+// the price, before any component detail.
+function renderReadySystemAppliancesBlock(s){
   const rows = [];
   if(s.acType && s.acType!=='لا يوجد'){
     const dayPart = s.acCountDay ? `نهارًا: ${s.acCountDay}× ${s.acPowerDayW||0}W لمدة ${s.acHoursDay||0} ساعة` : '';
@@ -3422,17 +3435,16 @@ function renderReadySystemAppliancesCard(s){
   if(s.otherDevices) rows.push({icon:'🔌', label:'أجهزة أخرى', value:s.otherDevices});
   if(!rows.length) return '';
   return `
-  <div class="card">
-    <h3 style="margin:0 0 10px">الأجهزة التي تقدر المنظومة تشغّلها</h3>
-    ${rows.map(r=>`
-      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)">
-        <span style="font-size:18px">${r.icon}</span>
-        <div>
-          <div style="font-weight:700;font-size:13.5px">${r.label}</div>
-          <div class="note" style="margin-top:2px">${r.value}</div>
-        </div>
-      </div>`).join('')}
-    <div class="note" style="margin-top:8px">تقديرات مرجعية بناءً على سعة المنظومة — الاستهلاك الفعلي قد يختلف حسب طريقة الاستخدام.</div>
+  <div style="background:var(--teal-tint);border-radius:10px;padding:var(--sp-2);margin:var(--sp-2) 0">
+    <div style="font-weight:800;font-size:13px;color:var(--teal-dark);margin-bottom:var(--sp-1)">الأجهزة التي تقدر المنظومة تشغّلها</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${rows.map(r=>`
+        <div style="display:flex;align-items:baseline;gap:8px;font-size:12.5px">
+          <span>${r.icon}</span>
+          <span style="font-weight:700">${r.label}:</span>
+          <span style="color:var(--muted)">${r.value}</span>
+        </div>`).join('')}
+    </div>
   </div>`;
 }
 
