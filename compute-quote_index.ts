@@ -122,8 +122,9 @@ function computeQuote(D: any, inp: any) {
   const cbSize = pickLadder(D.cbLadder, IscCalc);
   const combiner = inp.combinerOverride || pickCombiner(arrays, D.combinerBoxes, D.combinerHeadroom, D.combinerMinSpareStrings);
 
-  const panelCost = panel.priceW * calcKW * 1000;
-  const panelSell = (panel.priceW + (D.panelMarginPerWatt || 0)) * calcKW * 1000;
+  const panelPr = panelPricing(D, panel);
+  const panelCost = panelPr.costPerWatt * calcKW * 1000;
+  const panelSell = panelPr.sellPerWatt * calcKW * 1000;
   const steelPanelCost = D.steelPanelPerHP * hp;
   const combinerCost = combiner[1];
 
@@ -343,6 +344,29 @@ function resolveCatalogPricing(
     sell: listPrice * (1 + (fallbackMarkupPct || 0) / 100),
   };
 }
+// Solar panels (D.panels) now go through the SAME discount registry as every
+// other product category — category "الألواح الشمسية", brand = panel.brand.
+// panel.priceW is the reference/list price per watt (what used to be shown
+// publicly as priceW + the old flat panelMarginPerWatt, before that flat
+// margin was folded into priceW and replaced by a proper %-based discount
+// entry during the products/discounts migration). If no discount is
+// registered yet for a given brand, falls back to the legacy flat
+// panelMarginPerWatt behaviour so nothing breaks for un-migrated brands.
+function panelPricing(D: any, panel: any): { costPerWatt: number; sellPerWatt: number } {
+  const d = findDiscount(D, "الألواح الشمسية", panel.brand);
+  if (d) {
+    const supplierPct = Number(d.supplierDiscountPct) || 0;
+    const sellPct = Number(d.sellDiscountPct) || 0;
+    return {
+      costPerWatt: panel.priceW * (1 - supplierPct / 100),
+      sellPerWatt: panel.priceW * (1 - sellPct / 100),
+    };
+  }
+  return {
+    costPerWatt: panel.priceW,
+    sellPerWatt: panel.priceW + (D.panelMarginPerWatt || 0),
+  };
+}
 
 function parseKwFromModel(model: string): number {
   const m = String(model).match(/([\d.]+)\s*KW/i);
@@ -360,7 +384,9 @@ function getInverterCatalogRows(D: any) {
     .sort((a: any, b: any) => a.kw - b.kw);
 }
 function getInverterModelOptions(D: any) {
-  return getInverterCatalogRows(D).map((r: any) => ({ model: r.model, kw: r.kw }));
+  return getInverterCatalogRows(D).map((r: any) => ({
+    model: r.model, kw: r.kw, voltageClasses: getInverterVoltageClasses(D, r.model),
+  }));
 }
 // The main HP-based residential/commercial calculator (حاسبة الحصان) uses a
 // completely different product line — three-phase VEICHI pump/motor drives
@@ -389,7 +415,6 @@ function pickPumpInverter(D: any, kwNeeded: number) {
   if (idx === -1) idx = rows.length - 1;
   return { picked: rows[idx], idx, rows };
 }
-
 function pickCatalogInverter(D: any, kwNeeded: number) {
   const rows = getInverterCatalogRows(D);
   if (!rows.length) throw new Error('لا يوجد أي موديل انفرتر هجين بقدرة (KW) واضحة في اسم الموديل داخل كتالوج "شواحن/انفرترات هجين MPPT"');
@@ -413,45 +438,148 @@ function pickCatalogInverterMulti(D: any, kwNeeded: number, requestedModel?: str
   const count = Math.max(1, Math.ceil(kwNeeded / unit.kw));
   return { ...unit, count, totalKw: unit.kw * count };
 }
+// Every inverter model is physically wired for a specific battery bus
+// voltage class (or a couple of them) — a 1KW "SIS4-12V" unit is a 12V-only
+// device, a "SIS 5KW-S" is 48V-only, while the "SISV...(TWIN)" family can run
+// on 24V OR 48V. Picking the right inverter for the LOAD (kW) says nothing
+// about which battery voltage is physically valid for that same inverter —
+// those are two independent choices that must be cross-checked, or a rep can
+// end up quoting (and a client can end up buying) an inverter+battery pair
+// that literally cannot be wired together in the field.
+// The source of truth is the catalog's own spec text (جهد البطارية الاسمي),
+// e.g. "24 / 48 فولت" or "48 فولت" — parsed here rather than hardcoded, so it
+// stays correct if the catalog is edited. Falls back to a voltage mentioned
+// in the model name itself (e.g. "12V" in "SIS4-12V"), then finally to 48V
+// (the most common class) only if nothing else is available.
+function getInverterVoltageClasses(D: any, model: string): (12 | 24 | 48)[] {
+  const cat = findCatalogCategory(D, "انفرتر");
+  const idx = cat.rows.findIndex((r: any) => r[0] === model);
+  const detail = idx >= 0 ? (cat.productDetails && cat.productDetails[String(idx)]) : null;
+  const specText: string = (detail && detail.specs && (detail.specs["جهد البطارية الاسمي"] || detail.specs["الجهد الاسمي"])) || "";
+  const fromSpec = Array.from(new Set(
+    (specText.match(/\d+(\.\d+)?/g) || []).map(Number).filter((n) => n === 12 || n === 24 || n === 48)
+  )) as (12 | 24 | 48)[];
+  if (fromSpec.length) return fromSpec;
+  const fromName = String(model).match(/\b(12|24|48)V\b/i);
+  if (fromName) return [Number(fromName[1]) as 12 | 24 | 48];
+  return [48]; // safe default — matches the platform's previous fixed assumption
+}
+// Parses a spec-text current value like "40A", "100A", "100–140A" (range) —
+// ranges are parsed conservatively by taking the LOWER bound, since the
+// catalog's own free-text often blends nameplate variants for a model
+// family and we'd rather under-promise on capacity than over-promise.
+function parseConservativeCurrentA(specText: string): number | null {
+  const nums = (specText.match(/\d+(\.\d+)?/g) || []).map(Number);
+  if (!nums.length) return null;
+  return Math.min(...nums);
+}
+// Every hybrid/off-grid inverter has a hard ceiling on how fast it can
+// recharge the battery bank (its own AC/solar charger, e.g. 40A/100A/140A —
+// see VEICHI SIS/SISV datasheets). This is completely independent of the
+// battery bank's total kWh capacity, and the engine must never size a
+// battery bank without checking whether the picked inverter can actually
+// charge it at a reasonable rate.
+function getInverterMaxChargeCurrentA(D: any, model: string): number | null {
+  const cat = findCatalogCategory(D, "انفرتر");
+  const idx = cat.rows.findIndex((r: any) => r[0] === model);
+  const detail = idx >= 0 ? (cat.productDetails && cat.productDetails[String(idx)]) : null;
+  const specText: string = (detail && detail.specs && (detail.specs["أقصى تيار شحن AC"] || detail.specs["أقصى تيار شحن"])) || "";
+  return parseConservativeCurrentA(specText);
+}
+// Household appliance loads with a motor/compressor (AC units, fridges,
+// water pumps, washing machines...) draw a large INRUSH/starting current
+// for a fraction of a second when switching on — often 3x+ their steady
+// running wattage — while purely resistive loads (LED lighting, most TVs)
+// do not. An inverter sized only for continuous running watts can trip or
+// fail to start such a load even though its "rated power" looks sufficient
+// on paper (e.g. a 1.5HP AC unit vs a 2KW inverter in the report the client
+// raised). This heuristic is only a fallback for loads that don't explicitly
+// declare loadType/surgeMultiplier — a real per-appliance value from a
+// nameplate/datasheet always takes priority.
+const INDUCTIVE_APPLIANCE_HINTS = ["تكييف", "مكيف", "ثلاجة", "فريزر", "مضخة", "موتور", "كمبريسور", "غسالة", "مروحة", "دينامو", "كمبروسر"];
+function isLikelyInductiveAppliance(name: string): boolean {
+  const n = String(name || "");
+  return INDUCTIVE_APPLIANCE_HINTS.some((h) => n.includes(h));
+}
+// Resolves the starting-current multiplier for one appliance: an explicit
+// numeric `surgeMultiplier` (manual, from a real nameplate/datasheet) always
+// wins; otherwise an explicit `loadType` ("inductive"/"resistive") picks the
+// configured default; otherwise the appliance NAME is heuristically
+// classified. `og.inductiveSurgeMultiplier` (default 3x) is the assumed
+// starting-current ratio for motor/compressor loads absent better data.
+function applianceSurgeMultiplier(a: any, og: any): number {
+  if (a.surgeMultiplier != null && +a.surgeMultiplier > 0) return +a.surgeMultiplier;
+  if (a.loadType === "resistive") return 1;
+  if (a.loadType === "inductive") return og.inductiveSurgeMultiplier || 3;
+  return isLikelyInductiveAppliance(a.name) ? (og.inductiveSurgeMultiplier || 3) : 1;
+}
+
+// Lithium (LiFePO4) batteries never land exactly on 12/24/48V — the real
+// nameplate voltage varies by cell count/BMS (12.8V, 25.1V, 25.6V, 51.1V,
+// 51.2V, 52.6V... are all genuine products on the market, all sold, wired
+// and matched to inverters as "12V"/"24V"/"48V" systems). Every voltage
+// comparison in this file — grouping catalog rows, picking the dropdown
+// options, deciding how many units to stack in series — MUST go through
+// standardBatteryVoltage() and compare STANDARD classes, never raw floats,
+// or two genuinely-equivalent "24V" batteries from different models/tolerances
+// silently fail to match each other.
+function standardBatteryVoltage(actualVoltage: number): 12 | 24 | 48 {
+  if (actualVoltage < 18) return 12;   // ~12.0–12.8V nominal packs
+  if (actualVoltage < 36) return 24;   // ~24.0–25.9V nominal packs
+  return 48;                            // ~48.0–52.6V nominal packs
+}
 // Battery rows: [model, current(A), voltage(V), priceExclTax, priceInclTax].
-// The catalog carries a battery module at several nominal voltages (e.g.
-// 12.8V / 25.6V / 51.2V cells of the same chemistry) — the highest voltage
-// present is treated as the "full bus" reference (typically ~48-51V for
-// hybrid inverters), and any lower-voltage module the customer picks gets
-// stacked in SERIES to reach that same bus voltage automatically (e.g. a
-// 25.6V module needs 2 in series to reach ~51.2V), then in PARALLEL strings
-// to meet the required kWh. This mirrors how these battery banks are wired
-// in the field, so the customer can choose their preferred module voltage
-// and still get a correctly-sized, correctly-wired bank.
+// The catalog carries battery modules across several STANDARD voltage
+// classes (12V / 24V / 48V) — the highest class present is treated as the
+// "full bus" reference (typically the 48V class for hybrid inverters), and
+// any lower-class module the customer picks gets stacked in SERIES to reach
+// that same bus class automatically (e.g. a 24V module needs 2 in series to
+// reach the 48V bus), then in PARALLEL strings to meet the required kWh.
+// This mirrors how these battery banks are wired in the field, so the
+// customer can choose their preferred module voltage and still get a
+// correctly-sized, correctly-wired bank — sized off the STANDARD voltage
+// class, never off a specific battery's raw nameplate voltage.
 function getBatteryVoltageOptions(D: any): number[] {
   const cat = findCatalogCategory(D, "بطاريات ليثيوم");
-  const voltages = Array.from(new Set(
-    cat.rows.map((r: any) => Math.round(parseFloat(r[2]) * 10) / 10).filter((v: number) => v > 0)
+  const stdVoltages = Array.from(new Set(
+    cat.rows.map((r: any) => parseFloat(r[2])).filter((v: number) => v > 0).map(standardBatteryVoltage)
   )) as number[];
-  return voltages.sort((a, b) => a - b);
+  return stdVoltages.sort((a, b) => a - b);
 }
-function pickCatalogBattery(D: any, nameplateKwhNeeded: number, requestedVoltage?: number) {
+function pickCatalogBattery(D: any, nameplateKwhNeeded: number, requestedStandardVoltage?: number) {
   const cat = findCatalogCategory(D, "بطاريات ليثيوم");
   const allRows = cat.rows
     .map((r: any, idx: number) => ({
       model: r[0],
-      voltage: Math.round(parseFloat(r[2]) * 10) / 10,
+      voltage: Math.round(parseFloat(r[2]) * 10) / 10, // actual nameplate voltage — kept for accurate kWh/pack-voltage math
       current: parseFloat(r[1]),
       listPrice: parseFloat(r[3]),
       brand: rowBrand(cat, idx),
     }))
     .filter((r: any) => r.voltage > 0)
-    .map((r: any) => ({ ...r, kwh: (r.current * r.voltage) / 1000 }));
+    .map((r: any) => ({ ...r, stdVoltage: standardBatteryVoltage(r.voltage), kwh: (r.current * r.voltage) / 1000 }));
   if (!allRows.length) throw new Error('لا يوجد أي موديل بطارية داخل كتالوج "بطاريات ليثيوم"');
 
-  const busVoltage = Math.max(...allRows.map((r: any) => r.voltage));
-  const targetVoltage = requestedVoltage && requestedVoltage > 0 ? requestedVoltage : busVoltage;
+  // Bus class = the highest STANDARD voltage class present (typically 48V),
+  // never the raw max nameplate voltage — a 52.6V and a 51.1V module are the
+  // same 48V bus class even though their raw floats differ.
+  const busStdVoltage = Math.max(...allRows.map((r: any) => r.stdVoltage));
+  const targetStdVoltage = requestedStandardVoltage && [12, 24, 48].includes(+requestedStandardVoltage)
+    ? +requestedStandardVoltage
+    : busStdVoltage;
 
-  const candidates = allRows.filter((r: any) => Math.abs(r.voltage - targetVoltage) < 0.05);
-  if (!candidates.length) throw new Error(`لا يوجد أي موديل بطارية بفولت ${targetVoltage}V داخل الكتالوج`);
+  const candidates = allRows.filter((r: any) => r.stdVoltage === targetStdVoltage);
+  if (!candidates.length) throw new Error(`لا يوجد أي موديل بطارية بفولت ${targetStdVoltage}V (استاندرد) داخل الكتالوج`);
   const unit = candidates.sort((a: any, b: any) => b.kwh - a.kwh)[0];
 
-  const seriesCount = Math.max(1, Math.round(busVoltage / unit.voltage));
+  // Reference bus actual voltage: the highest-nameplate module within the
+  // BUS class (used only to report a real-world pack voltage, e.g. ~51.2V).
+  const busRefRow = allRows.filter((r: any) => r.stdVoltage === busStdVoltage).sort((a: any, b: any) => b.voltage - a.voltage)[0];
+  const busVoltage = busRefRow.voltage;
+
+  // Series count comes from the STANDARD class ratio (48/24 = 2), not from
+  // dividing raw nameplate floats — robust regardless of nameplate tolerance.
+  const seriesCount = Math.max(1, Math.round(busStdVoltage / targetStdVoltage));
   const packKwh = unit.kwh * seriesCount;
   const packVoltage = unit.voltage * seriesCount;
   const parallelCount = Math.max(1, Math.ceil(nameplateKwhNeeded / packKwh));
@@ -464,15 +592,15 @@ function pickCatalogBattery(D: any, nameplateKwhNeeded: number, requestedVoltage
 }
 
 function buildGenericItems(pushImpl: any, opts: {
-  panel: any; totalPanels: number; calcKW: number; panelMarginPerWatt: number;
+  panel: any; totalPanels: number; calcKW: number; panelCostPerWatt: number; panelSellPerWatt: number;
   inverterLabel: string; inverterType: string; inverterCostBasis: number; inverterSell: number; inverterCount?: number;
   structureCost: number; structureSell: number;
   cablingCost: number; cablingSell: number;
   installCost: number; installSell: number;
   battery?: { unit: any; count: number; totalKwh: number; costBasis: number; sell: number; seriesCount?: number; parallelCount?: number; packVoltage?: number };
 }) {
-  const panelCost = opts.panel.priceW * opts.calcKW * 1000;
-  const panelSell = (opts.panel.priceW + (opts.panelMarginPerWatt || 0)) * opts.calcKW * 1000;
+  const panelCost = opts.panelCostPerWatt * opts.calcKW * 1000;
+  const panelSell = opts.panelSellPerWatt * opts.calcKW * 1000;
   pushImpl("panel", "ألواح الطاقة الشمسية", panelSell, panelCost, {
     type: `${opts.panel.brand} ${opts.panel.power}W أو ما يعادلها`, qty: `#${opts.totalPanels}#`,
     warranty: "12 سنة ضد عيوب الصناعة / 30 سنة ضد التناقص الإنتاجي عن %80",
@@ -541,6 +669,20 @@ function computeOffgridQuote(D: any, inp: any) {
   const totalPanels = Math.max(1, Math.ceil((requiredArrayKw * 1000) / panel.power));
   const calcKW = (totalPanels * panel.power) / 1000;
 
+  // Battery sizing philosophy: the bank's BASE requirement is to cover the
+  // NIGHT-time consumption (when there is zero solar contribution by
+  // definition) — this is mandatory and unconditional, so it scales
+  // automatically with night-load changes even if the rep never touches
+  // "autonomy days". `autonomyDays` is an EXTRA buffer on top of that base,
+  // for cloudy-day backup — each extra day adds a FULL day+night worth of
+  // consumption (dailyKwh), since a cloudy day means the panels can't be
+  // relied on for the day portion either.
+  const nightKwh = inp.method === "appliances"
+    ? (inp.appliances || []).reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.nightHours || 0) * (+a.qty || 1)) / 1000, 0)
+    // Direct kWh entry has no day/night breakdown — assume a configurable
+    // fallback share of total consumption happens at night.
+    : dailyKwh * (og.nightLoadRatioFallback ?? 0.5);
+
   const autonomyDaysRaw = inp.autonomyDays;
   const autonomyDays = Math.max(
     0,
@@ -548,19 +690,97 @@ function computeOffgridQuote(D: any, inp: any) {
       ? (og.defaultAutonomyDays ?? 0)
       : (+autonomyDaysRaw || 0)
   );
-  const nameplateBatteryKwh = (dailyKwh * autonomyDays) / og.batteryDoD;
-  const battery = pickCatalogBattery(D, nameplateBatteryKwh, inp.batteryVoltage);
-  const batteryPricing = resolveCatalogPricing(D, battery.category, battery.unit.brand, battery.unit.listPrice, og.batteryMarkupPct);
+  const nameplateBatteryKwh = (nightKwh + dailyKwh * autonomyDays) / og.batteryDoD;
 
+  // Inverter is picked FIRST (by load), because it's the inverter's own
+  // wiring that constrains which battery voltage classes are even valid —
+  // the battery voltage choice must be checked against it, never resolved
+  // independently (see getInverterVoltageClasses for why).
   const inv = pickCatalogInverterMulti(D, peakKw, inp.inverterModel);
   const invPricing = resolveCatalogPricing(D, inv.category, inv.brand, inv.listPrice, og.inverterMarkupPct);
+  const invVoltageClasses = getInverterVoltageClasses(D, inv.model);
+
+  // ---- Starting/surge current check (appliances method only — a direct
+  // kWh entry has no per-appliance breakdown to reason about). Worst-case
+  // rule of thumb: total steady running load + the EXTRA starting current of
+  // the single largest motor/inductive load (only one big motor typically
+  // starts at a time; everything else is already running steadily).
+  let surgeInfo: { totalRunningKw: number; largestSurgeApplianceName: string | null; largestSurgeExtraKw: number; requiredSurgeKw: number } | null = null;
+  let requiredSurgeKw = peakKw;
+  if (inp.method === "appliances" && (inp.appliances || []).length) {
+    const apps = (inp.appliances || []).map((a: any) => {
+      const runningKw = ((+a.watts || 0) * (+a.qty || 1)) / 1000;
+      const mult = applianceSurgeMultiplier(a, og);
+      return { name: a.name || null, runningKw, extraSurgeKw: runningKw * Math.max(0, mult - 1) };
+    });
+    const totalRunningKw = apps.reduce((s: number, a: any) => s + a.runningKw, 0);
+    const largest = apps.reduce((max: any, a: any) => (a.extraSurgeKw > max.extraSurgeKw ? a : max), { extraSurgeKw: 0, name: null });
+    requiredSurgeKw = totalRunningKw + largest.extraSurgeKw;
+    surgeInfo = { totalRunningKw, largestSurgeApplianceName: largest.name, largestSurgeExtraKw: largest.extraSurgeKw, requiredSurgeKw };
+  }
+  const inverterSurgeRatio = og.inverterSurgeRatio || 2; // VEICHI SIS/SISV datasheets: surge power = ~2x rated power
+  let inverterSurgeWarning: string | null = null;
+  if (requiredSurgeKw > inv.kw * inverterSurgeRatio * inv.count) {
+    const neededCount = Math.max(inv.count, Math.ceil(requiredSurgeKw / (inv.kw * inverterSurgeRatio)));
+    const oldCount = inv.count;
+    inv.count = neededCount;
+    inv.totalKw = inv.kw * inv.count;
+    inverterSurgeWarning = `⚠️ تيار البدء المطلوب (يعادل تقريبًا ${requiredSurgeKw.toFixed(2)} كيلوواط ذروة${surgeInfo?.largestSurgeApplianceName ? `، أكبره من "${surgeInfo.largestSurgeApplianceName}"` : ""}) يتجاوز قدرة الذروة لانفرتر ${inv.model} الواحد (${(inv.kw * inverterSurgeRatio).toFixed(2)} كيلوواط تقريبًا) — تم رفع عدد الوحدات من ${oldCount} إلى ${inv.count} لضمان تشغيل الحمل عند بدء التشغيل.`;
+  }
+
+  const requestedBatteryVoltage = [12, 24, 48].includes(+inp.batteryVoltage) ? (+inp.batteryVoltage as 12 | 24 | 48) : null;
+  let standardVoltage: 12 | 24 | 48;
+  let batteryVoltageWarning: string | null = null;
+  if (requestedBatteryVoltage && invVoltageClasses.includes(requestedBatteryVoltage)) {
+    standardVoltage = requestedBatteryVoltage;
+  } else {
+    // Prefer 48V if the inverter supports it (most common/available battery
+    // stock), otherwise fall back to whatever voltage class it does support.
+    standardVoltage = invVoltageClasses.includes(48) ? 48 : invVoltageClasses[invVoltageClasses.length - 1];
+    if (requestedBatteryVoltage) {
+      batteryVoltageWarning = `⚠️ فولت البطارية المُختار (${requestedBatteryVoltage}V) غير متوافق مع انفرتر ${inv.model} (يدعم فقط ${invVoltageClasses.join('/')}V) — تم تصحيحه تلقائيًا إلى ${standardVoltage}V لضمان توافق الأسلاك.`;
+    }
+  }
+
+  const battery = pickCatalogBattery(D, nameplateBatteryKwh, standardVoltage);
+  const batteryPricing = resolveCatalogPricing(D, battery.category, battery.unit.brand, battery.unit.listPrice, og.batteryMarkupPct);
+
+  // ---- Battery charging-current check. The inverter's own AC/solar
+  // charger has a hard max charge current (e.g. 40A/100A/140A per the
+  // catalog spec) — this is a SEPARATE ceiling from the battery bank's kWh
+  // capacity. If the bank needs more parallel packs than a single charger
+  // can service at each pack's own full rated current, charging will simply
+  // take longer than the available recharge window (sun-hours / overnight),
+  // and in practice the site needs a second charger dedicated to the extra
+  // pack(s) — continues the quote either way and flags this clearly rather
+  // than silently under-provisioning the charging capacity.
+  const invMaxChargeA = getInverterMaxChargeCurrentA(D, inv.model);
+  let batteryChargingWarning: string | null = null;
+  let suggestedExtraCharger: { model: string; maxChargeA: number; count: number } | null = null;
+  if (invMaxChargeA && battery.unit.current > 0) {
+    const maxPacksPerCharger = Math.max(1, Math.floor(invMaxChargeA / battery.unit.current));
+    if (battery.parallelCount > maxPacksPerCharger) {
+      const extraPacks = battery.parallelCount - maxPacksPerCharger;
+      const neededExtraChargeA = extraPacks * battery.unit.current;
+      const candidateRows = getInverterCatalogRows(D).filter((r: any) => getInverterVoltageClasses(D, r.model).includes(standardVoltage));
+      let bestExtra: any = null;
+      for (const r of candidateRows) {
+        const ca = getInverterMaxChargeCurrentA(D, r.model);
+        if (ca && ca >= neededExtraChargeA && (!bestExtra || r.kw < bestExtra.kw)) bestExtra = { ...r, maxChargeA: ca };
+      }
+      suggestedExtraCharger = bestExtra ? { model: bestExtra.model, maxChargeA: bestExtra.maxChargeA, count: 1 } : null;
+      batteryChargingWarning = `⚠️ انفرتر ${inv.model} (أقصى تيار شحن ${invMaxChargeA}A) يقدر يشحن بمعدل كامل ${maxPacksPerCharger} بطارية بس من موديل ${battery.unit.model} (${battery.unit.current}A لكل بطارية)، وانت محتاج ${battery.parallelCount} على التوازي — الشحن هيبقى أبطأ من المعدل الكامل للبطاريات الزيادة.` +
+        (suggestedExtraCharger ? ` يُنصح بإضافة شاحن/انفرتر ${suggestedExtraCharger.model} (أقصى تيار شحن ${suggestedExtraCharger.maxChargeA}A) لشحن الـ ${extraPacks} بطارية الإضافية بمعدل كامل.` : ` لا يوجد حاليًا موديل انفرتر مناسب في الكتالوج لشحن الفائض — يرجى المراجعة اليدوية.`);
+    }
+  }
 
   const items: any[] = [];
   const push = (key: string, label: string, sell: number, costBasis: number, meta: any = {}) =>
     items.push({ key, label, on: true, sell, costBasis, type: meta.type || "-", qty: meta.qty || "-", warranty: meta.warranty || "-" });
 
+  const panelPr = panelPricing(D, panel);
   buildGenericItems(push, {
-    panel, totalPanels, calcKW, panelMarginPerWatt: D.panelMarginPerWatt || 0,
+    panel, totalPanels, calcKW, panelCostPerWatt: panelPr.costPerWatt, panelSellPerWatt: panelPr.sellPerWatt,
     inverterLabel: "شاحن/انفرتر هجين MPPT", inverterType: `${inv.model} أو ما يعادله`,
     inverterCostBasis: invPricing.costBasis, inverterSell: invPricing.sell, inverterCount: inv.count,
     structureCost: totalPanels * og.structurePerPanelCost, structureSell: totalPanels * og.structurePerPanelSell,
@@ -571,12 +791,15 @@ function computeOffgridQuote(D: any, inp: any) {
 
   const totals = finalizeQuote(items, inp.discountFactor, D, inp.specialDiscountAmt);
   return {
-    dailyKwh, peakKw, actualKw: calcKW, totalPanels,
+    dailyKwh, nightKwh, peakKw, actualKw: calcKW, totalPanels,
     invKw: inv.kw, invModel: inv.model, invCount: inv.count, invTotalKw: inv.totalKw,
+    invVoltageClasses, batteryVoltageWarning,
+    requiredSurgeKw, surgeInfo, inverterSurgeWarning,
+    invMaxChargeA, batteryChargingWarning, suggestedExtraCharger,
     nameplateBatteryKwh: battery.totalKwh, autonomyDays,
     batterySeriesCount: battery.seriesCount, batteryParallelCount: battery.parallelCount,
     batteryUnitVoltage: battery.unit.voltage, batteryPackVoltage: battery.packVoltage,
-    batteryUnitKwh: battery.unit.kwh, batteryCount: battery.count,
+    batteryUnitKwh: battery.unit.kwh, batteryCount: battery.count, batteryStandardVoltage: standardVoltage,
     sunHours: og.sunHours, systemEfficiency: og.systemEfficiency,
     items, ...totals, sarPerKW: totals.finalTotal / calcKW,
   };
@@ -606,8 +829,9 @@ function computeOngridQuote(D: any, inp: any) {
   const push = (key: string, label: string, sell: number, costBasis: number, meta: any = {}) =>
     items.push({ key, label, on: true, sell, costBasis, type: meta.type || "-", qty: meta.qty || "-", warranty: meta.warranty || "-" });
 
+  const panelPr = panelPricing(D, panel);
   buildGenericItems(push, {
-    panel, totalPanels, calcKW, panelMarginPerWatt: D.panelMarginPerWatt || 0,
+    panel, totalPanels, calcKW, panelCostPerWatt: panelPr.costPerWatt, panelSellPerWatt: panelPr.sellPerWatt,
     inverterLabel: "الانفرتر", inverterType: `${inv.model} أو ما يعادله`,
     inverterCostBasis: invPricing.costBasis, inverterSell: invPricing.sell,
     structureCost: totalPanels * ng.structurePerPanelCost, structureSell: totalPanels * ng.structurePerPanelSell,
@@ -649,8 +873,9 @@ function computeReadySystemPrice(D: any, inp: {
   const og = D.offgrid;
   const panel = D.panels[inp.panelIdx ?? og.panelIdx ?? 0];
   if (!panel) throw new Error("invalid panelIdx");
-  const panelCost = inp.panelCount * panel.power * panel.priceW;
-  const panelSell = inp.panelCount * panel.power * (panel.priceW + (D.panelMarginPerWatt || 0));
+  const panelPr = panelPricing(D, panel);
+  const panelCost = inp.panelCount * panel.power * panelPr.costPerWatt;
+  const panelSell = inp.panelCount * panel.power * panelPr.sellPerWatt;
 
   let inverterCostBasis = 0, inverterSell = 0;
   if (inp.inverterModel) {
@@ -1056,15 +1281,21 @@ Deno.serve(async (req: Request) => {
   if (body.action === "get-panels-public") {
     const panels = (D.panels || [])
       .filter((p: any) => p.visible !== false && p.priceW)
-      .map((p: any) => ({
-        brand: p.brand,
-        power: p.power,
-        priceExclVat: Math.round((p.priceW + (D.panelMarginPerWatt || 0)) * p.power),
-        image: p.image || "",
-        description: p.description || "",
-        specs: p.specs || {},
-        datasheetUrl: p.datasheetUrl || "",
-      }));
+      .map((p: any) => {
+        const d = findDiscount(D, "الألواح الشمسية", p.brand);
+        const promoPerWatt = (d && d.promoActive && d.promoDiscountPct)
+          ? p.priceW * (1 - (Number(d.promoDiscountPct) || 0) / 100)
+          : p.priceW;
+        return {
+          brand: p.brand,
+          power: p.power,
+          priceExclVat: Math.round(promoPerWatt * p.power),
+          image: p.image || "",
+          description: p.description || "",
+          specs: p.specs || {},
+          datasheetUrl: p.datasheetUrl || "",
+        };
+      });
     return json({ panels });
   }
 
