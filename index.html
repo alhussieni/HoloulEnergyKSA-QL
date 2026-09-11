@@ -2679,7 +2679,7 @@ function renderProductCardV2(cat, catIdx, ri){
       <div class="pcard2-specs">
         ${chips.map(([k,v])=>`<div class="pcard2-spec"><span class="k">${k}:</span> <span class="v">${v}</span></div>`).join('')}
       </div>
-      <div class="pcard2-price">${(priceVal!=null && priceVal!=='') ? `${priceVal} ﷼ <small>بدون ضريبة</small>` : `<span class="price-tbd">السعر عند الطلب</span>`}</div>
+      <div class="pcard2-price">${!available ? `<span class="price-tbd">سوف يتوفر في اقرب وقت</span>` : (priceVal!=null && priceVal!=='') ? `${priceVal} ﷼ <small>بدون ضريبة</small>` : `<span class="price-tbd">السعر عند الطلب</span>`}</div>
     </div>
     <div class="pcard2-actions">
       <button class="btn ghost small" data-viewproduct="${catIdx}:${ri}">التفاصيل</button>
@@ -2971,8 +2971,9 @@ function renderProducts(){
               ${!available ? `<span class="unavail-chip">غير متاح حاليًا</span>` : `<span class="tag">✓ متوفر</span>`}
             </div>
             <div class="detail-price-block">
-              <div class="big-price">${priceVal} ﷼</div>
-              <div class="note" style="display:inline-block;margin-top:4px">* السعر بدون ضريبة القيمة المضافة</div>
+              ${available
+                ? `<div class="big-price">${priceVal} ﷼</div><div class="note" style="display:inline-block;margin-top:4px">* السعر بدون ضريبة القيمة المضافة</div>`
+                : `<div class="big-price" style="font-size:20px;color:var(--muted)">سوف يتوفر في اقرب وقت</div>`}
             </div>
             ${detail.datasheetUrl ? `<a href="${detail.datasheetUrl}" target="_blank" rel="noopener" class="btn ghost full" style="margin-bottom:var(--sp-2)">📄 تحميل الداتا شيت</a>` : ''}
             <div class="detail-actions-row no-print">
@@ -3148,7 +3149,7 @@ function renderProducts(){
               <div class="specs"><span>${cat.category}</span></div>
             </div>
             <div class="side">
-              <div class="price">${priceVal} ﷼<small>بدون ضريبة</small></div>
+              <div class="price">${available ? `${priceVal} ﷼<small>بدون ضريبة</small>` : `<span class="price-tbd">سوف يتوفر في اقرب وقت</span>`}</div>
               <button class="btn ghost small" data-viewproduct="${ci}:${ri}">التفاصيل</button>
             </div>
           </div>`;
@@ -3756,6 +3757,7 @@ ${(function(){
         <table class="admtable" style="margin-top:10px">
           <thead><tr>
             ${cat.columns.map((col,coli)=>`<th><input data-pcol="${ci}:${coli}" value="${col}" style="font-weight:600"></th>`).join('')}
+            <th style="text-align:center">متاح</th>
             <th></th>
           </tr></thead>
           <tbody>
@@ -3763,6 +3765,7 @@ ${(function(){
               const detail = (cat.productDetails && cat.productDetails[ri]) || {};
               return `<tr>
               ${row.map((cell,coli)=>`<td><input data-pcell="${ci}:${ri}:${coli}" value="${cell}"></td>`).join('')}
+              <td style="text-align:center"><input type="checkbox" data-pavail="${ci}:${ri}" ${detail.available!==false?'checked':''} title="المنتج متاح حاليًا"></td>
               <td class="op" style="white-space:nowrap">
                 <button class="btn ghost small" data-editdetail="${ci}:${ri}">${detail.image||detail.description?'✏️ تعديل التفاصيل':'+ تفاصيل'}</button>
                 <button class="btn danger small" data-delrow="${ci}:${ri}">✕</button>
@@ -4724,6 +4727,12 @@ function wire(){
       document.querySelectorAll('[data-pcell]').forEach(inp=>{
         const [ci,ri,coli] = inp.dataset.pcell.split(':').map(Number);
         adminConfig.productCatalog[ci].rows[ri][coli] = inp.value;
+      });
+      document.querySelectorAll('[data-pavail]').forEach(inp=>{
+        const [ci,ri] = inp.dataset.pavail.split(':').map(Number);
+        const cat = adminConfig.productCatalog[ci];
+        cat.productDetails = cat.productDetails || {};
+        cat.productDetails[ri] = { ...(cat.productDetails[ri]||{}), available: inp.checked };
       });
       document.querySelectorAll('[data-d]').forEach(inp=>{
         const i=+inp.dataset.d, f=inp.dataset.f;
