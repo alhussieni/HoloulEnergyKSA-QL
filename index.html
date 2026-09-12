@@ -998,6 +998,106 @@ async function refreshOngridQuote(){
   }
 }
 
+// ---- "مواتير الري بالطاقة الشمسية" — quick tab inside قائمة المنتجات.
+// Deliberately calls the SAME 'quote' engine action as the main حاسبة (buildEngineInput/refreshQuote
+// above), with the toggle preset locked to "توريد خامات فقط" (panel+inverter+combiner+cables+mc4 only,
+// matching the existing [data-preset="materials"] button in the main calculator). This guarantees the
+// price shown here is always identical to what the main calculator shows for the same HP + "توريد فقط".
+const IQ_STD_HP = [10,15,20,25,30,40,50,60,75,100,125,150,175,200,250,300,350,400,450,500,600,700];
+let iqHp = 10;
+let iqPanelIdx = 0;
+let iqDefaultsApplied = false;
+let iqQuote = null;
+let iqLoading = false;
+let iqError = null;
+function buildIrrigationQuickInput(){
+  return {
+    panelIdx: iqPanelIdx,
+    hp: iqHp,
+    structureType: 'FIXED',
+    discountTierIdx: null,
+    specialDiscountAmt: 0,
+    panelsPerStringAdjust: 0,
+    stringsAdjust: 0,
+    inverterPowerIncrease: 0,
+    toggles: {panel:true, inverter:true, ip65:false, combiner:true, cables:true, mc4:true,
+              structure:false, concrete:false, earth:false, reactor:false, civilworks:false, elecworks:false, supply:false}
+  };
+}
+async function refreshIrrigationQuick(){
+  iqError = null; iqLoading = true; render();
+  try{
+    const data = await callEngine('quote', { input: buildIrrigationQuickInput() });
+    iqQuote = data.quote;
+    let needsRetry = false;
+    if(!iqDefaultsApplied){
+      iqDefaultsApplied = true;
+      const defIdx = resolvePanelIdxByKey(data.panelOptions, data.defaultPanelKey);
+      if(defIdx !== null && defIdx !== iqPanelIdx){ iqPanelIdx = defIdx; needsRetry = true; }
+    }
+    if(data.panelOptions && data.panelOptions.length && !data.panelOptions.some(p=>p.idx===iqPanelIdx)){
+      iqPanelIdx = data.panelOptions[0].idx; needsRetry = true;
+    }
+    if(needsRetry){
+      const retryData = await callEngine('quote', { input: buildIrrigationQuickInput() });
+      iqQuote = retryData.quote;
+    }
+  }catch(e){
+    iqError = e.message || 'تعذر الاتصال بالخادم';
+  }
+  iqLoading = false; render();
+}
+// BOM qty strings come wrapped as "#20#" (a print-layout convention elsewhere
+// in the app) or as a longer note like "150 متر (تقريبي...)" for cables —
+// strip the markers and keep only the short headline figure for the spec card.
+function iqCleanQty(qty){
+  return String(qty||'').replace(/#/g,'').split('(')[0].trim();
+}
+function renderIrrigationQuick(){
+  if(!iqQuote && !iqLoading && !iqError) refreshIrrigationQuick();
+  const q = iqQuote;
+  const items = q ? q.items.filter(it=>it.on) : [];
+  return `
+  <div class="crumbs" style="margin-bottom:var(--sp-2)">
+    <button id="iqBackToProductsBtn">قائمة المنتجات</button>
+    <span class="sep">/</span>
+    <span class="current">مواتير الري بالطاقة الشمسية</span>
+  </div>
+  <div class="detail-split">
+    <div>
+      <div class="card">
+        <div class="detail-cat-badge">توريد خامات فقط</div>
+        <h3>مواتير الري بالطاقة الشمسية</h3>
+        <div class="note">اختر قدرة الموتور أو الغاطس المتاح عندك فقط، وهيظهر لك السعر ومكونات المحطة على طول.</div>
+        <label>قدرة الموتور / الغاطس</label>
+        <select id="iqHpSelect">
+          ${IQ_STD_HP.map(h=>`<option value="${h}" ${h===iqHp?'selected':''}>${h} حصان</option>`).join('')}
+        </select>
+      </div>
+      ${iqError ? `<div class="card"><div class="note" style="color:#B0432C">${esc(iqError)}</div><button class="btn small" id="iqRetryBtn" style="margin-top:var(--sp-2)">إعادة المحاولة</button></div>` : ''}
+      ${q && !iqLoading ? `
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:var(--sp-2)">مكونات المحطة لقدرة ${iqHp} حصان</div>
+        <div class="spec-strip-wrap"><div class="spec-strip">
+          ${items.map(it=>`<div class="spec-item"><div class="val">${esc(iqCleanQty(it.qty))}</div><div class="lbl">${esc(it.label)}</div></div>`).join('')}
+        </div></div>
+      </div>` : ''}
+    </div>
+    <div>
+      <div class="card" style="position:sticky;top:88px">
+        <div class="detail-cat-badge">السعر التقديري</div>
+        ${iqLoading ? `<div class="note" style="text-align:center;padding:var(--sp-4) 0">جارِ حساب السعر...</div>` : ''}
+        ${q && !iqLoading ? `
+        <div class="detail-price-block"><div class="big-price">${fmt(q.supplyOnlyTotal)} ﷼</div></div>
+        <div class="note">* شامل ضريبة القيمة المضافة — توريد الخامات فقط بدون التركيب</div>
+        <button class="btn full" id="iqWhatsappBtn" style="margin-top:var(--sp-3);background:#25D366;color:#fff">💬 اطلب عرض سعر عبر واتساب</button>
+        ` : ''}
+      </div>
+    </div>
+  </div>
+  `;
+}
+
 function logLead(lead){
   callEngine('log-lead', { lead }).catch(()=>{});
 }
@@ -3165,6 +3265,13 @@ function renderProducts(){
           <div class="count">تصفّح المنظومات المجهزة مسبقًا بسعر ثابت</div>
         </div>
       </div>
+      <div class="category-card" onclick="window.goToView('irrigation-quick')" style="cursor:pointer">
+        <div class="noimg">🚜</div>
+        <div class="overlay">
+          <h3>مواتير الري بالطاقة الشمسية</h3>
+          <div class="count">اختر قدرة الموتور/الغاطس واحصل على السعر فورًا</div>
+        </div>
+      </div>
       ${catalog.map((cat,ci)=>`
         <div class="category-card" data-opencat="${ci}">
           ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}">` : `<div class="noimg">📦</div>`}
@@ -3196,6 +3303,9 @@ function renderProducts(){
         </button>`).join('')}
       <button class="catalog-nav-btn" onclick="window.goToView('ready')" type="button">
         <span class="ic">🧰</span><span class="lbl">منظومات جاهزة</span>
+      </button>
+      <button class="catalog-nav-btn ${currentView==='irrigation-quick'?'active':''}" onclick="window.goToView('irrigation-quick')" type="button">
+        <span class="ic">🚜</span><span class="lbl">مواتير الري بالطاقة الشمسية</span>
       </button>
     </nav>
     ${categoryFacetsHtml}
@@ -4208,13 +4318,14 @@ function renderAdminLogin(){
 }
 
 function render(){
-  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail'){ app.innerHTML = renderRepLogin(); wire(); return; }
-  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail'){ app.innerHTML = renderGuestRegister(); wire(); return; }
+  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail' && currentView!=='irrigation-quick'){ app.innerHTML = renderRepLogin(); wire(); return; }
+  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail' && currentView!=='irrigation-quick'){ app.innerHTML = renderGuestRegister(); wire(); return; }
   if(currentView==='calc') app.innerHTML = renderCalc();
   else if(currentView==='feas') app.innerHTML = renderFeas();
   else if(currentView==='ready') app.innerHTML = renderReadySystems();
   else if(currentView==='ready-detail') app.innerHTML = renderReadySystemDetail(deepLinkReadySystemId);
   else if(currentView==='products') app.innerHTML = renderProducts();
+  else if(currentView==='irrigation-quick') app.innerHTML = renderIrrigationQuick();
   else if(currentView==='portfolio') app.innerHTML = renderPortfolio();
   else if(currentView==='admin' && !adminAuthed) app.innerHTML = renderAdminLogin();
   else app.innerHTML = renderAdmin();
@@ -4222,7 +4333,7 @@ function render(){
 }
 
 function wire(){
-  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail'){
+  if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail' && currentView!=='irrigation-quick'){
     document.getElementById('rep_login_btn').onclick = async ()=>{
       const username = document.getElementById('rep_user').value.trim();
       const password = document.getElementById('rep_pass').value;
@@ -4252,7 +4363,7 @@ function wire(){
     };
     return;
   }
-  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail'){
+  if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail' && currentView!=='irrigation-quick'){
     document.getElementById('guest_register_btn').onclick = ()=>{
       const name = document.getElementById('guest_name').value.trim();
       const phone = document.getElementById('guest_phone').value.trim();
@@ -4307,6 +4418,21 @@ function wire(){
       const msg = `مرحبًا، أرغب في طلب عرض سعر للمنظومة التالية:\n${s.name} — ${fmt(s.priceSar)} ﷼\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
       window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
     });
+    return;
+  }
+  if(currentView==='irrigation-quick'){
+    const backBtn = document.getElementById('iqBackToProductsBtn');
+    if(backBtn) backBtn.onclick = ()=>{ window.goToView('products'); };
+    const hpSel = document.getElementById('iqHpSelect');
+    if(hpSel) hpSel.onchange = e=>{ iqHp = +e.target.value; iqQuote=null; refreshIrrigationQuick(); };
+    const retryBtn = document.getElementById('iqRetryBtn');
+    if(retryBtn) retryBtn.onclick = ()=>{ iqError=null; refreshIrrigationQuick(); };
+    const waBtn = document.getElementById('iqWhatsappBtn');
+    if(waBtn) waBtn.onclick = ()=>{
+      if(!iqQuote) return;
+      const msg = `مرحبًا، أرغب في عرض سعر لمحطة تشغيل موتور/غاطس ري بالطاقة الشمسية:\nقدرة الموتور/الغاطس: ${iqHp} حصان\nنوع العرض: توريد خامات فقط\nالسعر التقديري: ${fmt(iqQuote.supplyOnlyTotal)} ﷼ (شامل الضريبة)\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
+      window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
+    };
     return;
   }
   if(currentView==='products'){
