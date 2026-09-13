@@ -761,6 +761,7 @@ let cachedFeas = null;        // general feasibility-study assumptions (non-sens
 let cachedBomItemImages = {}; // admin-managed fallback images for generic BOM line items (by item key)
 let cachedPanelOptions = [];  // [{brand,power}] — never priceW
 let cachedBatteryVoltageOptions = []; // [12.8, 25.6, 51.2, ...] distinct voltages in the battery catalog
+let cachedBatteryModelOptions = []; // [{model,brand,voltage,stdVoltage,ah,kwh}, ...] exact battery models from the catalog
 
 // Admin-configured defaults (D.defaultPanelKey "brand|power")
 // applied once per calculator on first successful load, so a rep's manual
@@ -851,7 +852,7 @@ function getCatalogBrandOptions(cfg){
   if(panelBrands.size) byCategory['الألواح الشمسية'] = Array.from(panelBrands).sort();
   return byCategory;
 }
-let currentAdminSubSection = { products:'catalog' }; // secondary in-page sidebar for long sections
+let currentAdminSubSection = { products:'catalog', calcs:'pump' }; // secondary in-page sidebar for long sections
 let engineError = null;
 let quoteLoading = false;
 
@@ -918,6 +919,7 @@ function buildOffgridInput(){
     autonomyDays: +o.autonomyDays || 0,
     appliances: o.appliances,
     batteryVoltage: o.batteryVoltage || null,
+    batteryModel: o.batteryModel || null,
     discountTierIdx: discountUnlocked ? state.discountOverrideIdx : null,
     specialDiscountAmt: state.specialDiscountAmt,
   };
@@ -953,6 +955,11 @@ async function refreshOffgridQuote(){
     if(!state.offgrid.batteryVoltage && cachedBatteryVoltageOptions.length){
       // default to the highest voltage (the "full bus" module) so no series-stacking is needed unless the rep changes it
       state.offgrid.batteryVoltage = Math.max(...cachedBatteryVoltageOptions);
+    }
+    cachedBatteryModelOptions = data.batteryModelOptions || cachedBatteryModelOptions;
+    if(state.offgrid.batteryModel && !cachedBatteryModelOptions.some(m=>m.model===state.offgrid.batteryModel)){
+      // the previously-picked exact model no longer exists in the catalog (e.g. admin removed/renamed it) — fall back to auto
+      state.offgrid.batteryModel = null;
     }
     adminFinancialsOffgrid = adminData ? adminData.quote : null;
   }catch(e){
@@ -1198,6 +1205,8 @@ const state = {
     autonomyDays: 0,
     appliances: [ {name:'ثلاجة', watts:150, dayHours:4, nightHours:4, qty:1} ],
     batteryVoltage: null, // null = server uses its own default (bus voltage)
+    batteryBrand: '', // UI-only filter for the size(Ah) dropdown — '' = all brands; never sent to the server
+    batteryModel: null, // null = auto-pick largest-capacity model at batteryVoltage; otherwise an exact "brand+Ah+voltage" model from batteryModelOptions
   },
   ongrid: {
     panelIdx: 0,
@@ -2042,14 +2051,30 @@ function renderOffgridCalc(){
       </select>
     </div>
     <div class="card">
-      <h3>فولت البطارية</h3>
+      <h3>البطارية</h3>
+      <label>نوع البطارية (الماركة)</label>
+      <select id="og_battery_brand">
+        <option value="">الكل</option>
+        ${[...new Set(cachedBatteryModelOptions.map(m=>m.brand).filter(Boolean))].sort().map(b=>`<option value="${b}" ${b===o.batteryBrand?'selected':''}>${b}</option>`).join('')}
+      </select>
+      <label style="margin-top:10px">فولت البطارية</label>
       <select id="og_battery_voltage">
         ${cachedBatteryVoltageOptions.map(v=>`<option value="${v}" ${v==o.batteryVoltage?'selected':''}>${v}V</option>`).join('')}
       </select>
+      <label style="margin-top:10px">حجم البطارية (Ah)</label>
+      <select id="og_battery_model">
+        <option value="">تلقائي — أعلى سعة متاحة عند الفولت والماركة المختارين</option>
+        ${cachedBatteryModelOptions
+          .filter(m=>m.stdVoltage==o.batteryVoltage && (!o.batteryBrand || m.brand===o.batteryBrand))
+          .map(m=>`<option value="${m.model}" ${m.model===o.batteryModel?'selected':''}>${m.ah}Ah${m.brand?` — ${m.brand}`:''} (${fmt1(m.kwh)} كيلوواط/ساعة، فولت فعلي ${fmt1(m.voltage)}V)</option>`).join('')}
+      </select>
       <div class="note" style="margin-top:6px">
-        ${q && q.batterySeriesCount>1
-          ? `لو اخترت بطارية ${fmt1(q.batteryUnitVoltage)}V، الحاسبة هتوصّل تلقائيًا <b>${q.batterySeriesCount} بطارية على التوالي</b> (= ${fmt1(q.batteryPackVoltage)}V) × <b>${q.batteryParallelCount} على التوازي</b> للوصول للسعة المطلوبة.`
-          : `اختيار بطارية بفولت أقل من فولت المنظومة الكامل هيخلي الحاسبة توصّل عدة بطاريات على التوالي تلقائيًا للوصول لنفس الفولت.`}
+        ${o.batteryModel
+          ? `هيتم الحساب على أساس موديل "<b>${o.batteryModel}</b>" بالظبط، وتحديد عدد الوحدات على التوازي تلقائيًا حسب السعة المطلوبة.`
+          : (q && q.batterySeriesCount>1
+              ? `الحاسبة هتوصّل تلقائيًا <b>${q.batterySeriesCount} بطارية على التوالي</b> (= ${fmt1(q.batteryPackVoltage)}V) × <b>${q.batteryParallelCount} على التوازي</b> للوصول للسعة المطلوبة.`
+              : `اختيار "تلقائي" هيخلي الحاسبة تختار أعلى سعة متاحة عند الفولت والماركة المحددين فوق.`)}
+        <br>ملحوظة: فولت بطاريات الليثيوم الفعلي بيتفاوت شوية حتى داخل نفس الفئة (مثلًا 24.5V/25V/25.1V كلهم فئة 24V) — التصنيف هنا بالفئة القياسية (12/24/48) مش بالرقم الفعلي المطبوع على الموديل.
       </div>
     </div>`;
 
@@ -3721,39 +3746,20 @@ ${(function(){
 </section>
 
 <section class="admsec ${currentAdminSection==='calcs'?'active':''}" data-admsec="calcs">
+<div class="admsub-shell">
+  <aside class="admsub-sidebar no-print">
+    <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='pump'?'active':''}" data-admsubparent="calcs" data-admsub="pump" type="button"><span class="ic">🚜</span><span class="lbl">أنظمة البامب</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='offgrid'?'active':''}" data-admsubparent="calcs" data-admsub="offgrid" type="button"><span class="ic">🔋</span><span class="lbl">حاسبة الأوف-جريد</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='ongrid'?'active':''}" data-admsubparent="calcs" data-admsub="ongrid" type="button"><span class="ic">🔌</span><span class="lbl">حاسبة الأون-جريد</span></button>
+  </aside>
+  <div class="admsub-main">
+
+  <div class="admsubsec ${currentAdminSubSection.calcs==='pump'?'active':''}" data-admsub="pump">
   <div class="card">
     <h3>معاملات عامة</h3>
     <div class="assump">
       <div><label>نسبة السعة للحصان <span style="color:var(--muted)">(معامل تحجيم عدد السلاسل بالنسبة للحصان)</span></label><input type="number" id="a_hpratio" step="0.01" value="${adminConfig.hpCapacityRatio}"></div>
       <div><label>ضريبة القيمة المضافة</label><input type="number" id="a_vat" step="0.01" value="${adminConfig.vat}"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>هوامش الربح</h3>
-    <div class="assump">
-      <div><label>هامش ربح الرياكتور <span style="color:var(--muted)">(% فوق سعر التكلفة)</span></label><input type="number" id="a_reactormargin" step="1" value="${adminConfig.reactorMarkupPct||0}"></div>
-    </div>
-    <div class="note" style="margin-top:8px">هامش الألواح والانفرتر بقى محسوب تلقائيًا من صفحة "الخصومات" (خصم البيع لكل فئة+ماركة)، وليس رقمًا هنا.</div>
-  </div>
-
-  <div class="card">
-    <h3>الكابلات ووصلاتها</h3>
-    <div class="assump">
-      <div><label>الكابلات (﷼/متر)</label><input type="number" id="a_cable" value="${adminConfig.cablePerMeter}"></div>
-      <div><label>معامل طول الكابل (قدرة ≥100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablehigh" value="${adminConfig.cableHighMultiplier}"></div>
-      <div><label>معامل طول الكابل (قدرة أقل من 100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablelow" value="${adminConfig.cableLowMultiplier}"></div>
-      <div><label>هامش بيع الكابلات (معامل ضرب)</label><input type="number" id="a_cablemarkup" step="0.01" value="${adminConfig.cableMarkup}"></div>
-      <div><label>MC4 (﷼/وحدة)</label><input type="number" id="a_mc4" value="${adminConfig.mc4PerUnit}"></div>
-      <div><label>الأنابيب المرنة (﷼/وحدة)</label><input type="number" id="a_flex" value="${adminConfig.flexTubePerUnit}"></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h3>صناديق التجميع</h3>
-    <div class="assump">
-      <div><label>هامش أمان صندوق التجميع <span style="color:var(--muted)">(نسبة زيادة % فوق عدد المجموعات)</span></label><input type="number" id="a_combheadroom" step="0.01" value="${adminConfig.combinerHeadroom}"></div>
-      <div><label>حد أدنى خطوط إضافية بصندوق التجميع</label><input type="number" id="a_combspare" step="1" value="${adminConfig.combinerMinSpareStrings}"></div>
     </div>
   </div>
 
@@ -3779,6 +3785,27 @@ ${(function(){
   </div>
 
   <div class="card">
+    <h3>صناديق التجميع</h3>
+    <div class="assump">
+      <div><label>هامش أمان صندوق التجميع <span style="color:var(--muted)">(نسبة زيادة % فوق عدد المجموعات)</span></label><input type="number" id="a_combheadroom" step="0.01" value="${adminConfig.combinerHeadroom}"></div>
+      <div><label>حد أدنى خطوط إضافية بصندوق التجميع</label><input type="number" id="a_combspare" step="1" value="${adminConfig.combinerMinSpareStrings}"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>الكابلات والوصلات</h3>
+    <div class="assump">
+      <div><label>معامل طول الكابل (قدرة ≥100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablehigh" value="${adminConfig.cableHighMultiplier}"></div>
+      <div><label>معامل طول الكابل (قدرة أقل من 100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablelow" value="${adminConfig.cableLowMultiplier}"></div>
+      <div><label>هامش بيع الكابلات (معامل ضرب)</label><input type="number" id="a_cablemarkup" step="0.01" value="${adminConfig.cableMarkup}"></div>
+      <div><label>الأنابيب المرنة (﷼/وحدة)</label><input type="number" id="a_flex" value="${adminConfig.flexTubePerUnit}"></div>
+    </div>
+    <div class="note" style="margin-top:8px">أسعار الكابلات وMC4 نفسها بقت متاحة من صفحة "قائمة المنتجات" (فئة الكابلات والوصلات)، فمش محتاجين نكررها هنا.</div>
+  </div>
+  </div>
+
+  <div class="admsubsec ${currentAdminSubSection.calcs==='offgrid'?'active':''}" data-admsub="offgrid">
+  <div class="card">
     <h3>حاسبة الأوف-جريد <span class="tag">أسعار حقيقية من الكتالوج + هامش قابل للتعديل</span></h3>
     <div class="assump">
       <div><label>ساعات الشمس القصوى اليومية</label><input type="number" id="a_og_sun" step="0.1" value="${adminConfig.offgrid.sunHours}"></div>
@@ -3795,7 +3822,9 @@ ${(function(){
       <div><label>التركيب (﷼/KW) - بيع</label><input type="number" id="a_og_instsell" value="${adminConfig.offgrid.installPerKwSell}"></div>
     </div>
   </div>
+  </div>
 
+  <div class="admsubsec ${currentAdminSubSection.calcs==='ongrid'?'active':''}" data-admsub="ongrid">
   <div class="card">
     <h3>حاسبة الأون-جريد <span class="tag">أسعار حقيقية من الكتالوج + هامش قابل للتعديل</span></h3>
     <div class="assump">
@@ -3813,6 +3842,10 @@ ${(function(){
       <div><label>التركيب (﷼/KW) - بيع</label><input type="number" id="a_ng_instsell" value="${adminConfig.ongrid.installPerKwSell}"></div>
     </div>
   </div>
+  </div>
+
+  </div>
+</div>
 </section>
 
 <section class="admsec ${currentAdminSection==='products'?'active':''}" data-admsec="products">
@@ -4901,12 +4934,9 @@ function wire(){
       setIfNum('hpCapacityRatio','a_hpratio');
       setIfNum('vat','a_vat');
       setIfNum('panelMarginPerWatt','a_panelmargin');
-      setIfNum('reactorMarkupPct','a_reactormargin');
-      setIfNum('cablePerMeter','a_cable');
       setIfNum('cableHighMultiplier','a_cablehigh');
       setIfNum('cableLowMultiplier','a_cablelow');
       setIfNum('cableMarkup','a_cablemarkup');
-      setIfNum('mc4PerUnit','a_mc4');
       setIfNum('flexTubePerUnit','a_flex');
       setIfNum('combinerHeadroom','a_combheadroom');
       setIfNum('combinerMinSpareStrings','a_combspare');
@@ -5353,7 +5383,25 @@ function wireOffgridCalc(){
   const panelEl = document.getElementById('og_panel');
   if(panelEl) panelEl.onchange = e=>{ o.panelIdx = +e.target.value; scheduleRefreshOffgrid(); };
   const battVoltEl = document.getElementById('og_battery_voltage');
-  if(battVoltEl) battVoltEl.onchange = e=>{ o.batteryVoltage = +e.target.value; scheduleRefreshOffgrid(0); };
+  if(battVoltEl) battVoltEl.onchange = e=>{
+    o.batteryVoltage = +e.target.value;
+    // the previously-picked exact size(Ah) model may not exist at the new voltage class — drop back to "auto" rather than silently keep an invalid/mismatched model selected
+    if(o.batteryModel && !cachedBatteryModelOptions.some(m=>m.model===o.batteryModel && m.stdVoltage==o.batteryVoltage && (!o.batteryBrand || m.brand===o.batteryBrand))){
+      o.batteryModel = null;
+    }
+    scheduleRefreshOffgrid(0);
+  };
+  const battBrandEl = document.getElementById('og_battery_brand');
+  if(battBrandEl) battBrandEl.onchange = e=>{
+    o.batteryBrand = e.target.value || '';
+    // same idea — a brand filter change can orphan the currently-picked exact model
+    if(o.batteryModel && !cachedBatteryModelOptions.some(m=>m.model===o.batteryModel && m.stdVoltage==o.batteryVoltage && (!o.batteryBrand || m.brand===o.batteryBrand))){
+      o.batteryModel = null;
+    }
+    scheduleRefreshOffgrid(0);
+  };
+  const battModelEl = document.getElementById('og_battery_model');
+  if(battModelEl) battModelEl.onchange = e=>{ o.batteryModel = e.target.value || null; scheduleRefreshOffgrid(0); };
   document.querySelectorAll('[data-ogapp]').forEach(inp=>{
     inp.oninput = ()=>{
       const i = +inp.dataset.ogapp, f = inp.dataset.af;
