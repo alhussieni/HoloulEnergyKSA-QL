@@ -919,6 +919,7 @@ function buildOffgridInput(){
     autonomyDays: +o.autonomyDays || 0,
     appliances: o.appliances,
     batteryVoltage: o.batteryVoltage || null,
+    batteryBrand: o.batteryBrand || null,
     batteryModel: o.batteryModel || null,
     discountTierIdx: discountUnlocked ? state.discountOverrideIdx : null,
     specialDiscountAmt: state.specialDiscountAmt,
@@ -1205,7 +1206,7 @@ const state = {
     autonomyDays: 0,
     appliances: [ {name:'ثلاجة', watts:150, dayHours:4, nightHours:4, qty:1} ],
     batteryVoltage: null, // null = server uses its own default (bus voltage)
-    batteryBrand: '', // UI-only filter for the size(Ah) dropdown — '' = all brands; never sent to the server
+    batteryBrand: '', // filter for the size(Ah) dropdown — '' = all brands; also sent to the server so "auto" respects it
     batteryModel: null, // null = auto-pick largest-capacity model at batteryVoltage; otherwise an exact "brand+Ah+voltage" model from batteryModelOptions
   },
   ongrid: {
@@ -2063,7 +2064,7 @@ function renderOffgridCalc(){
       </select>
       <label style="margin-top:10px">حجم البطارية (Ah)</label>
       <select id="og_battery_model">
-        <option value="">تلقائي — أعلى سعة متاحة عند الفولت والماركة المختارين</option>
+        <option value="">تلقائي — أنسب سعة (أقل تكلفة إجمالية تغطي الاحتياج) عند الفولت والماركة المختارين</option>
         ${cachedBatteryModelOptions
           .filter(m=>m.stdVoltage==o.batteryVoltage && (!o.batteryBrand || m.brand===o.batteryBrand))
           .map(m=>`<option value="${m.model}" ${m.model===o.batteryModel?'selected':''}>${m.ah}Ah${m.brand?` — ${m.brand}`:''} (${fmt1(m.kwh)} كيلوواط/ساعة، فولت فعلي ${fmt1(m.voltage)}V)</option>`).join('')}
@@ -2073,7 +2074,7 @@ function renderOffgridCalc(){
           ? `هيتم الحساب على أساس موديل "<b>${o.batteryModel}</b>" بالظبط، وتحديد عدد الوحدات على التوازي تلقائيًا حسب السعة المطلوبة.`
           : (q && q.batterySeriesCount>1
               ? `الحاسبة هتوصّل تلقائيًا <b>${q.batterySeriesCount} بطارية على التوالي</b> (= ${fmt1(q.batteryPackVoltage)}V) × <b>${q.batteryParallelCount} على التوازي</b> للوصول للسعة المطلوبة.`
-              : `اختيار "تلقائي" هيخلي الحاسبة تختار أعلى سعة متاحة عند الفولت والماركة المحددين فوق.`)}
+              : `اختيار "تلقائي" بيخلي الحاسبة تجرّب كل الأحجام المتاحة عند الفولت والماركة المحددين، وتختار الحجم اللي هيوصلك للسعة المطلوبة بأقل تكلفة إجمالية — مش بالضرورة أكبر حجم متاح.`)}
         <br>ملحوظة: فولت بطاريات الليثيوم الفعلي بيتفاوت شوية حتى داخل نفس الفئة (مثلًا 24.5V/25V/25.1V كلهم فئة 24V) — التصنيف هنا بالفئة القياسية (12/24/48) مش بالرقم الفعلي المطبوع على الموديل.
       </div>
     </div>`;
