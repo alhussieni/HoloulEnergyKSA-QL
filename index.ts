@@ -5,18 +5,7 @@
 // and never verifies the admin password itself — all of that happens here,
 // server-side, using the service_role key (which is never exposed to users).
 //
-// Actions (POST body: { action, ...payload }):
-//   "quote"           -> public. Returns sell prices only (no cost/margin).
-//   "admin-view"      -> requires a correct `adminPassword`. Returns the same
-//                        quote PLUS per-item cost basis, total cost and profit.
-//   "update-config"   -> requires a correct `adminPassword`. Overwrites
-//                        pricing_config.data with the given `config` object.
-//   "hash-password"   -> convenience helper to generate a password hash to
-//                        paste into admin_secret.password_hash (see migration).
-//
 // Deploy with:  supabase functions deploy compute-quote
-// Required secrets (supabase secrets set ...):
-//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY  (Supabase sets these automatically)
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -38,19 +27,6 @@ async function sha256Hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-// ---------------------------------------------------------------------------
-// Session tokens — signed with SESSION_SECRET (HMAC-SHA256), never the raw
-// password. The browser logs in once (rep-login / admin-login) with the
-// password, gets a short-lived token back, and uses that token for every
-// later call instead of resending the password on every request.
-//
-// Token shape: "<base64url(payload json)>.<base64url(hmac signature)>"
-// payload = { sub: "rep:<username>" | "admin", ver: <session_version>, exp: <unix seconds> }
-//
-// `ver` is compared against the row's live session_version column, so
-// changing a password (rep or admin) or deactivating a rep instantly
-// invalidates every token issued before that change — no blacklist needed.
-// ---------------------------------------------------------------------------
 function b64urlFromBytes(bytes: Uint8Array): string {
   let bin = "";
   bytes.forEach((b) => (bin += String.fromCharCode(b)));
@@ -83,30 +59,18 @@ async function readToken(token: string | undefined): Promise<{ sub: string; ver:
   if (!token || token.split(".").length !== 2) return null;
   const [payloadB64, sig] = token.split(".");
   const expected = await hmacSign(sessionSecret(), payloadB64);
-  if (expected !== sig) return null; // signature mismatch — tampered or forged
+  if (expected !== sig) return null;
   try {
     const payload = JSON.parse(b64urlToString(payloadB64));
-    if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null; // expired
+    if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
     return payload;
   } catch { return null; }
 }
 
-// ---------------------------------------------------------------------------
-// Pricing engine — ported 1:1 from the client-side engine that used to live
-// in index.html. Keep this in sync if the business rules change.
-// ---------------------------------------------------------------------------
 function pickLadder(ladder: number[], value: number) {
   for (const v of ladder) if (value <= v) return v;
   return ladder[ladder.length - 1];
 }
-function pickInverter(kwNeeded: number, list: number[][]) {
-  for (const row of list) if (kwNeeded <= row[0]) return row;
-  return list[list.length - 1];
-}
-// Inverters used to be one flat ladder (implicitly "VEICHI"). They're now a
-// list of brands, each with its own ladder — but older deployments still
-// have D.inverters as a flat array, so we transparently wrap that as a
-// single "VEICHI" brand instead of requiring a manual data migration.
 function getInverterBrands(D: any) {
   if (Array.isArray(D.inverterBrands) && D.inverterBrands.length) return D.inverterBrands;
   return [{ brand: "VEICHI", tiers: D.inverters || [] }];
@@ -134,22 +98,17 @@ function computeQuote(D: any, inp: any) {
   const expectedVAC = Vimp * 0.88 / Math.SQRT2;
 
   const inverterCalcKW = Math.ceil(hp * 0.8) + (inp.inverterPowerIncrease ?? D.inverterPowerIncrease);
-  const invBrand = inp.invBrand;
-  const inv = pickInverter(inverterCalcKW, invBrand.tiers);
-  const invKW = inv[0], invCost = inv[1], invList = inv[2];
+  const pumpPick = pickPumpInverter(D, inverterCalcKW);
+  const inv = pumpPick.picked;
+  const invKW = inv.kw;
+  const invPricing = resolveCatalogPricing(D, inv.category, inv.brand, inv.listPrice, 0);
+  const invCost = invPricing.costBasis, invList = invPricing.sell;
 
-  // Max PV array power the selected inverter can actually accept (from the
-  // manufacturer datasheet's "Max solar power input" column) — a 4th tier
-  // field, only present for brands/tiers where we have that exact figure.
-  // If the panel/string configuration produces a bigger array than the
-  // selected inverter tolerates, flag it and point to the next tier up
-  // that can handle it, rather than silently quoting a mismatched combo.
-  const invMaxSolarKw: number | undefined = inv[3];
+  const invMaxSolarKw: number | null = inv.maxSolarKw;
   let inverterOversizeWarning: { message: string; recommendedInvKW: number | null } | null = null;
   if (invMaxSolarKw != null && calcKW > invMaxSolarKw) {
-    const idx = invBrand.tiers.indexOf(inv);
-    const nextTier = invBrand.tiers.slice(idx + 1).find((t: any[]) => t[3] == null || calcKW <= t[3]);
-    const recommendedInvKW = nextTier ? nextTier[0] : null;
+    const nextRow = pumpPick.rows.slice(pumpPick.idx + 1).find((r: any) => r.maxSolarKw == null || calcKW <= r.maxSolarKw);
+    const recommendedInvKW = nextRow ? nextRow.kw : null;
     inverterOversizeWarning = {
       recommendedInvKW,
       message: recommendedInvKW
@@ -159,37 +118,51 @@ function computeQuote(D: any, inp: any) {
   }
 
   const reactorModel = pickLadder(D.reactorLadder, Iimp);
-  const reactorPrice = D.reactorPrices[String(reactorModel)];
+  // Reactor/cables/MC4 now price the same way panels/inverters/batteries
+  // already do: resolveCatalogPricing(category, brand, listPrice) reads the
+  // catalog reference price + whatever supplierDiscountPct/sellDiscountPct
+  // is registered for that (category, brand) in الخصومات. reactorMarkupPct
+  // stays only as the fallback markup if no discount row is registered yet.
+  const reactorRow = findExactCatalogRow(D, "الريأكتور", `VEICHI Reactor ${reactorModel}A`);
+  const reactorPricing = resolveCatalogPricing(D, reactorRow.category, reactorRow.brand, reactorRow.listPrice, D.reactorMarkupPct || 0);
+  const reactorPrice = reactorRow.listPrice;
   const cbSize = pickLadder(D.cbLadder, IscCalc);
   const combiner = inp.combinerOverride || pickCombiner(arrays, D.combinerBoxes, D.combinerHeadroom, D.combinerMinSpareStrings);
 
-  const panelCost = panel.priceW * calcKW * 1000;
-  // Panels used to be sold at cost (no margin at all — sell === costBasis).
-  // panelMarginPerWatt is a flat SAR/W markup admins can now set, added on
-  // top of the per-watt cost, so panelSell = (cost + margin) * totalWatts.
-  const panelSell = (panel.priceW + (D.panelMarginPerWatt || 0)) * calcKW * 1000;
+  const panelPr = panelPricing(D, panel);
+  const panelCost = panelPr.costPerWatt * calcKW * 1000;
+  const panelSell = panelPr.sellPerWatt * calcKW * 1000;
   const steelPanelCost = D.steelPanelPerHP * hp;
   const combinerCost = combiner[1];
 
   const cableRaw = calcKW >= 100 ? D.cableHighMultiplier * arrays : D.cableLowMultiplier * arrays;
-  const roundedHundreds = Math.round(cableRaw / 100) * 100;
-  const hundredsUnit = roundedHundreds / 100;
-  const evenUnit = (hundredsUnit % 2 === 0) ? hundredsUnit : (hundredsUnit > 0 ? hundredsUnit + 1 : hundredsUnit - 1);
-  const cablesLen = evenUnit * 100;
-  const cablesCost = cablesLen * D.cablePerMeter;
+  let cablesLen: number;
+  if (hp >= 5 && hp <= 30) {
+    const rawWhole = Math.round(cableRaw);
+    cablesLen = (rawWhole % 2 === 0) ? rawWhole : (rawWhole > 0 ? rawWhole + 1 : rawWhole - 1);
+  } else {
+    const roundedHundreds = Math.round(cableRaw / 100) * 100;
+    const hundredsUnit = roundedHundreds / 100;
+    const evenUnit = (hundredsUnit % 2 === 0) ? hundredsUnit : (hundredsUnit > 0 ? hundredsUnit + 1 : hundredsUnit - 1);
+    cablesLen = evenUnit * 100;
+  }
+  const cableRow = findExactCatalogRow(D, "الكابلات والوصلات", "كابل");
+  const cablePricing = resolveCatalogPricing(D, cableRow.category, cableRow.brand, cableRow.listPrice, ((D.cableMarkup || 1) - 1) * 100);
+  const cablesCost = cablesLen * cablePricing.costBasis;
+  const cablesSell = cablesLen * cablePricing.sell;
 
-  const mc4Cost = arrays * D.mc4PerUnit;
+  const mc4Row = findExactCatalogRow(D, "الكابلات والوصلات", "VEICHI MC4 Single");
+  const mc4Pricing = resolveCatalogPricing(D, mc4Row.category, mc4Row.brand, mc4Row.listPrice, 50);
+  const mc4Cost = arrays * mc4Pricing.costBasis;
+  const mc4Sell = arrays * mc4Pricing.sell;
   const structurePrice = inp.structureType === "ROTATIONAL" ? D.structurePriceRotational : D.structurePriceFixed;
   const structureCost = arrays * structurePrice;
   const concreteQty = Math.round(arrays * 8 / 3.5);
   const concreteCost = concreteQty * D.concretePerUnit;
   const earthQty = Math.round(calcKW / 40);
   const earthCost = earthQty * D.earthingPerUnit;
-  const reactorCost = reactorPrice;
-  // reactorMarkupPct is a % margin admins can set (was hardcoded at 0% —
-  // sell === cost — before this), same pattern as the other %-markup items
-  // (IP65 ×1.25, combiner ×1.3, etc.) but exposed in the admin panel.
-  const reactorSell = reactorCost * (1 + (D.reactorMarkupPct || 0) / 100);
+  const reactorCost = reactorPricing.costBasis;
+  const reactorSell = reactorPricing.sell;
   const flexQty = Math.round(cablesLen / 40);
   const flexCost = flexQty * D.flexTubePerUnit;
   const mechInstallQty = totalPanels;
@@ -212,7 +185,7 @@ function computeQuote(D: any, inp: any) {
     warranty: "12 سنة ضد عيوب الصناعة / 30 سنة ضد التناقص الإنتاجي عن %80",
   });
   push("inverter", "الانفرتر", t.inverter, invList, invCost, {
-    type: `${invBrand.brand} أو ما يعادلها ${invKW} KW`, qty: "#1#", warranty: "سنة واحدة",
+    type: `${inv.brand} أو ما يعادلها ${invKW} KW`, qty: "#1#", warranty: "سنة واحدة",
   });
   push("ip65", "لوحة الحماية IP65", t.ip65, steelPanelCost * 1.25, steelPanelCost, {
     type: `خاصة بانفرتر ${invKW} KW`, qty: "#1#", warranty: "سنة واحدة",
@@ -220,10 +193,10 @@ function computeQuote(D: any, inp: any) {
   push("combiner", `VEICHI Combiner box ${String(combiner[0]).padStart(3, "0")}`, t.combiner, combinerCost * 1.3, combinerCost, {
     type: "-", qty: "#1#", warranty: "سنة واحدة",
   });
-  push("cables", "الكابلات - DC", t.cables, cablesCost * D.cableMarkup, cablesCost, {
+  push("cables", "الكابلات - DC", t.cables, cablesSell, cablesCost, {
     type: "VEICHI / LEADER / SUNTREE 6mm", qty: `${cablesLen} متر (تقريبي — يُحدد نهائيًا عند التوريد)`, warranty: "سنة واحدة",
   });
-  push("mc4", "وصلات MC4", t.mc4, mc4Cost * 1.5, mc4Cost, {
+  push("mc4", "وصلات MC4", t.mc4, mc4Sell, mc4Cost, {
     type: "Suntree / VEICHI / LEADER", qty: `#${arrays}#`, warranty: "---",
   });
   push("structure", "الشاسيه/الحوامل (" + (inp.structureType === "ROTATIONAL" ? "متحرك" : "ثابت") + ")", t.structure, structureCost * 1.1, structureCost, {
@@ -266,20 +239,13 @@ function computeQuote(D: any, inp: any) {
   const vat = netAfterManual * D.vat;
   const finalTotal = netAfterManual + vat;
 
-  // "سعر التوريد فقط" / "سعر التوريد والتركيب" — two reference totals shown
-  // instantly in the system summary (no separate request/reload needed to
-  // see what either offer type would cost), independent of which items the
-  // CURRENT toggle selection has on/off. Uses the same raw sell/cost basis
-  // and discount factor as the real quote, just with a different fixed set
-  // of included line items each time — mirrors the two preset buttons above
-  // ("توريد خامات فقط" / "توريد وتركيب شامل الضمان") exactly.
   const rawItemBasis: Record<string, { sell: number; costBasis: number }> = {
     panel: { sell: panelSell, costBasis: panelCost },
     inverter: { sell: invList, costBasis: invCost },
     ip65: { sell: steelPanelCost * 1.25, costBasis: steelPanelCost },
     combiner: { sell: combinerCost * 1.3, costBasis: combinerCost },
-    cables: { sell: cablesCost * D.cableMarkup, costBasis: cablesCost },
-    mc4: { sell: mc4Cost * 1.5, costBasis: mc4Cost },
+    cables: { sell: cablesSell, costBasis: cablesCost },
+    mc4: { sell: mc4Sell, costBasis: mc4Cost },
     structure: { sell: structureCost * 1.1, costBasis: structureCost },
     concrete: { sell: concreteCost * 1.1, costBasis: concreteCost },
     earth: { sell: earthCost, costBasis: earthCost },
@@ -310,7 +276,7 @@ function computeQuote(D: any, inp: any) {
   return {
     panelsPerString, arrays, totalPanels, calcKW, efficiencyRatio,
     Iimp, Vimp, Voc, Isc, IscCalc, expectedVAC,
-    invBrandName: invBrand.brand,
+    invBrandName: inv.brand,
     inverterCalcKW, invKW, invMaxSolarKw: invMaxSolarKw ?? null, inverterOversizeWarning,
     reactorModel, reactorPrice, cbSize, combiner,
     items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt,
@@ -319,7 +285,6 @@ function computeQuote(D: any, inp: any) {
   };
 }
 
-// Strip anything an ordinary client should never see.
 function publicView(q: any) {
   return {
     ...q,
@@ -338,99 +303,273 @@ function adminView(q: any) {
   return { ...q, totalCost, profit, profitPct };
 }
 
-// Resolve panel + inverter brand + discount factor server-side. The client
-// sends indices only (panelIdx, inverterBrandIdx, discountTierIdx) — it
-// never needs to know priceW, inverter list/cost, or any discount factor.
 function resolveInput(D: any, rawInput: any) {
   const panel = D.panels[rawInput.panelIdx];
   if (!panel) throw new Error("invalid panelIdx");
-  const brands = getInverterBrands(D);
-  const invBrand = brands[rawInput.inverterBrandIdx ?? 0] || brands[0];
-  if (!invBrand) throw new Error("invalid inverterBrandIdx");
   const tierIdx = (rawInput.discountTierIdx ?? D.defaultDiscountIdx ?? 1);
   const tier = D.discountTiers[tierIdx] || D.discountTiers[D.defaultDiscountIdx ?? 1];
-  return { ...rawInput, panel, invBrand, discountFactor: tier.factor };
+  return { ...rawInput, panel, discountFactor: tier.factor };
 }
 
-// ---------------------------------------------------------------------------
-// Off-grid / on-grid engines — pull inverter & battery pricing straight from
-// D.productCatalog (the same reference list reps use for ad-hoc "how much
-// does X cost" questions), instead of a separate hard-coded ladder. That
-// catalog's own migration comment says it exists "to quote off-grid
-// components" — this is what actually wires that up.
-//
-// All *MarkupPct / sunHours / systemEfficiency / batteryDoD / tariffRate /
-// peakLoadDivisor / install-and-structure-cost fields come from
-// D.offgrid / D.ongrid (seeded with STARTING-POINT placeholder values in
-// 0013_offgrid_ongrid_ready_systems.sql) and are editable from the admin
-// panel. Review them before trusting a real quote.
-// ---------------------------------------------------------------------------
 function findCatalogCategory(D: any, nameIncludes: string) {
   const cat = (D.productCatalog || []).find((c: any) => (c.category || "").includes(nameIncludes));
-  if (!cat) throw new Error(`productCatalog category "${nameIncludes}" not found — check admin > قائمة المنتجات`);
+  if (!cat) throw new Error(`productCatalog category "${nameIncludes}" not found`);
   return cat;
 }
-// Hybrid MPPT inverter/charger rows look like "SISV 8KW (TWIN) MPPT" — pull
-// the kW rating out of the model name since there's no dedicated numeric
-// column for it in the catalog table.
+
+function rowBrand(cat: any, rowIdx: number): string {
+  const detail = cat.productDetails && cat.productDetails[String(rowIdx)];
+  return (detail && detail.brand) || "";
+}
+function findDiscount(D: any, category: string, brand: string) {
+  return (Array.isArray(D.discounts) ? D.discounts : [])
+    .find((d: any) => d.category === category && d.brand === brand) || null;
+}
+function resolveCatalogPricing(
+  D: any, category: string, brand: string, listPrice: number, fallbackMarkupPct: number,
+): { costBasis: number; sell: number } {
+  const d = findDiscount(D, category, brand);
+  if (d) {
+    const supplierPct = Number(d.supplierDiscountPct) || 0;
+    const sellPct = Number(d.sellDiscountPct) || 0;
+    return {
+      costBasis: listPrice * (1 - supplierPct / 100),
+      sell: listPrice * (1 - sellPct / 100),
+    };
+  }
+  return {
+    costBasis: listPrice,
+    sell: listPrice * (1 + (fallbackMarkupPct || 0) / 100),
+  };
+}
+function panelPricing(D: any, panel: any): { costPerWatt: number; sellPerWatt: number } {
+  const d = findDiscount(D, "الألواح الشمسية", panel.brand);
+  if (d) {
+    const supplierPct = Number(d.supplierDiscountPct) || 0;
+    const sellPct = Number(d.sellDiscountPct) || 0;
+    return {
+      costPerWatt: panel.priceW * (1 - supplierPct / 100),
+      sellPerWatt: panel.priceW * (1 - sellPct / 100),
+    };
+  }
+  return {
+    costPerWatt: panel.priceW,
+    sellPerWatt: panel.priceW + (D.panelMarginPerWatt || 0),
+  };
+}
+
 function parseKwFromModel(model: string): number {
   const m = String(model).match(/([\d.]+)\s*KW/i);
   return m ? parseFloat(m[1]) : 0;
 }
-function pickCatalogInverter(D: any, kwNeeded: number) {
+function getInverterCatalogRows(D: any) {
   const cat = findCatalogCategory(D, "انفرتر");
-  const priceIdx = cat.columns.length - 2; // second-to-last column = excl-VAT price, by table convention
-  // Exclude industrial pump VFDs (VLT/VHT model prefixes) and DC-only battery
-  // racks that share this category but aren't hybrid solar+battery inverters.
-  const rows = cat.rows
-    .map((r: any) => ({ model: r[0], kw: parseKwFromModel(r[0]), costBasis: parseFloat(r[priceIdx]) }))
+  const priceIdx = cat.columns.length - 2;
+  return cat.rows
+    .map((r: any, idx: number) => ({
+      model: r[0], kw: parseKwFromModel(r[0]), listPrice: parseFloat(r[priceIdx]),
+      category: cat.category, brand: rowBrand(cat, idx),
+    }))
     .filter((r: any) => r.kw > 0 && !/^VLT|^VHT|Rack/i.test(r.model))
     .sort((a: any, b: any) => a.kw - b.kw);
+}
+function getInverterModelOptions(D: any) {
+  return getInverterCatalogRows(D).map((r: any) => ({
+    model: r.model, kw: r.kw, voltageClasses: getInverterVoltageClasses(D, r.model),
+  }));
+}
+function getPumpInverterCatalogRows(D: any) {
+  const cat = findCatalogCategory(D, "انفرتر مضخات");
+  const priceIdx = cat.columns.length - 2;
+  return cat.rows
+    .map((r: any, idx: number) => {
+      const detail = cat.productDetails && cat.productDetails[String(idx)];
+      const maxSolarKw = detail && detail.maxSolarKw != null && detail.maxSolarKw !== "" ? Number(detail.maxSolarKw) : null;
+      return {
+        model: r[0], kw: parseKwFromModel(r[0]), listPrice: parseFloat(r[priceIdx]),
+        category: cat.category, brand: rowBrand(cat, idx), maxSolarKw,
+      };
+    })
+    .filter((r: any) => r.kw > 0 && isFinite(r.listPrice))
+    .sort((a: any, b: any) => a.kw - b.kw);
+}
+function pickPumpInverter(D: any, kwNeeded: number) {
+  const rows = getPumpInverterCatalogRows(D);
+  if (!rows.length) throw new Error('لا يوجد أي موديل انفرتر مضخات بسعر مسجل داخل كتالوج "انفرتر مضخات VEICHI"');
+  let idx = rows.findIndex((r: any) => r.kw >= kwNeeded);
+  if (idx === -1) idx = rows.length - 1;
+  return { picked: rows[idx], idx, rows };
+}
+function pickCatalogInverter(D: any, kwNeeded: number) {
+  const rows = getInverterCatalogRows(D);
   if (!rows.length) throw new Error('لا يوجد أي موديل انفرتر هجين بقدرة (KW) واضحة في اسم الموديل داخل كتالوج "شواحن/انفرترات هجين MPPT"');
   return rows.find((r: any) => r.kw >= kwNeeded) || rows[rows.length - 1];
 }
-// Battery rows: [model, current(A), voltage(V), priceExclTax, priceInclTax].
-// Only the 51.2V line is stackable DC-bus battery banks matched to these
-// hybrid inverters — 12.8V/25.6V rows are for smaller separate 12V/24V setups.
-function pickCatalogBattery(D: any, nameplateKwhNeeded: number) {
+function pickCatalogInverterMulti(D: any, kwNeeded: number, requestedModel?: string) {
+  const rows = getInverterCatalogRows(D);
+  if (!rows.length) throw new Error('لا يوجد أي موديل انفرتر هجين بقدرة (KW) واضحة في اسم الموديل داخل كتالوج "شواحن/انفرترات هجين MPPT"');
+  let unit: any;
+  if (requestedModel) {
+    unit = rows.find((r: any) => r.model === requestedModel);
+    if (!unit) throw new Error(`الموديل "${requestedModel}" غير موجود داخل كتالوج الانفرتر`);
+  } else {
+    unit = rows.find((r: any) => r.kw >= kwNeeded) || rows[rows.length - 1];
+  }
+  const count = Math.max(1, Math.ceil(kwNeeded / unit.kw));
+  return { ...unit, count, totalKw: unit.kw * count };
+}
+function getInverterVoltageClasses(D: any, model: string): (12 | 24 | 48)[] {
+  const cat = findCatalogCategory(D, "انفرتر");
+  const idx = cat.rows.findIndex((r: any) => r[0] === model);
+  const detail = idx >= 0 ? (cat.productDetails && cat.productDetails[String(idx)]) : null;
+  const specText: string = (detail && detail.specs && (detail.specs["جهد البطارية الاسمي"] || detail.specs["الجهد الاسمي"])) || "";
+  const fromSpec = Array.from(new Set(
+    (specText.match(/\d+(\.\d+)?/g) || []).map(Number).filter((n) => n === 12 || n === 24 || n === 48)
+  )) as (12 | 24 | 48)[];
+  if (fromSpec.length) return fromSpec;
+  const fromName = String(model).match(/\b(12|24|48)V\b/i);
+  if (fromName) return [Number(fromName[1]) as 12 | 24 | 48];
+  return [48];
+}
+function parseConservativeCurrentA(specText: string): number | null {
+  const nums = (specText.match(/\d+(\.\d+)?/g) || []).map(Number);
+  if (!nums.length) return null;
+  return Math.min(...nums);
+}
+function getInverterMaxChargeCurrentA(D: any, model: string): number | null {
+  const cat = findCatalogCategory(D, "انفرتر");
+  const idx = cat.rows.findIndex((r: any) => r[0] === model);
+  const detail = idx >= 0 ? (cat.productDetails && cat.productDetails[String(idx)]) : null;
+  const specText: string = (detail && detail.specs && (detail.specs["أقصى تيار شحن AC"] || detail.specs["أقصى تيار شحن"])) || "";
+  return parseConservativeCurrentA(specText);
+}
+function parsePowerKw(specText: string): number | null {
+  const kwMatch = specText.match(/([\d.]+)\s*(كيلوواط|kw)/i);
+  if (kwMatch) return parseFloat(kwMatch[1]);
+  const wMatch = specText.match(/([\d.]+)\s*w\b/i);
+  if (wMatch) return parseFloat(wMatch[1]) / 1000;
+  return null;
+}
+function getInverterMaxPvKw(D: any, model: string): number | null {
+  const cat = findCatalogCategory(D, "انفرتر");
+  const idx = cat.rows.findIndex((r: any) => r[0] === model);
+  const detail = idx >= 0 ? (cat.productDetails && cat.productDetails[String(idx)]) : null;
+  const specText: string = (detail && detail.specs && (detail.specs["أقصى قدرة ألواح مسموحة"] || detail.specs["أقصى قدرة ألواح موصى بها"])) || "";
+  return parsePowerKw(specText);
+}
+const INDUCTIVE_APPLIANCE_HINTS = ["تكييف", "مكيف", "ثلاجة", "فريزر", "مضخة", "موتور", "كمبريسور", "غسالة", "مروحة", "دينامو", "كمبروسر"];
+function isLikelyInductiveAppliance(name: string): boolean {
+  const n = String(name || "");
+  return INDUCTIVE_APPLIANCE_HINTS.some((h) => n.includes(h));
+}
+function applianceSurgeMultiplier(a: any, og: any): number {
+  if (a.surgeMultiplier != null && +a.surgeMultiplier > 0) return +a.surgeMultiplier;
+  if (a.loadType === "resistive") return 1;
+  if (a.loadType === "inductive") return og.inductiveSurgeMultiplier || 3;
+  return isLikelyInductiveAppliance(a.name) ? (og.inductiveSurgeMultiplier || 3) : 1;
+}
+
+function standardBatteryVoltage(actualVoltage: number): 12 | 24 | 48 {
+  if (actualVoltage < 18) return 12;
+  if (actualVoltage < 36) return 24;
+  return 48;
+}
+function getBatteryVoltageOptions(D: any): number[] {
   const cat = findCatalogCategory(D, "بطاريات ليثيوم");
-  const rows = cat.rows
-    .map((r: any) => ({
+  const stdVoltages = Array.from(new Set(
+    cat.rows.map((r: any) => parseFloat(r[2])).filter((v: number) => v > 0).map(standardBatteryVoltage)
+  )) as number[];
+  return stdVoltages.sort((a, b) => a - b);
+}
+function getAllBatteryRows(D: any) {
+  const cat = findCatalogCategory(D, "بطاريات ليثيوم");
+  const allRows = cat.rows
+    .map((r: any, idx: number) => ({
       model: r[0],
-      voltage: parseFloat(r[2]),
+      voltage: Math.round(parseFloat(r[2]) * 10) / 10,
       current: parseFloat(r[1]),
-      costBasis: parseFloat(r[3]),
+      listPrice: parseFloat(r[3]),
+      brand: rowBrand(cat, idx),
     }))
-    .filter((r: any) => Math.abs(r.voltage - 51.2) < 0.5)
-    .map((r: any) => ({ ...r, kwh: (r.current * r.voltage) / 1000 }))
-    .sort((a: any, b: any) => a.kwh - b.kwh);
-  if (!rows.length) throw new Error('لا يوجد أي موديل بطارية 51.2V داخل كتالوج "بطاريات ليثيوم"');
-  const unit = rows[rows.length - 1]; // largest module, to minimise part count
-  const count = Math.max(1, Math.ceil(nameplateKwhNeeded / unit.kwh));
-  return { unit, count, totalKwh: unit.kwh * count };
+    .filter((r: any) => r.voltage > 0)
+    .map((r: any) => ({ ...r, stdVoltage: standardBatteryVoltage(r.voltage), kwh: (r.current * r.voltage) / 1000 }));
+  return { cat, allRows };
+}
+function getBatteryModelOptions(D: any) {
+  const { allRows } = getAllBatteryRows(D);
+  return allRows
+    .map((r: any) => ({
+      model: r.model, brand: r.brand, voltage: r.voltage, stdVoltage: r.stdVoltage,
+      ah: r.current, kwh: Math.round(r.kwh * 100) / 100,
+    }))
+    .sort((a: any, b: any) => a.stdVoltage - b.stdVoltage || a.brand.localeCompare(b.brand) || a.ah - b.ah);
+}
+function pickCatalogBattery(D: any, nameplateKwhNeeded: number, requestedStandardVoltage?: number, requestedModel?: string, requestedBrand?: string, batteryMarkupPct?: number) {
+  const { cat, allRows } = getAllBatteryRows(D);
+  if (!allRows.length) throw new Error('لا يوجد أي موديل بطارية داخل كتالوج "بطاريات ليثيوم"');
+
+  let unit: any;
+  let parallelCount: number;
+  if (requestedModel) {
+    unit = allRows.find((r: any) => r.model === requestedModel);
+    if (!unit) throw new Error(`الموديل "${requestedModel}" غير موجود داخل كتالوج "بطاريات ليثيوم"`);
+    parallelCount = Math.max(1, Math.ceil(nameplateKwhNeeded / unit.kwh));
+  } else {
+    const targetStdVoltage = requestedStandardVoltage && [12, 24, 48].includes(+requestedStandardVoltage)
+      ? +requestedStandardVoltage
+      : Math.max(...allRows.map((r: any) => r.stdVoltage));
+    let candidates = allRows.filter((r: any) => r.stdVoltage === targetStdVoltage);
+    if (!candidates.length) throw new Error(`لا يوجد أي موديل بطارية بفولت ${targetStdVoltage}V (استاندرد) داخل الكتالوج`);
+    if (requestedBrand) {
+      const brandCandidates = candidates.filter((r: any) => r.brand === requestedBrand);
+      if (!brandCandidates.length) throw new Error(`لا يوجد أي موديل بطارية بماركة "${requestedBrand}" وفولت ${targetStdVoltage}V (استاندرد) داخل الكتالوج`);
+      candidates = brandCandidates;
+    }
+    let best: { unit: any; count: number; totalSell: number } | null = null;
+    for (const cand of candidates) {
+      const count = Math.max(1, Math.ceil(nameplateKwhNeeded / cand.kwh));
+      const pricing = resolveCatalogPricing(D, cat.category, cand.brand, cand.listPrice, batteryMarkupPct || 0);
+      const totalSell = pricing.sell * count;
+      if (!best || totalSell < best.totalSell - 1e-6 || (Math.abs(totalSell - best.totalSell) < 1e-6 && count < best.count)) {
+        best = { unit: cand, count, totalSell };
+      }
+    }
+    unit = best!.unit;
+    parallelCount = best!.count;
+  }
+
+  return {
+    unit, count: parallelCount, totalKwh: unit.kwh * parallelCount,
+    seriesCount: 1, parallelCount, packVoltage: unit.voltage, busVoltage: unit.voltage, category: cat.category,
+  };
 }
 
 function buildGenericItems(pushImpl: any, opts: {
-  panel: any; totalPanels: number; calcKW: number; panelMarginPerWatt: number;
-  inverterLabel: string; inverterType: string; inverterCostBasis: number; inverterSell: number;
+  panel: any; totalPanels: number; calcKW: number; panelCostPerWatt: number; panelSellPerWatt: number;
+  inverterLabel: string; inverterType: string; inverterCostBasis: number; inverterSell: number; inverterCount?: number;
   structureCost: number; structureSell: number;
   cablingCost: number; cablingSell: number;
   installCost: number; installSell: number;
-  battery?: { unit: any; count: number; totalKwh: number; markupPct: number };
+  battery?: { unit: any; count: number; totalKwh: number; costBasis: number; sell: number; seriesCount?: number; parallelCount?: number; packVoltage?: number };
 }) {
-  const panelCost = opts.panel.priceW * opts.calcKW * 1000;
-  const panelSell = (opts.panel.priceW + (opts.panelMarginPerWatt || 0)) * opts.calcKW * 1000;
+  const panelCost = opts.panelCostPerWatt * opts.calcKW * 1000;
+  const panelSell = opts.panelSellPerWatt * opts.calcKW * 1000;
   pushImpl("panel", "ألواح الطاقة الشمسية", panelSell, panelCost, {
     type: `${opts.panel.brand} ${opts.panel.power}W أو ما يعادلها`, qty: `#${opts.totalPanels}#`,
     warranty: "12 سنة ضد عيوب الصناعة / 30 سنة ضد التناقص الإنتاجي عن %80",
   });
-  pushImpl("inverter", opts.inverterLabel, opts.inverterSell, opts.inverterCostBasis, {
-    type: opts.inverterType, qty: "#1#", warranty: "سنة واحدة",
+  const invCount = opts.inverterCount || 1;
+  pushImpl("inverter", opts.inverterLabel, opts.inverterSell * invCount, opts.inverterCostBasis * invCount, {
+    type: opts.inverterType, qty: `#${invCount}#`, warranty: "سنة واحدة",
   });
   if (opts.battery) {
-    const sell = opts.battery.unit.costBasis * opts.battery.count * (1 + opts.battery.markupPct / 100);
-    pushImpl("battery", "بنك البطاريات (ليثيوم)", sell, opts.battery.unit.costBasis * opts.battery.count, {
-      type: `${opts.battery.unit.model} أو ما يعادلها`, qty: `#${opts.battery.count}#`, warranty: "5 سنوات",
+    const sell = opts.battery.sell;
+    const costBasis = opts.battery.costBasis;
+    const wiring = (opts.battery.seriesCount || 1) > 1
+      ? ` (${opts.battery.seriesCount} توالي × ${opts.battery.parallelCount} توازي = ${(opts.battery.packVoltage||0).toFixed(0)}V)`
+      : ((opts.battery.parallelCount||1) > 1 ? ` (${opts.battery.parallelCount} توازي)` : '');
+    pushImpl("battery", "بنك البطاريات (ليثيوم)", sell, costBasis, {
+      type: `${opts.battery.unit.model} أو ما يعادلها${wiring}`, qty: `#${opts.battery.count}#`, warranty: "5 سنوات",
     });
   }
   pushImpl("structure", "الشاسيه/الحوامل", opts.structureSell, opts.structureCost, {
@@ -467,53 +606,151 @@ function computeOffgridQuote(D: any, inp: any) {
   const og = D.offgrid;
   const panel = inp.panel;
 
-  // 1) Daily energy need, in kWh.
   const dailyKwh = inp.method === "appliances"
-    ? (inp.appliances || []).reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.hours || 0) * (+a.qty || 1)) / 1000, 0)
+    ? (inp.appliances || []).reduce((s: number, a: any) => {
+        const hrs = (+a.dayHours || 0) + (+a.nightHours || 0);
+        return s + ((+a.watts || 0) * hrs * (+a.qty || 1)) / 1000;
+      }, 0)
     : (+inp.dailyKwh || 0);
   if (dailyKwh <= 0) throw new Error("الاستهلاك اليومي يجب أن يكون أكبر من صفر");
 
-  // 2) Peak load, in kW — used to size the inverter/charger.
-  //    "appliances" method: worst case, everything listed running at once.
-  //    "consumption" method: no per-device data, so this ESTIMATES peak as
-  //    dailyKwh spread over `peakLoadDivisor` peak-equivalent hours (default
-  //    6h, tune in admin panel) — a genuine assumption, not a measurement.
   const peakKw = inp.method === "appliances"
     ? (inp.appliances || []).reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.qty || 1)) / 1000, 0)
     : dailyKwh / (og.peakLoadDivisor || 6);
 
-  // 3) PV array sized to cover daily energy within the given sun hours.
-  const requiredArrayKw = dailyKwh / (og.sunHours * og.systemEfficiency);
+  const nightKwh = inp.method === "appliances"
+    ? (inp.appliances || []).reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.nightHours || 0) * (+a.qty || 1)) / 1000, 0)
+    : dailyKwh * (og.nightLoadRatioFallback ?? 0.5);
+
+  const autonomyDaysRaw = inp.autonomyDays;
+  const autonomyDays = Math.max(
+    0,
+    (autonomyDaysRaw === undefined || autonomyDaysRaw === null || autonomyDaysRaw === "")
+      ? (og.defaultAutonomyDays ?? 0)
+      : (+autonomyDaysRaw || 0)
+  );
+  const nameplateBatteryKwh = (nightKwh + dailyKwh * autonomyDays) / og.batteryDoD;
+
+  const inv = pickCatalogInverterMulti(D, peakKw, inp.inverterModel);
+  const invPricing = resolveCatalogPricing(D, inv.category, inv.brand, inv.listPrice, og.inverterMarkupPct);
+  const invVoltageClasses = getInverterVoltageClasses(D, inv.model);
+
+  let surgeInfo: { totalRunningKw: number; largestSurgeApplianceName: string | null; largestSurgeExtraKw: number; requiredSurgeKw: number } | null = null;
+  let requiredSurgeKw = peakKw;
+  if (inp.method === "appliances" && (inp.appliances || []).length) {
+    const apps = (inp.appliances || []).map((a: any) => {
+      const runningKw = ((+a.watts || 0) * (+a.qty || 1)) / 1000;
+      const mult = applianceSurgeMultiplier(a, og);
+      return { name: a.name || null, runningKw, extraSurgeKw: runningKw * Math.max(0, mult - 1) };
+    });
+    const totalRunningKw = apps.reduce((s: number, a: any) => s + a.runningKw, 0);
+    const largest = apps.reduce((max: any, a: any) => (a.extraSurgeKw > max.extraSurgeKw ? a : max), { extraSurgeKw: 0, name: null });
+    requiredSurgeKw = totalRunningKw + largest.extraSurgeKw;
+    surgeInfo = { totalRunningKw, largestSurgeApplianceName: largest.name, largestSurgeExtraKw: largest.extraSurgeKw, requiredSurgeKw };
+  }
+  const inverterSurgeRatio = og.inverterSurgeRatio || 2;
+  let inverterSurgeWarning: string | null = null;
+  if (requiredSurgeKw > inv.kw * inverterSurgeRatio * inv.count) {
+    const neededCount = Math.max(inv.count, Math.ceil(requiredSurgeKw / (inv.kw * inverterSurgeRatio)));
+    const oldCount = inv.count;
+    inv.count = neededCount;
+    inv.totalKw = inv.kw * inv.count;
+    inverterSurgeWarning = `⚠️ تيار البدء المطلوب (يعادل تقريبًا ${requiredSurgeKw.toFixed(2)} كيلوواط ذروة${surgeInfo?.largestSurgeApplianceName ? `، أكبره من "${surgeInfo.largestSurgeApplianceName}"` : ""}) يتجاوز قدرة الذروة لانفرتر ${inv.model} الواحد (${(inv.kw * inverterSurgeRatio).toFixed(2)} كيلوواط تقريبًا) — تم رفع عدد الوحدات من ${oldCount} إلى ${inv.count} لضمان تشغيل الحمل عند بدء التشغيل.`;
+  }
+
+  const requestedBatteryVoltage = [12, 24, 48].includes(+inp.batteryVoltage) ? (+inp.batteryVoltage as 12 | 24 | 48) : null;
+  let standardVoltage: 12 | 24 | 48;
+  let batteryVoltageWarning: string | null = null;
+  if (requestedBatteryVoltage && invVoltageClasses.includes(requestedBatteryVoltage)) {
+    standardVoltage = requestedBatteryVoltage;
+  } else {
+    standardVoltage = invVoltageClasses.includes(48) ? 48 : invVoltageClasses[invVoltageClasses.length - 1];
+    if (requestedBatteryVoltage) {
+      batteryVoltageWarning = `⚠️ فولت البطارية المُختار (${requestedBatteryVoltage}V) غير متوافق مع انفرتر ${inv.model} (يدعم فقط ${invVoltageClasses.join('/')}V) — تم تصحيحه تلقائيًا إلى ${standardVoltage}V لضمان توافق الأسلاك.`;
+    }
+  }
+
+  const battery = pickCatalogBattery(D, nameplateBatteryKwh, standardVoltage, inp.batteryModel || undefined, inp.batteryBrand || undefined, og.batteryMarkupPct);
+  if (inp.batteryModel && !invVoltageClasses.includes(battery.unit.stdVoltage)) {
+    throw new Error(`موديل البطارية "${inp.batteryModel}" فولته ${battery.unit.stdVoltage}V، وانفرتر ${inv.model} يدعم فقط ${invVoltageClasses.join('/')}V — اختر موديل بطارية بفولت متوافق، أو غيّر موديل الانفرتر.`);
+  }
+  const batteryPricing = resolveCatalogPricing(D, battery.category, battery.unit.brand, battery.unit.listPrice, og.batteryMarkupPct);
+
+  const chargeLossFactor = og.chargeLossFactor || 1.04;
+  const recoveryDays = og.recoveryDays || 3;
+  const batteryBufferKwh = Math.max(0, battery.totalKwh * og.batteryDoD - nightKwh);
+  const requiredArrayKw = (dailyKwh + nightKwh * chargeLossFactor + batteryBufferKwh / recoveryDays) / (og.sunHours * og.systemEfficiency);
   const totalPanels = Math.max(1, Math.ceil((requiredArrayKw * 1000) / panel.power));
   const calcKW = (totalPanels * panel.power) / 1000;
 
-  // 4) Battery bank sized for the requested autonomy, grossed up for DoD.
-  const autonomyDays = Math.max(1, +inp.autonomyDays || og.defaultAutonomyDays || 1);
-  const nameplateBatteryKwh = (dailyKwh * autonomyDays) / og.batteryDoD;
-  const battery = pickCatalogBattery(D, nameplateBatteryKwh);
+  const invMaxPvKw = getInverterMaxPvKw(D, inv.model);
+  const PV_OVERSIZE_TOLERANCE = 1.30;
+  let pvArrayOversizeWarning: string | null = null;
+  if (invMaxPvKw) {
+    const toleratedPvKw = invMaxPvKw * PV_OVERSIZE_TOLERANCE * inv.count;
+    if (calcKW > toleratedPvKw) {
+      const biggerModel = getInverterCatalogRows(D)
+        .filter((r: any) => r.kw > inv.kw)
+        .find((r: any) => {
+          const rMaxPv = getInverterMaxPvKw(D, r.model);
+          return rMaxPv == null || calcKW <= rMaxPv * PV_OVERSIZE_TOLERANCE;
+        });
+      const maxPanelWatts = Math.floor(invMaxPvKw * PV_OVERSIZE_TOLERANCE * inv.count * 1000);
+      pvArrayOversizeWarning = `⚠️ حجم الألواح المحسوب (${calcKW.toFixed(2)} كيلوواط) يتجاوز أقصى قدرة ألواح مسموح توصيلها على انفرتر ${inv.model} حتى مع هامش تجاوز معتاد (${invMaxPvKw} كيلوواط × ${inv.count} وحدة × ${PV_OVERSIZE_TOLERANCE} = ${toleratedPvKw.toFixed(2)} كيلوواط كحد أقصى) — لا يمكن حل ذلك بإضافة انفرتر ثانٍ لنفس الألواح (توصيل غير سليم كهربائيًا)، فالمطلوب إما استخدام لوح بقدرة ${maxPanelWatts} واط أو أقل، أو رفع قدرة الانفرتر إلى ${biggerModel ? `${biggerModel.kw} كيلوواط (${biggerModel.model})` : "موديل أعلى غير متوفر حاليًا في الكتالوج"}.`;
+    }
+  }
 
-  // 5) Hybrid inverter/charger sized to the peak load.
-  const inv = pickCatalogInverter(D, peakKw);
-  const invSell = inv.costBasis * (1 + og.inverterMarkupPct / 100);
+  const invMaxChargeA = getInverterMaxChargeCurrentA(D, inv.model);
+  let batteryChargingWarning: string | null = null;
+  let suggestedExtraCharger: { model: string; maxChargeA: number; count: number } | null = null;
+  if (invMaxChargeA && battery.unit.current > 0) {
+    const totalChargeA = invMaxChargeA * inv.count;
+    const maxPacksPerCharger = Math.max(1, Math.floor(totalChargeA / battery.unit.current));
+    if (battery.parallelCount > maxPacksPerCharger) {
+      const extraPacks = battery.parallelCount - maxPacksPerCharger;
+      const neededExtraChargeA = extraPacks * battery.unit.current;
+      const candidateRows = getInverterCatalogRows(D).filter((r: any) => getInverterVoltageClasses(D, r.model).includes(standardVoltage));
+      let bestExtra: any = null;
+      for (const r of candidateRows) {
+        const ca = getInverterMaxChargeCurrentA(D, r.model);
+        if (ca && ca >= neededExtraChargeA && (!bestExtra || r.kw < bestExtra.kw)) bestExtra = { ...r, maxChargeA: ca };
+      }
+      suggestedExtraCharger = bestExtra ? { model: bestExtra.model, maxChargeA: bestExtra.maxChargeA, count: 1 } : null;
+      batteryChargingWarning = `⚠️ انفرتر ${inv.model} (أقصى تيار شحن ${invMaxChargeA}A للوحدة${inv.count > 1 ? `، × ${inv.count} وحدة = ${totalChargeA}A إجمالي` : ""}) يقدر يشحن بمعدل كامل ${maxPacksPerCharger} بطارية بس من موديل ${battery.unit.model} (${battery.unit.current}A لكل بطارية)، وانت محتاج ${battery.parallelCount} على التوازي — الشحن هيبقى أبطأ من المعدل الكامل للبطاريات الزيادة.` +
+        (suggestedExtraCharger ? ` يُنصح بإضافة شاحن/انفرتر ${suggestedExtraCharger.model} (أقصى تيار شحن ${suggestedExtraCharger.maxChargeA}A) لشحن الـ ${extraPacks} بطارية الإضافية بمعدل كامل.` : ` لا يوجد حاليًا موديل انفرتر مناسب في الكتالوج لشحن الفائض — يرجى المراجعة اليدوية.`);
+    }
+  }
 
   const items: any[] = [];
   const push = (key: string, label: string, sell: number, costBasis: number, meta: any = {}) =>
     items.push({ key, label, on: true, sell, costBasis, type: meta.type || "-", qty: meta.qty || "-", warranty: meta.warranty || "-" });
 
+  const panelPr = panelPricing(D, panel);
   buildGenericItems(push, {
-    panel, totalPanels, calcKW, panelMarginPerWatt: D.panelMarginPerWatt || 0,
+    panel, totalPanels, calcKW, panelCostPerWatt: panelPr.costPerWatt, panelSellPerWatt: panelPr.sellPerWatt,
     inverterLabel: "شاحن/انفرتر هجين MPPT", inverterType: `${inv.model} أو ما يعادله`,
-    inverterCostBasis: inv.costBasis, inverterSell: invSell,
+    inverterCostBasis: invPricing.costBasis, inverterSell: invPricing.sell, inverterCount: inv.count,
     structureCost: totalPanels * og.structurePerPanelCost, structureSell: totalPanels * og.structurePerPanelSell,
     cablingCost: og.cablingFixedCost, cablingSell: og.cablingFixedSell,
     installCost: calcKW * og.installPerKwCost, installSell: calcKW * og.installPerKwSell,
-    battery: { ...battery, markupPct: og.batteryMarkupPct },
+    battery: { ...battery, costBasis: batteryPricing.costBasis * battery.count, sell: batteryPricing.sell * battery.count },
   });
 
   const totals = finalizeQuote(items, inp.discountFactor, D, inp.specialDiscountAmt);
   return {
-    dailyKwh, peakKw, actualKw: calcKW, totalPanels, invKw: inv.kw,
+    dailyKwh, nightKwh, peakKw, actualKw: calcKW, totalPanels,
+    invKw: inv.kw, invModel: inv.model, invCount: inv.count, invTotalKw: inv.totalKw,
+    invVoltageClasses, batteryVoltageWarning,
+    requiredSurgeKw, surgeInfo, inverterSurgeWarning,
+    invMaxPvKw, pvArrayOversizeWarning,
+    invMaxChargeA, batteryChargingWarning, suggestedExtraCharger,
     nameplateBatteryKwh: battery.totalKwh, autonomyDays,
+    batterySeriesCount: battery.seriesCount, batteryParallelCount: battery.parallelCount,
+    batteryUnitVoltage: battery.unit.voltage, batteryPackVoltage: battery.packVoltage,
+    batteryUnitKwh: battery.unit.kwh, batteryCount: battery.count, batteryStandardVoltage: standardVoltage,
+    batteryModel: battery.unit.model, batteryBrand: battery.unit.brand, batteryAh: battery.unit.current,
+    chargeLossFactor, recoveryDays, batteryBufferKwh,
+    sunHours: og.sunHours, systemEfficiency: og.systemEfficiency,
     items, ...totals, sarPerKW: totals.finalTotal / calcKW,
   };
 }
@@ -522,7 +759,6 @@ function computeOngridQuote(D: any, inp: any) {
   const ng = D.ongrid;
   const panel = inp.panel;
 
-  // 1) Target system size, in kW.
   let systemKw: number;
   if (inp.method === "kw") {
     systemKw = +inp.systemKw || 0;
@@ -536,20 +772,18 @@ function computeOngridQuote(D: any, inp: any) {
   const totalPanels = Math.max(1, Math.ceil((systemKw * 1000) / panel.power));
   const calcKW = (totalPanels * panel.power) / 1000;
 
-  // Reuses the same hybrid-inverter catalog as off-grid (many hybrid units
-  // also run grid-tied). If a dedicated pure grid-tie inverter list gets
-  // added to productCatalog later, point this at that category instead.
   const inv = pickCatalogInverter(D, calcKW);
-  const invSell = inv.costBasis * (1 + ng.inverterMarkupPct / 100);
+  const invPricing = resolveCatalogPricing(D, inv.category, inv.brand, inv.listPrice, ng.inverterMarkupPct);
 
   const items: any[] = [];
   const push = (key: string, label: string, sell: number, costBasis: number, meta: any = {}) =>
     items.push({ key, label, on: true, sell, costBasis, type: meta.type || "-", qty: meta.qty || "-", warranty: meta.warranty || "-" });
 
+  const panelPr = panelPricing(D, panel);
   buildGenericItems(push, {
-    panel, totalPanels, calcKW, panelMarginPerWatt: D.panelMarginPerWatt || 0,
+    panel, totalPanels, calcKW, panelCostPerWatt: panelPr.costPerWatt, panelSellPerWatt: panelPr.sellPerWatt,
     inverterLabel: "الانفرتر", inverterType: `${inv.model} أو ما يعادله`,
-    inverterCostBasis: inv.costBasis, inverterSell: invSell,
+    inverterCostBasis: invPricing.costBasis, inverterSell: invPricing.sell,
     structureCost: totalPanels * ng.structurePerPanelCost, structureSell: totalPanels * ng.structurePerPanelSell,
     cablingCost: ng.cablingFixedCost, cablingSell: ng.cablingFixedSell,
     installCost: calcKW * ng.installPerKwCost, installSell: calcKW * ng.installPerKwSell,
@@ -575,16 +809,13 @@ function resolveOffgridOngridInput(D: any, rawInput: any) {
 
 function findExactCatalogRow(D: any, categoryNameIncludes: string, model: string) {
   const cat = findCatalogCategory(D, categoryNameIncludes);
-  const row = cat.rows.find((r: any) => r[0] === model);
-  if (!row) throw new Error(`الموديل "${model}" غير موجود في كتالوج "${categoryNameIncludes}"`);
+  const idx = cat.rows.findIndex((r: any) => r[0] === model);
+  if (idx === -1) throw new Error(`الموديل "${model}" غير موجود`);
+  const row = cat.rows[idx];
   const priceIdx = categoryNameIncludes === "بطاريات ليثيوم" ? 3 : cat.columns.length - 2;
-  return { model: row[0], costBasis: parseFloat(row[priceIdx]) };
+  return { model: row[0], listPrice: parseFloat(row[priceIdx]), category: cat.category, brand: rowBrand(cat, idx) };
 }
 
-// Ready-made off-grid packages: supply-only re-pricing (no install/structure
-// line items — this is a materials-only quote, per business decision). Used
-// by the admin panel's "إعادة حساب السعر" button when swapping which
-// inverter/battery model backs a given ready system.
 function computeReadySystemPrice(D: any, inp: {
   panelCount: number; panelIdx?: number;
   inverterModel: string | null; batteryModel: string; batteryCount: number;
@@ -592,21 +823,24 @@ function computeReadySystemPrice(D: any, inp: {
   const og = D.offgrid;
   const panel = D.panels[inp.panelIdx ?? og.panelIdx ?? 0];
   if (!panel) throw new Error("invalid panelIdx");
-  const panelCost = inp.panelCount * panel.power * panel.priceW;
-  const panelSell = inp.panelCount * panel.power * (panel.priceW + (D.panelMarginPerWatt || 0));
+  const panelPr = panelPricing(D, panel);
+  const panelCost = inp.panelCount * panel.power * panelPr.costPerWatt;
+  const panelSell = inp.panelCount * panel.power * panelPr.sellPerWatt;
 
   let inverterCostBasis = 0, inverterSell = 0;
   if (inp.inverterModel) {
     const inv = findExactCatalogRow(D, "انفرتر", inp.inverterModel);
-    inverterCostBasis = inv.costBasis;
-    inverterSell = inverterCostBasis * (1 + og.inverterMarkupPct / 100);
+    const invPricing = resolveCatalogPricing(D, inv.category, inv.brand, inv.listPrice, og.inverterMarkupPct);
+    inverterCostBasis = invPricing.costBasis;
+    inverterSell = invPricing.sell;
   }
 
   const bat = findExactCatalogRow(D, "بطاريات ليثيوم", inp.batteryModel);
-  const batteryCostBasis = bat.costBasis * inp.batteryCount;
-  const batterySell = batteryCostBasis * (1 + og.batteryMarkupPct / 100);
+  const batPricing = resolveCatalogPricing(D, bat.category, bat.brand, bat.listPrice, og.batteryMarkupPct);
+  const batteryCostBasis = batPricing.costBasis * inp.batteryCount;
+  const batterySell = batPricing.sell * inp.batteryCount;
 
-  const cablingSell = og.cablingFixedSell; // materials-only estimate; no install/structure line items
+  const cablingSell = og.cablingFixedSell;
   const sellTotal = panelSell + inverterSell + batterySell + cablingSell;
   const priceSar = Math.round(sellTotal * (1 + D.vat));
 
@@ -634,13 +868,11 @@ Deno.serve(async (req: Request) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // ---- convenience: generate a password hash to seed admin_secret ----
   if (body.action === "hash-password") {
     if (!body.password) return json({ error: "password required" }, 400);
     return json({ hash: await sha256Hex(body.password) });
   }
 
-  // ---- load pricing config (server-side only) ----
   const { data: cfgRow, error: cfgErr } = await supabase
     .from("pricing_config").select("data").eq("id", 1).single();
   if (cfgErr || !cfgRow) return json({ error: "pricing config not found" }, 500);
@@ -652,8 +884,6 @@ Deno.serve(async (req: Request) => {
     return data;
   }
 
-  // Verifies the admin PASSWORD directly. Only used by admin-login now — every
-  // other admin action verifies a short-lived TOKEN instead (see checkAdminToken).
   async function checkAdminPassword(pw: string | undefined): Promise<boolean> {
     if (!pw) return false;
     const row = await getAdminSecretRow();
@@ -661,9 +891,6 @@ Deno.serve(async (req: Request) => {
     return (await sha256Hex(pw)) === row.password_hash;
   }
 
-  // Verifies an admin session token: signature, expiry, subject, AND that its
-  // embedded `ver` still matches admin_secret.session_version (so changing the
-  // admin password instantly kills every token issued before the change).
   async function checkAdminToken(token: string | undefined): Promise<boolean> {
     const payload = await readToken(token);
     if (!payload || payload.sub !== "admin") return false;
@@ -672,11 +899,10 @@ Deno.serve(async (req: Request) => {
     return payload.ver === row.session_version;
   }
 
-  // ---- admin login: verify the password ONCE, return a short-lived token ----
   if (body.action === "admin-login") {
     if (!(await checkAdminPassword(body.adminPassword))) return json({ error: "wrong admin password" }, 401);
     const row = await getAdminSecretRow();
-    const ttl = body.rememberMe ? 14 * 24 * 3600 : 4 * 3600; // "remember me" -> 14 days, else 4h
+    const ttl = body.rememberMe ? 14 * 24 * 3600 : 4 * 3600;
     const token = await issueToken("admin", row!.session_version, ttl);
     return json({ ok: true, token });
   }
@@ -686,15 +912,11 @@ Deno.serve(async (req: Request) => {
     return json({ config: D });
   }
 
-  // Which top-level pricing_config keys belong to each admin-panel section —
-  // mirrors the sidebar sections 1:1. Used to scope exactly what a
-  // permission-holding rep (not a full admin) is allowed to read/write:
-  // anything outside their section's key list is never touched, even if
-  // present in what they send.
   const SECTION_CONFIG_KEYS: Record<string, string[]> = {
     pricing: ["cableHighMultiplier", "cableLowMultiplier", "cableMarkup", "cablePerMeter", "combinerHeadroom",
-      "combinerMinSpareStrings", "concretePerUnit", "defaultDiscountIdx", "discountTiers", "earthingPerUnit",
-      "elecInstallPerPanel", "flexTubePerUnit", "hpCapacityRatio", "inverterBrands", "mc4PerUnit",
+      "combinerMinSpareStrings", "concretePerUnit", "defaultDiscountIdx", "defaultPanelKey",
+      "discountTiers", "earthingPerUnit",
+      "elecInstallPerPanel", "flexTubePerUnit", "hpCapacityRatio", "mc4PerUnit",
       "mechInstallPerPanel", "panelMarginPerWatt", "panels", "reactorMarkupPct", "steelPanelPerHP", "structurePriceFixed", "structurePriceRotational",
       "transportMinimum", "transportPerTrip", "vat"],
     calcs: ["offgrid", "ongrid"],
@@ -704,12 +926,20 @@ Deno.serve(async (req: Request) => {
 
   if (body.action === "update-config") {
     if (await checkAdminToken(body.adminToken)) {
+      if (Array.isArray(body.config?.discounts)) {
+        for (const d of body.config.discounts) {
+          const supplierPct = Number(d.supplierDiscountPct) || 0;
+          const sellPct = Number(d.sellDiscountPct) || 0;
+          if (sellPct > supplierPct) {
+            return json({ error: `خصم البيع (${d.category || ""} / ${d.brand || ""}) لازم يكون أقل من أو يساوي خصم المورد` }, 400);
+          }
+        }
+      }
       const { error } = await supabase.from("pricing_config")
         .update({ data: body.config, updated_at: new Date().toISOString() }).eq("id", 1);
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true });
     }
-    // Not a full admin session — check for a rep with a scoped permission instead.
     const rep = await checkRepToken(body.token);
     const section = body.section as string;
     const allowedKeys = SECTION_CONFIG_KEYS[section];
@@ -725,9 +955,6 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true });
   }
 
-  // ---- rep: read-only view of just the config section(s) their permissions
-  // allow — never the full config, so a portfolio-only rep can never see
-  // pricing's cost/margin data by fetching this instead. ----
   if (body.action === "rep-config") {
     const rep = await checkRepToken(body.token);
     if (!rep) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
@@ -743,12 +970,12 @@ Deno.serve(async (req: Request) => {
     if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     if (!body.newPassword || body.newPassword.length < 6) return json({ error: "new password too short" }, 400);
     const row = await getAdminSecretRow();
-    const newVer = (row?.session_version || 1) + 1; // bump -> every other open admin session is logged out
+    const newVer = (row?.session_version || 1) + 1;
     const { error } = await supabase.from("admin_secret")
       .update({ password_hash: await sha256Hex(body.newPassword), session_version: newVer, updated_at: new Date().toISOString() })
       .eq("id", 1);
     if (error) return json({ error: error.message }, 500);
-    const token = await issueToken("admin", newVer, 4 * 3600); // keep the current tab logged in
+    const token = await issueToken("admin", newVer, 4 * 3600);
     return json({ ok: true, token });
   }
 
@@ -778,8 +1005,6 @@ Deno.serve(async (req: Request) => {
     return json({ config: D, quote: adminView(q) });
   }
 
-  // Verifies a rep's PASSWORD directly. Only used by rep-login now — every
-  // other rep action verifies a short-lived TOKEN instead (see checkRepToken).
   async function checkRep(username: string | undefined, password: string | undefined) {
     if (!username || !password) return null;
     const { data, error } = await supabase.from("reps")
@@ -789,9 +1014,6 @@ Deno.serve(async (req: Request) => {
     return { username: data.username, displayName: data.display_name, sessionVersion: data.session_version, permissions: data.permissions || {} };
   }
 
-  // Verifies a rep session token: signature, expiry, subject, still-active
-  // flag, AND that its embedded `ver` matches reps.session_version (so a
-  // password reset or deactivation instantly kills tokens issued before it).
   async function checkRepToken(token: string | undefined) {
     const payload = await readToken(token);
     if (!payload || !payload.sub.startsWith("rep:")) return null;
@@ -808,9 +1030,6 @@ Deno.serve(async (req: Request) => {
   return digits.length > 9 ? digits.slice(-9) : digits;
 }
 
-  // Upserts the central customers row for this phone number: creates it on
-  // first contact, or bumps quotes_count/last_quote_at on every later quote.
-  // Returns the customer id (or null if there's no usable phone number).
   async function upsertCustomer(name: string, phone: string, repUsername: string | null): Promise<number | null> {
     if (!phone) return null;
     const now = new Date().toISOString();
@@ -830,16 +1049,14 @@ Deno.serve(async (req: Request) => {
     return inserted.id;
   }
 
-// ---- rep login: verify the password ONCE, return a short-lived token ----
   if (body.action === "rep-login") {
     const rep = await checkRep(body.username, body.password);
     if (!rep) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
-    const ttl = body.rememberMe ? 14 * 24 * 3600 : 12 * 3600; // "remember me" -> 14 days, else 12h
+    const ttl = body.rememberMe ? 14 * 24 * 3600 : 12 * 3600;
     const token = await issueToken(`rep:${rep.username}`, rep.sessionVersion, ttl);
     return json({ ok: true, displayName: rep.displayName, token, permissions: rep.permissions });
   }
 
-  // ---- has this client already received a quote, from whom, at what price? ----
   if (body.action === "find-client") {
     const rep = await checkRepToken(body.token);
     if (!rep) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
@@ -868,7 +1085,6 @@ Deno.serve(async (req: Request) => {
     return json({ matches });
   }
 
-  // ---- save every finalized quote centrally, tagged with the rep who made it ----
   if (body.action === "save-quote") {
     let repUsername: string | null = null, repDisplayName = "الحاسبة الآلية (تسعير مباشر من العميل)";
     if (!body.guest) {
@@ -892,9 +1108,6 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true });
   }
 
-  // ---- admin: unified customers list — the single source of truth for the
-  // dashboard's "طلبات العملاء" screen (replaces the old localStorage/Google
-  // Sheet-only view). Every finalized quote (any rep, any device) lands here. ----
   if (body.action === "admin-list-customers") {
     if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     const { data, error } = await supabase.from("customers")
@@ -904,7 +1117,6 @@ Deno.serve(async (req: Request) => {
     return json({ customers: data || [] });
   }
 
-  // ---- admin: one customer's full quote history (for the detail drill-down) ----
   if (body.action === "admin-customer-detail") {
     if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     if (!body.customerId) return json({ error: "customerId required" }, 400);
@@ -918,7 +1130,6 @@ Deno.serve(async (req: Request) => {
     return json({ customer, quotes: quotesList || [] });
   }
 
-  // ---- admin: richer overview numbers for the dashboard's "نظرة عامة" tab ----
   if (body.action === "admin-overview-stats") {
     if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
@@ -938,7 +1149,6 @@ Deno.serve(async (req: Request) => {
     return json({ totalCustomers: totalCustomers || 0, quotesThisMonth, avgQuoteValue, mostActiveRep, mostActiveRepCount });
   }
 
-  // ---- admin: manage rep accounts ----
   if (body.action === "admin-list-reps") {
     if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     const { data, error } = await supabase.from("reps").select("id, username, display_name, active, permissions").order("id");
@@ -950,15 +1160,12 @@ Deno.serve(async (req: Request) => {
     if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     const row: any = { username: body.username, display_name: body.displayName, active: body.active !== false };
     if (body.permissions && typeof body.permissions === "object") {
-      // Whitelist known keys only — never store arbitrary attacker-controlled keys.
       const perms: Record<string, boolean> = {};
       for (const k of ["pricing", "calcs", "products", "portfolio"]) perms[k] = !!body.permissions[k];
       row.permissions = perms;
     }
     if (body.password) {
       row.password_hash = await sha256Hex(body.password);
-      // New password -> bump this rep's session_version so any of their
-      // existing tokens (e.g. on a phone they lost) stop working immediately.
       if (body.id) {
         const { data: existing } = await supabase.from("reps").select("session_version").eq("id", body.id).single();
         row.session_version = (existing?.session_version || 1) + 1;
@@ -982,16 +1189,11 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true });
   }
 
-  // ---- lead logging: relay to the sales team's Google Sheet webhook ----
-  // Runs server-side so it works regardless of the caller's browser (no-cors
-  // client-side fetches can silently fail); failures here never block the quote.
-  // ---- product catalog: reference list prices for standalone sales (any rep can view) ----
-  // ---- admin: upload a product/category image to Supabase Storage ----
   if (body.action === "upload-product-image") {
     if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     if (!body.imageBase64 || !body.filename) return json({ error: "imageBase64 and filename required" }, 400);
     try {
-      const base64 = String(body.imageBase64).split(",").pop()!; // strip data:...;base64, prefix if present
+      const base64 = String(body.imageBase64).split(",").pop()!;
       const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
       const ext = (body.filename.split(".").pop() || "jpg").toLowerCase();
       const safeName = `${crypto.randomUUID()}.${ext}`;
@@ -1006,27 +1208,44 @@ Deno.serve(async (req: Request) => {
   }
 
   if (body.action === "get-product-catalog") {
-    return json({ productCatalog: D.productCatalog || [] });
+    const cats = (D.productCatalog || []).map((cat: any) => {
+      const rows = (cat.rows || []).map((r: any, idx: number) => {
+        const brand = rowBrand(cat, idx);
+        const d = findDiscount(D, cat.category, brand);
+        if (!d || !d.promoActive || !d.promoDiscountPct) return r;
+        if (r.length < 2) return r;
+        const priceIdx = r.length - 2, priceVatIdx = r.length - 1;
+        const listPrice = parseFloat(r[priceIdx]);
+        if (!isFinite(listPrice)) return r;
+        const promoPrice = listPrice * (1 - (Number(d.promoDiscountPct) || 0) / 100);
+        const newRow = [...r];
+        newRow[priceIdx] = String(Math.round(promoPrice * 100) / 100);
+        newRow[priceVatIdx] = String(Math.round(promoPrice * 1.15 * 100) / 100);
+        return newRow;
+      });
+      return { ...cat, rows };
+    });
+    return json({ productCatalog: cats });
   }
 
-  // ---- public: panels shown as a category on the products page. This was
-  // missing entirely before — the client called this action, got a 404-style
-  // error from the fallback handler, and silently gave up (empty panels
-  // list), which is why "الألواح الشمسية" never appeared in "قائمة المنتجات". ----
   if (body.action === "get-panels-public") {
     const panels = (D.panels || [])
       .filter((p: any) => p.visible !== false && p.priceW)
-      .map((p: any) => ({
-        brand: p.brand,
-        power: p.power,
-        // Sell price (cost + the admin-set margin), never the raw cost —
-        // same convention as every other public/customer-facing price.
-        priceExclVat: Math.round((p.priceW + (D.panelMarginPerWatt || 0)) * p.power),
-        image: p.image || "",
-        description: p.description || "",
-        specs: p.specs || {},
-        datasheetUrl: p.datasheetUrl || "",
-      }));
+      .map((p: any) => {
+        const d = findDiscount(D, "الألواح الشمسية", p.brand);
+        const promoPerWatt = (d && d.promoActive && d.promoDiscountPct)
+          ? p.priceW * (1 - (Number(d.promoDiscountPct) || 0) / 100)
+          : p.priceW;
+        return {
+          brand: p.brand,
+          power: p.power,
+          priceExclVat: Math.round(promoPerWatt * p.power),
+          image: p.image || "",
+          description: p.description || "",
+          specs: p.specs || {},
+          datasheetUrl: p.datasheetUrl || "",
+        };
+      });
     return json({ panels });
   }
 
@@ -1058,6 +1277,10 @@ Deno.serve(async (req: Request) => {
         .filter((p: any) => p.visible && p.hasPrice)
         .map((p: any) => ({ idx: p.idx, brand: p.brand, power: p.power })),
       applianceDefaults: D.offgrid.applianceDefaults || [],
+      defaultPanelKey: D.defaultPanelKey || null,
+      batteryVoltageOptions: getBatteryVoltageOptions(D),
+      inverterModelOptions: getInverterModelOptions(D),
+      batteryModelOptions: getBatteryModelOptions(D),
     });
   }
 
@@ -1072,6 +1295,7 @@ Deno.serve(async (req: Request) => {
         .map((p: any, idx: number) => ({ idx, brand: p.brand, power: p.power, visible: p.visible !== false, hasPrice: !!p.priceW }))
         .filter((p: any) => p.visible && p.hasPrice)
         .map((p: any) => ({ idx: p.idx, brand: p.brand, power: p.power })),
+      defaultPanelKey: D.defaultPanelKey || null,
     });
   }
 
@@ -1084,24 +1308,21 @@ Deno.serve(async (req: Request) => {
           headers: { "Content-Type": "text/plain" },
           body: JSON.stringify(body.lead || {}),
         });
-      } catch (_e) { /* best-effort, ignore */ }
+      } catch (_e) { }
     }
     return json({ ok: true });
   }
 
-  // default: "quote" — public, sell-side numbers only
   let inp: any;
   try { inp = resolveInput(D, body.input); } catch (e) { return json({ error: (e as Error).message }, 400); }
   const q = computeQuote(D, inp);
   return json({
     quote: publicView(q),
     feas: D.feas,
-    // panel options for the dropdown: brand/power only, never the per-watt cost
     panelOptions: D.panels
       .map((p: any, idx: number) => ({ idx, brand: p.brand, power: p.power, visible: p.visible !== false, hasPrice: !!p.priceW }))
       .filter((p: any) => p.visible && p.hasPrice)
       .map((p: any) => ({ idx: p.idx, brand: p.brand, power: p.power })),
-    // inverter brand options for the dropdown: brand name only, never list/cost/discount
-    inverterBrandOptions: getInverterBrands(D).map((b: any, idx: number) => ({ idx, brand: b.brand })),
+    defaultPanelKey: D.defaultPanelKey || null,
   });
 });

@@ -3797,10 +3797,10 @@ ${(function(){
     <div class="assump">
       <div><label>معامل طول الكابل (قدرة ≥100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablehigh" value="${adminConfig.cableHighMultiplier}"></div>
       <div><label>معامل طول الكابل (قدرة أقل من 100 كيلوواط، متر/مجموعة)</label><input type="number" id="a_cablelow" value="${adminConfig.cableLowMultiplier}"></div>
-      <div><label>هامش بيع الكابلات (معامل ضرب)</label><input type="number" id="a_cablemarkup" step="0.01" value="${adminConfig.cableMarkup}"></div>
+      <div><label>هامش بيع الكابلات الأساسي (معامل ضرب، قبل خصم البيع)</label><input type="number" id="a_cablemarkup" step="0.01" value="${adminConfig.cableMarkup}"></div>
       <div><label>الأنابيب المرنة (﷼/وحدة)</label><input type="number" id="a_flex" value="${adminConfig.flexTubePerUnit}"></div>
     </div>
-    <div class="note" style="margin-top:8px">أسعار الكابلات وMC4 نفسها بقت متاحة من صفحة "قائمة المنتجات" (فئة الكابلات والوصلات)، فمش محتاجين نكررها هنا.</div>
+    <div class="note" style="margin-top:8px">سعر الكابل الأساسي (﷼/متر)، MC4 والريأكتور نفسهم بقوا يُسحبوا من صفحة "قائمة المنتجات" (فئة الكابلات والوصلات، وفئة الريأكتور). سعر البيع في عروض حاسبة الأنظمة = (السعر المرجعي × الهامش الأساسي هنا) ثم يتطبّق عليه خصم البيع المسجّل لنفس الفئة/الماركة من صفحة "الخصومات". أما التكلفة الداخلية (الربح) فبتتحدد بخصم المورد بس.</div>
   </div>
   </div>
 
