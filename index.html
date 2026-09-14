@@ -138,6 +138,14 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 
 .note{font-size:12px;color:var(--muted);line-height:1.7;background:var(--sand);border:1px solid var(--line);border-radius:10px;padding:10px 12px;}
 
+/* small info-icon that reveals a guidance tip on click, instead of a always-visible .note block */
+.info-icon-wrap{position:relative;display:inline-flex;vertical-align:middle;margin:0 4px;}
+.info-icon-btn{width:18px;height:18px;border-radius:50%;border:1px solid var(--teal);background:var(--teal-tint);color:var(--teal-dark);font-size:12px;font-weight:800;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0;font-family:'Cairo',sans-serif;}
+.info-icon-btn:hover{background:var(--teal);color:#fff;}
+.info-icon-pop{display:none;position:absolute;z-index:40;top:24px;right:0;width:260px;max-width:72vw;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow-soft, 0 4px 14px rgba(0,0,0,.12));padding:10px 12px;font-size:12px;color:var(--muted);line-height:1.7;text-align:right;}
+.info-icon-wrap.open .info-icon-pop{display:block;}
+@media (max-width:480px){.info-icon-pop{width:220px;}}
+
 /* admin — hybrid layout: sidebar + topbar + cards */
 .admin-shell{display:flex;gap:20px;align-items:flex-start;}
 .admin-sidebar{width:236px;flex:0 0 236px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;position:sticky;top:88px;box-shadow:var(--shadow-soft);}
@@ -763,6 +771,7 @@ let cachedPanelOptions = [];  // [{brand,power}] — never priceW
 let cachedBatteryVoltageOptions = []; // [12.8, 25.6, 51.2, ...] distinct voltages in the battery catalog
 let cachedBatteryModelOptions = []; // [{model,brand,voltage,stdVoltage,ah,kwh}, ...] exact battery models from the catalog
 let cachedInverterModelOptions = []; // [{model,brand,kw,voltageClasses}, ...] exact hybrid/off-grid inverter models from the catalog
+let cachedOffgridAppliancePresets = []; // admin-editable load picker list from the server — falls back to OFFGRID_APPLIANCE_PRESETS below until it arrives
 
 // Admin-configured defaults (D.defaultPanelKey "brand|power")
 // applied once per calculator on first successful load, so a rep's manual
@@ -830,6 +839,30 @@ let currentAdminSection = 'overview'; // which sidebar section is showing inside
 let discountFormState = { category:'', brand:'', supplierDiscountPct:0, sellDiscountPct:0, promoDiscountPct:0, promoActive:false, editKey:null };
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function escAttr(s){ return esc(s).replace(/"/g,'&quot;'); }
+
+// Small "ⓘ" icon that reveals a guidance/tip message in a popover on click,
+// instead of showing it as an always-visible .note block. `html` may contain
+// markup (it is NOT escaped) — callers pass already-built note content.
+let infoIconSeq = 0;
+function infoIcon(html, label){
+  const id = 'infoicon' + (++infoIconSeq);
+  return `<span class="info-icon-wrap" id="${id}">
+    <button type="button" class="info-icon-btn" aria-label="${escAttr(label||'معلومة')}" onclick="toggleInfoIcon('${id}', event)">ⓘ</button>
+    <span class="info-icon-pop">${html}</span>
+  </span>`;
+}
+function toggleInfoIcon(id, ev){
+  if(ev) ev.stopPropagation();
+  const el = document.getElementById(id);
+  if(!el) return;
+  const wasOpen = el.classList.contains('open');
+  document.querySelectorAll('.info-icon-wrap.open').forEach(w=>w.classList.remove('open'));
+  if(!wasOpen) el.classList.add('open');
+}
+document.addEventListener('click', (e)=>{
+  if(e.target.closest && e.target.closest('.info-icon-wrap')) return;
+  document.querySelectorAll('.info-icon-wrap.open').forEach(w=>w.classList.remove('open'));
+});
 
 // Every (category, brand) pair that exists in the product catalog right now,
 // derived from productDetails[i].brand on each row. Used to populate the
@@ -968,6 +1001,7 @@ async function refreshOffgridQuote(){
     cachedPanelOptions = data.panelOptions || cachedPanelOptions;
     cachedBomItemImages = data.bomItemImages || cachedBomItemImages;
     cachedInverterModelOptions = data.inverterModelOptions || cachedInverterModelOptions;
+    cachedOffgridAppliancePresets = (data.appliancePresets && data.appliancePresets.length) ? data.appliancePresets : cachedOffgridAppliancePresets;
     if(state.offgrid.inverterModel && !cachedInverterModelOptions.some(m=>m.model===state.offgrid.inverterModel)){
       // the previously-picked exact model no longer exists in the catalog (e.g. admin removed/renamed it) — fall back to auto
       state.offgrid.inverterModel = null;
@@ -1158,6 +1192,7 @@ function normalizeAdminConfig(cfg){
   // from throwing if that migration hasn't been run yet on this DB.
   if(!cfg.offgrid) cfg.offgrid = { sunHours:5.5, systemEfficiency:0.80, batteryDoD:0.90, defaultAutonomyDays:1, peakLoadDivisor:6, batteryMarkupPct:30, inverterMarkupPct:30, structurePerPanelCost:250, structurePerPanelSell:350, cablingFixedCost:800, cablingFixedSell:1200, installPerKwCost:150, installPerKwSell:250 };
   if(!cfg.ongrid) cfg.ongrid = { sunHours:5.5, performanceRatio:0.80, tariffRate:0.18, inverterMarkupPct:30, structurePerPanelCost:250, structurePerPanelSell:350, cablingFixedCost:800, cablingFixedSell:1200, netMeteringFeeCost:0, netMeteringFeeSell:0, installPerKwCost:150, installPerKwSell:250 };
+  if(!Array.isArray(cfg.offgrid.appliancePresets) || !cfg.offgrid.appliancePresets.length) cfg.offgrid.appliancePresets = OFFGRID_APPLIANCE_PRESETS.map(p=>({...p}));
   if(!Array.isArray(cfg.readyOffgridSystems)) cfg.readyOffgridSystems = [];
   if(!Array.isArray(cfg.discounts)) cfg.discounts = [];
   return cfg;
@@ -1242,7 +1277,7 @@ const state = {
     method: 'consumption', // 'consumption' | 'appliances'
     dailyKwh: 10,
     autonomyDays: 0,
-    appliances: [ {name:'ثلاجة', watts:150, dayHours:4, nightHours:4, qty:1} ],
+    appliances: [ {name:'ثلاجة', watts:175, dayHours:6, nightHours:18, qty:1, surgeMultiplier:7} ],
     inverterBrand: '', // filter for the inverter model dropdown — '' = all brands
     inverterModel: null, // null = auto-pick smallest inverter that covers the load; otherwise an exact model from inverterModelOptions (engineer override — e.g. size up, or a specific preferred brand)
     batteryVoltage: null, // null = server uses its own default (bus voltage)
@@ -1906,30 +1941,37 @@ function sendGenericQuoteWhatsapp(finalTotal){
 }
 
 // Common household/agricultural appliance presets for the off-grid load
-// picker — typical power draw (watt) and a reasonable average daily runtime
-// (hours/day) for solar sizing purposes. Purely a UI convenience: the
+// picker — typical power draw (watt), a reasonable average daily runtime
+// (hours/day), and a startup-surge multiplier (motors/compressors draw a
+// multiple of their running watts for a moment at startup — this feeds the
+// inverter peak-sizing check on the server). Purely a UI convenience: the
 // customer can still edit every value, or add a fully custom device.
 const OFFGRID_APPLIANCE_PRESETS = [
-  {name:'لمبة إضاءة LED', watts:10, dayHours:0, nightHours:6},
-  {name:'راوتر / شاحن', watts:15, dayHours:12, nightHours:12},
-  {name:'كاميرا مراقبة', watts:10, dayHours:12, nightHours:12},
-  {name:'DVR / NVR', watts:25, dayHours:12, nightHours:12},
-  {name:'لابتوب', watts:65, dayHours:6, nightHours:0},
-  {name:'مروحة', watts:70, dayHours:4, nightHours:2},
-  {name:'شفاط مطبخ', watts:75, dayHours:1, nightHours:0},
-  {name:'تلفاز LCD', watts:80, dayHours:2, nightHours:2},
-  {name:'ثلاجة', watts:150, dayHours:4, nightHours:4},
-  {name:'كشاف إنارة', watts:200, dayHours:0, nightHours:8},
-  {name:'فريزر', watts:300, dayHours:4, nightHours:4},
-  {name:'موتور 1 حصان', watts:740, dayHours:2, nightHours:0},
-  {name:'ميكروويف', watts:1000, dayHours:0.5, nightHours:0},
-  {name:'موتور 1.5 حصان / غاطس', watts:1100, dayHours:2, nightHours:0},
-  {name:'تكييف 1.5 حصان', watts:1100, dayHours:4, nightHours:4},
-  {name:'غسالة', watts:1500, dayHours:1, nightHours:0},
-  {name:'تكييف 2.5 حصان', watts:1800, dayHours:4, nightHours:4},
-  {name:'تكييف 3 حصان', watts:2200, dayHours:4, nightHours:4},
-  {name:'سخان مياه', watts:9000, dayHours:1, nightHours:1},
+  {name:'لمبة إضاءة LED', watts:10, dayHours:5, nightHours:19, surgeMultiplier:1},
+  {name:'DVR / NVR', watts:25, dayHours:5, nightHours:19, surgeMultiplier:1},
+  {name:'راوتر / شاحن', watts:15, dayHours:5, nightHours:19, surgeMultiplier:1},
+  {name:'كاميرا مراقبة', watts:10, dayHours:5, nightHours:19, surgeMultiplier:1},
+  {name:'لابتوب', watts:65, dayHours:8, nightHours:0, surgeMultiplier:1},
+  {name:'مروحة', watts:70, dayHours:4, nightHours:6, surgeMultiplier:3},
+  {name:'شفاط مطبخ', watts:75, dayHours:2, nightHours:0, surgeMultiplier:3},
+  {name:'تلفاز LCD / كاميرات CCTV', watts:60, dayHours:5, nightHours:19, surgeMultiplier:1},
+  {name:'تلفاز LCD', watts:80, dayHours:3, nightHours:3, surgeMultiplier:1},
+  {name:'ثلاجة', watts:175, dayHours:6, nightHours:18, surgeMultiplier:7},
+  {name:'كشاف إنارة', watts:200, dayHours:0, nightHours:12, surgeMultiplier:1},
+  {name:'فريزر', watts:300, dayHours:6, nightHours:18, surgeMultiplier:7},
+  {name:'موتور 1 حصان', watts:740, dayHours:0.25, nightHours:2, surgeMultiplier:7},
+  {name:'ميكروويف', watts:1000, dayHours:1, nightHours:1, surgeMultiplier:1},
+  {name:'موتور 1.5 حصان / غاطس', watts:1100, dayHours:2, nightHours:0.5, surgeMultiplier:7},
+  {name:'تكييف 1.5 حصان', watts:1100, dayHours:8, nightHours:8, surgeMultiplier:7},
+  {name:'غسالة', watts:1500, dayHours:2, nightHours:0, surgeMultiplier:7},
+  {name:'تكييف 2.5 حصان', watts:1800, dayHours:8, nightHours:8, surgeMultiplier:7},
+  {name:'تكييف 3 حصان', watts:2200, dayHours:8, nightHours:8, surgeMultiplier:7},
+  {name:'هيتر مياه', watts:9000, dayHours:2, nightHours:0, surgeMultiplier:1},
 ];
+// The admin-managed list from the server (pricing_config → offgrid.appliancePresets)
+// takes over once it arrives; OFFGRID_APPLIANCE_PRESETS above is only the
+// built-in fallback for the very first load / if the server has none set yet.
+function activeAppliancePresets(){ return cachedOffgridAppliancePresets.length ? cachedOffgridAppliancePresets : OFFGRID_APPLIANCE_PRESETS; }
 
 function renderOffgridDayChart(q, o){
   if(!q || !q.actualKw || !q.dailyKwh) return '';
@@ -2016,19 +2058,20 @@ function renderOffgridDayChart(q, o){
     <text x="${padL+plotW+6}" y="${padT+plotH}" font-size="10" fill="#0B7A66" text-anchor="start">0%</text>
   </svg>
   </div>
-  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11.5px">
+  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:11.5px;align-items:center">
     <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:3px;background:#E7AC12;display:inline-block"></span> إنتاج الألواح (kW)</span>
     <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:2px;background:#155E85;display:inline-block"></span> الاستهلاك (kW)${usingRealSplit?' — نهار/ليل فعلي':' — افتراض ثابت'}</span>
     <span style="display:flex;align-items:center;gap:5px"><span style="width:14px;height:3px;background:#0FA98D;display:inline-block"></span> شحن البطارية (%)</span>
+    ${infoIcon((usingRealSplit
+      ? `الاستهلاك محسوب فعليًا من ساعات التشغيل النهارية/الليلية اللي أدخلتها لكل جهاز`
+      : `بيفترض استهلاك ثابت على مدار الساعة (اختر "قائمة الأجهزة" وحدد ساعات النهار/الليل لكل جهاز عشان دقة أعلى)`)
+      + `، ونافذة سطوع شمس افتراضية من 6 صباحًا لـ6 مساءً بشكل جرسي لشكل منحنى الإنتاج — إجمالي الإنتاج اليومي محسوب فعليًا من نفس معادلة التسعير.`, 'الرسم استرشادي')}
   </div>
   <div class="note" style="margin-top:8px">
     ${deficitKwhTotal>0.05
       ? `⚠️ البطارية ممكن توصل لصفر خلال اليوم (نقص تقريبي ${deficitKwhTotal.toFixed(1)} كيلوواط/ساعة) — يُنصح بمراجعة عدد أيام الاستقلالية أو حجم البطارية.`
       : `البطارية بتغطي الاستهلاك الليلي بالكامل، وبيفضل هامش ${(100 - Math.min(...socPct)).toFixed(0)}% تقريبًا في أقل نقطة شحن.`}
     ${excessKwhTotal>0.05 ? ` وفيه حوالي ${excessKwhTotal.toFixed(1)} كيلوواط/ساعة فائض إنتاج يوميًا بعد امتلاء البطارية.` : ''}
-    <br>⚠️ الرسم استرشادي: ${usingRealSplit
-      ? `الاستهلاك محسوب فعليًا من ساعات التشغيل النهارية/الليلية اللي أدخلتها لكل جهاز`
-      : `بيفترض استهلاك ثابت على مدار الساعة (اختر "قائمة الأجهزة" وحدد ساعات النهار/الليل لكل جهاز عشان دقة أعلى)`}، ونافذة سطوع شمس افتراضية من 6 صباحًا لـ6 مساءً بشكل جرسي لشكل منحنى الإنتاج — إجمالي الإنتاج اليومي محسوب فعليًا من نفس معادلة التسعير.
   </div>`;
 }
 
@@ -2056,7 +2099,7 @@ function renderOffgridCalc(){
       <label style="margin-top:10px">قائمة الأجهزة</label>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
         <select id="ogAppliancePreset" style="flex:1;min-width:180px">
-          ${OFFGRID_APPLIANCE_PRESETS.map((p,i)=>`<option value="${i}">${p.name} (${p.watts} واط)</option>`).join('')}
+          ${activeAppliancePresets().map((p,i)=>`<option value="${i}">${p.name} (${p.watts} واط)</option>`).join('')}
         </select>
         <button type="button" class="btn small" id="ogAddPresetAppliance">+ إضافة من القائمة</button>
       </div>
@@ -2067,14 +2110,14 @@ function renderOffgridCalc(){
             <tr>
               <td><input data-ogapp="${i}" data-af="name" value="${a.name}" style="width:100%"></td>
               <td><input data-ogapp="${i}" data-af="watts" type="number" value="${a.watts}" style="width:70px"></td>
-              <td><input data-ogapp="${i}" data-af="dayHours" type="number" value="${a.dayHours ?? 0}" min="0" max="12" step="0.5" style="width:60px"></td>
-              <td><input data-ogapp="${i}" data-af="nightHours" type="number" value="${a.nightHours ?? 0}" min="0" max="12" step="0.5" style="width:60px"></td>
+              <td><input data-ogapp="${i}" data-af="dayHours" type="number" value="${a.dayHours ?? 0}" min="0" max="12" step="0.25" style="width:60px"></td>
+              <td><input data-ogapp="${i}" data-af="nightHours" type="number" value="${a.nightHours ?? 0}" min="0" max="12" step="0.25" style="width:60px"></td>
               <td><input data-ogapp="${i}" data-af="qty" type="number" value="${a.qty}" style="width:55px"></td>
               <td><button type="button" class="btn ghost small" data-ogdelapp="${i}">✕</button></td>
             </tr>`).join('')}
         </tbody>
       </table>
-      <div class="note" style="margin-top:4px">النهار افتراضيًا من 6ص لـ6م (12 ساعة)، والليل من 6م لـ6ص (12 ساعة) — الفصل ده بيحسّن دقة رسم الإنتاج/الاستهلاك تحت.</div>
+      <div style="margin-top:4px">${infoIcon('النهار افتراضيًا من 6ص لـ6م (12 ساعة)، والليل من 6م لـ6ص (12 ساعة) — الفصل ده بيحسّن دقة رسم الإنتاج/الاستهلاك تحت.')} <span style="font-size:11.5px;color:var(--muted)">ملاحظة عن ساعات النهار/الليل</span></div>
       <button type="button" class="btn ghost small" id="ogAddAppliance" style="margin-top:8px">+ إضافة جهاز مخصّص</button>
       <div class="note" style="margin-top:8px" id="og_live_total">إجمالي الاستهلاك اليومي (حسب المُدخل الآن): <b>${fmt1(computeLocalDailyKwh(o.appliances))}</b> كيلوواط/ساعة</div>
       `}
@@ -2085,7 +2128,7 @@ function renderOffgridCalc(){
         <input type="number" id="og_autonomy" value="${o.autonomyDays}" min="0" step="1" style="flex:1">
         <button type="button" class="btn small" id="ogAutonomyConfirm">تأكيد</button>
       </div>
-      <div class="note" style="margin-top:4px">تقدر تدخل 0 لو مش محتاج أيام احتياط بدون شمس — اضغط "تأكيد" بعد كتابة الرقم.</div>
+      <div style="margin-top:4px">${infoIcon('تقدر تدخل 0 لو مش محتاج أيام احتياط بدون شمس — اضغط "تأكيد" بعد كتابة الرقم.')}</div>
     </div>
     <div class="card">
       <h3>نوع اللوح الشمسي</h3>
@@ -2107,16 +2150,16 @@ function renderOffgridCalc(){
           .filter(m=>!o.inverterBrand || m.brand===o.inverterBrand)
           .map(m=>`<option value="${m.model}" ${m.model===o.inverterModel?'selected':''}>${m.model}${m.brand?` — ${m.brand}`:''} (${fmt1(m.kw)} كيلوواط، فولت بطارية مدعوم ${m.voltageClasses.join('/')}V)</option>`).join('')}
       </select>
-      <div class="note" style="margin-top:6px">
-        ${o.inverterModel
+      <div style="margin-top:6px">${infoIcon(
+          (o.inverterModel
           ? `هيتم استخدام موديل "<b>${o.inverterModel}</b>" بالظبط بدل الاختيار التلقائي — مفيد لو المهندس عايز يكبّر الجهاز أو يلتزم بماركة معينة حسب الخبرة الميدانية. لو قدرة الموديل ده أقل من الحمل المسجّل، الحاسبة هتوصّل عدة وحدات منه على التوازي تلقائيًا${q&&q.invCount>1?` (حاليًا: <b>${q.invCount} وحدة</b>)`:''}.`
-          : `اختيار "تلقائي" بيخلي الحاسبة تختار أصغر موديل انفرتر كافٍ لتغطية الحمل المسجّل فقط. غيّر الاختيار هنا لو محتاج جهاز أكبر أو ماركة معينة.`}
-        <br>ملحوظة: اختيار الانفرتر هو اللي بيحدد فولتات البطارية المتاحة تحت — تغيير الموديل هنا هيغيّر تلقائيًا الخيارات المتاحة في كارت البطارية.
-      </div>
+          : `اختيار "تلقائي" بيخلي الحاسبة تختار أصغر موديل انفرتر كافٍ لتغطية الحمل المسجّل فقط. غيّر الاختيار هنا لو محتاج جهاز أكبر أو ماركة معينة.`)
+          + `<br>ملحوظة: اختيار الانفرتر هو اللي بيحدد فولتات البطارية المتاحة تحت — تغيير الموديل هنا هيغيّر تلقائيًا الخيارات المتاحة في كارت البطارية.`
+        )}</div>
     </div>
     <div class="card">
       <h3>البطارية</h3>
-      ${q && Array.isArray(q.invVoltageClasses) ? `<div class="note" style="margin-bottom:6px">الانفرتر المستخدم حاليًا لهذا الحمل: <b>${q.invModel}</b> — بيدعم فقط فولت <b>${q.invVoltageClasses.join('/')}V</b>، فالخيارات تحت مقصورة على الفولت ده بس.</div>` : ''}
+      ${q && Array.isArray(q.invVoltageClasses) ? `<div style="margin-bottom:6px">${infoIcon(`الانفرتر المستخدم حاليًا لهذا الحمل: <b>${q.invModel}</b> — بيدعم فقط فولت <b>${q.invVoltageClasses.join('/')}V</b>، فالخيارات تحت مقصورة على الفولت ده بس.`)}</div>` : ''}
       <label>نوع البطارية (الماركة)</label>
       <select id="og_battery_brand">
         <option value="">الكل</option>
@@ -2128,7 +2171,7 @@ function renderOffgridCalc(){
           .filter(v=>!q || !Array.isArray(q.invVoltageClasses) || !q.invVoltageClasses.length || q.invVoltageClasses.includes(v))
           .map(v=>`<option value="${v}" ${v==o.batteryVoltage?'selected':''}>${v}V</option>`).join('')}
       </select>
-      <div class="note" style="margin-top:4px">القائمة دي بتعرض بس الفولتات المتوافقة كهربائيًا مع الانفرتر المستخدم حاليًا — فولت أعلى من قدرة الانفرتر مش هيظهر أصلًا، وأي ماركة بطارية متاحة بالفولت الأعلى بس مش هتظهر برضه لنفس السبب.</div>
+      <div style="margin-top:4px">${infoIcon('القائمة دي بتعرض بس الفولتات المتوافقة كهربائيًا مع الانفرتر المستخدم حاليًا — فولت أعلى من قدرة الانفرتر مش هيظهر أصلًا، وأي ماركة بطارية متاحة بالفولت الأعلى بس مش هتظهر برضه لنفس السبب.')}</div>
       <label style="margin-top:10px">حجم البطارية (Ah)</label>
       <select id="og_battery_model">
         <option value="">تلقائي — أنسب سعة (أقل تكلفة إجمالية تغطي الاحتياج) عند الفولت والماركة المختارين</option>
@@ -2136,14 +2179,14 @@ function renderOffgridCalc(){
           .filter(m=>m.stdVoltage==o.batteryVoltage && (!o.batteryBrand || m.brand===o.batteryBrand))
           .map(m=>`<option value="${m.model}" ${m.model===o.batteryModel?'selected':''}>${m.ah}Ah${m.brand?` — ${m.brand}`:''} (${fmt1(m.kwh)} كيلوواط/ساعة، فولت فعلي ${fmt1(m.voltage)}V)</option>`).join('')}
       </select>
-      <div class="note" style="margin-top:6px">
-        ${o.batteryModel
+      <div style="margin-top:6px">${infoIcon(
+          (o.batteryModel
           ? `هيتم الحساب على أساس موديل "<b>${o.batteryModel}</b>" بالظبط، وتحديد عدد الوحدات على التوازي تلقائيًا حسب السعة المطلوبة.`
           : (q && q.batterySeriesCount>1
               ? `الحاسبة هتوصّل تلقائيًا <b>${q.batterySeriesCount} بطارية على التوالي</b> (= ${fmt1(q.batteryPackVoltage)}V) × <b>${q.batteryParallelCount} على التوازي</b> للوصول للسعة المطلوبة.`
-              : `اختيار "تلقائي" بيخلي الحاسبة تجرّب كل الأحجام المتاحة عند الفولت والماركة المحددين، وتختار الحجم اللي هيوصلك للسعة المطلوبة بأقل تكلفة إجمالية — مش بالضرورة أكبر حجم متاح.`)}
-        <br>ملحوظة: فولت بطاريات الليثيوم الفعلي بيتفاوت شوية حتى داخل نفس الفئة (مثلًا 24.5V/25V/25.1V كلهم فئة 24V) — التصنيف هنا بالفئة القياسية (12/24/48) مش بالرقم الفعلي المطبوع على الموديل.
-      </div>
+              : `اختيار "تلقائي" بيخلي الحاسبة تجرّب كل الأحجام المتاحة عند الفولت والماركة المحددين، وتختار الحجم اللي هيوصلك للسعة المطلوبة بأقل تكلفة إجمالية — مش بالضرورة أكبر حجم متاح.`))
+          + `<br>ملحوظة: فولت بطاريات الليثيوم الفعلي بيتفاوت شوية حتى داخل نفس الفئة (مثلًا 24.5V/25V/25.1V كلهم فئة 24V) — التصنيف هنا بالفئة القياسية (12/24/48) مش بالرقم الفعلي المطبوع على الموديل.`
+        )}</div>
     </div>`;
 
   if(!q){
@@ -2171,8 +2214,7 @@ function renderOffgridCalc(){
         ${q.batteryCount ? `<div class="note" style="margin-top:10px">تكوين بنك البطاريات: <b>${q.batteryCount}</b> بطارية ${fmt1(q.batteryUnitVoltage)}V${q.batterySeriesCount>1?` (${q.batterySeriesCount} توالي × ${q.batteryParallelCount} توازي = ${fmt1(q.batteryPackVoltage)}V)`:''}</div>` : ''}
       </div>
       <div class="card no-print">
-        <h3 style="margin-bottom:6px">الطاقة اليومية: إنتاج مقابل استهلاك</h3>
-        <div class="note" style="margin-bottom:10px">رسم استرشادي لتوزيع الإنتاج والاستهلاك على مدار اليوم — بافتراض استهلاك شبه ثابت على مدار الساعة، عشان تتأكد إن الألواح والبطارية بيغطوا الاحتياج فعلًا.</div>
+        <h3 style="margin-bottom:6px">الطاقة اليومية: إنتاج مقابل استهلاك ${infoIcon('رسم استرشادي لتوزيع الإنتاج والاستهلاك على مدار اليوم — بافتراض استهلاك شبه ثابت على مدار الساعة، عشان تتأكد إن الألواح والبطارية بيغطوا الاحتياج فعلًا.')}</h3>
         ${renderOffgridDayChart(q, o)}
       </div>
       ${renderQuoteBomAndTotal(q, `عرض سعر منظومة طاقة شمسية أوف-جريد (مستقلة عن الشبكة) بسعة ${fmt1(q.actualKw)} كيلوواط وبنك بطاريات ${fmt1(q.nameplateBatteryKwh)} كيلوواط/ساعة.`)}
@@ -3890,6 +3932,26 @@ ${(function(){
       <div><label>التركيب (﷼/KW) - بيع</label><input type="number" id="a_og_instsell" value="${adminConfig.offgrid.installPerKwSell}"></div>
     </div>
   </div>
+
+  <div class="card">
+    <h3>جدول الأحمال — قائمة الأجهزة الافتراضية <span class="tag">قائمة "+ إضافة من القائمة" في حاسبة الأوف-جريد</span></h3>
+    <div class="note" style="margin-bottom:10px">التعديل هنا بيغيّر الأجهزة الجاهزة اللي تظهر للمناديب والعملاء وهما بيبنوا ملف الأحمال. الـ Surge (تيار البدء) بيستخدمه السيرفر لحساب هل الانفرتر المختار كافي وقت تشغيل الجهاز أول مرة (موتورات/كمبروسورات عادةً محتاجة ×3 لـ×7 وقت البدء، أجهزة كهربائية عادية ×1).</div>
+    <table class="admtable" id="applPresetTable">
+      <thead><tr><th>الجهاز</th><th>واط</th><th>نهار (س)</th><th>ليل (س)</th><th>Surge ×</th><th></th></tr></thead>
+      <tbody>
+        ${(adminConfig.offgrid.appliancePresets && adminConfig.offgrid.appliancePresets.length ? adminConfig.offgrid.appliancePresets : OFFGRID_APPLIANCE_PRESETS).map((p,i)=>`
+          <tr>
+            <td><input data-oga="${i}" data-af="name" value="${p.name}" style="width:100%"></td>
+            <td><input data-oga="${i}" data-af="watts" type="number" value="${p.watts}" style="width:70px"></td>
+            <td><input data-oga="${i}" data-af="dayHours" type="number" value="${p.dayHours ?? 0}" min="0" max="24" step="0.25" style="width:65px"></td>
+            <td><input data-oga="${i}" data-af="nightHours" type="number" value="${p.nightHours ?? 0}" min="0" max="24" step="0.25" style="width:65px"></td>
+            <td><input data-oga="${i}" data-af="surgeMultiplier" type="number" value="${p.surgeMultiplier ?? 1}" min="1" step="1" style="width:55px"></td>
+            <td><button type="button" class="btn ghost small" data-deloga="${i}">✕</button></td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    <button type="button" class="btn ghost small" id="addApplPresetBtn" style="margin-top:8px">+ إضافة جهاز للقائمة</button>
+  </div>
   </div>
 
   <div class="admsubsec ${currentAdminSubSection.calcs==='ongrid'?'active':''}" data-admsub="ongrid">
@@ -5025,6 +5087,13 @@ function wire(){
       setOG('structurePerPanelCost','a_og_strcost'); setOG('structurePerPanelSell','a_og_strsell');
       setOG('cablingFixedCost','a_og_cabcost'); setOG('cablingFixedSell','a_og_cabsell');
       setOG('installPerKwCost','a_og_instcost'); setOG('installPerKwSell','a_og_instsell');
+      if(!adminConfig.offgrid.appliancePresets || !adminConfig.offgrid.appliancePresets.length){
+        adminConfig.offgrid.appliancePresets = OFFGRID_APPLIANCE_PRESETS.map(p=>({...p}));
+      }
+      document.querySelectorAll('[data-oga]').forEach(inp=>{
+        const i=+inp.dataset.oga, f=inp.dataset.af;
+        adminConfig.offgrid.appliancePresets[i][f] = (f==='name') ? inp.value : (+inp.value||0);
+      });
       const setNG = (key,id) => { const v=numOG(id); if(v!==undefined && !isNaN(v)) adminConfig.ongrid[key]=v; };
       setNG('sunHours','a_ng_sun'); setNG('performanceRatio','a_ng_pr'); setNG('tariffRate','a_ng_tariff');
       setNG('inverterMarkupPct','a_ng_invmarkup');
@@ -5067,6 +5136,18 @@ function wire(){
         btn.disabled = false;
       };
     });
+
+    document.querySelectorAll('[data-deloga]').forEach(b=>b.onclick=()=>{
+      harvestAdminInputs();
+      adminConfig.offgrid.appliancePresets.splice(+b.dataset.deloga,1);
+      render();
+    });
+    const addApplPresetBtn = document.getElementById('addApplPresetBtn');
+    if(addApplPresetBtn) addApplPresetBtn.onclick = ()=>{
+      harvestAdminInputs();
+      adminConfig.offgrid.appliancePresets.push({name:'جهاز جديد', watts:100, dayHours:2, nightHours:2, surgeMultiplier:1});
+      render();
+    };
 
     document.getElementById('admSave').onclick = async ()=>{
       harvestAdminInputs();
@@ -5514,9 +5595,9 @@ function wireOffgridCalc(){
   const addPresetBtn = document.getElementById('ogAddPresetAppliance');
   if(addPresetBtn) addPresetBtn.onclick = ()=>{
     const sel = document.getElementById('ogAppliancePreset');
-    const preset = OFFGRID_APPLIANCE_PRESETS[+sel.value];
+    const preset = activeAppliancePresets()[+sel.value];
     if(!preset) return;
-    o.appliances.push({name:preset.name, watts:preset.watts, dayHours:preset.dayHours, nightHours:preset.nightHours, qty:1});
+    o.appliances.push({name:preset.name, watts:preset.watts, dayHours:preset.dayHours, nightHours:preset.nightHours, qty:1, surgeMultiplier:preset.surgeMultiplier});
     markLoadsDirty(); render();
   };
   const unlockInfoBtn = document.getElementById('adminInfoTrigger');
