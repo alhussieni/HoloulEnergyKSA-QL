@@ -762,6 +762,7 @@ let cachedBomItemImages = {}; // admin-managed fallback images for generic BOM l
 let cachedPanelOptions = [];  // [{brand,power}] — never priceW
 let cachedBatteryVoltageOptions = []; // [12.8, 25.6, 51.2, ...] distinct voltages in the battery catalog
 let cachedBatteryModelOptions = []; // [{model,brand,voltage,stdVoltage,ah,kwh}, ...] exact battery models from the catalog
+let cachedInverterModelOptions = []; // [{model,brand,kw,voltageClasses}, ...] exact hybrid/off-grid inverter models from the catalog
 
 // Admin-configured defaults (D.defaultPanelKey "brand|power")
 // applied once per calculator on first successful load, so a rep's manual
@@ -859,6 +860,18 @@ let quoteLoading = false;
 // Off-grid / on-grid calculators — same cache pattern as the irrigation quote above
 let cachedOffgridQuote = null, offgridEngineError = null, offgridLoading = false, adminFinancialsOffgrid = null;
 let offgridAppliancesSeeded = false; // replaces the 1-item hardcoded default with D.offgrid.applianceDefaults on first successful load
+// The load profile (appliances list / direct kWh, method, autonomy days) is
+// edited freely without hitting the pricing engine on every keystroke — the
+// engine (inverter/battery/panel sizing + BOM + price) only recalculates
+// when the person explicitly presses "تأكيد ملف الأحمال". This flag tracks
+// whether the currently-displayed calculation still matches what's typed.
+let offgridLoadsConfirmed = true;
+function computeLocalDailyKwh(appliances){
+  return (appliances||[]).reduce((s,a)=>{
+    const hrs = (+a.dayHours||0) + (+a.nightHours||0);
+    return s + ((+a.watts||0) * hrs * (+a.qty||1))/1000;
+  }, 0);
+}
 let cachedOngridQuote = null, ongridEngineError = null, ongridLoading = false, adminFinancialsOngrid = null;
 
 function buildEngineInput(){
@@ -918,6 +931,7 @@ function buildOffgridInput(){
     dailyKwh: +o.dailyKwh || 0,
     autonomyDays: +o.autonomyDays || 0,
     appliances: o.appliances,
+    inverterModel: o.inverterModel || null,
     batteryVoltage: o.batteryVoltage || null,
     batteryBrand: o.batteryBrand || null,
     batteryModel: o.batteryModel || null,
@@ -935,6 +949,7 @@ async function refreshOffgridQuote(){
       : Promise.resolve(null);
     const [data, adminData] = await Promise.all([quotePromise, adminPromise]);
     cachedOffgridQuote = data.quote;
+    offgridLoadsConfirmed = true;
     if(!offgridAppliancesSeeded && Array.isArray(data.applianceDefaults) && data.applianceDefaults.length){
       offgridAppliancesSeeded = true;
       // Only replace the placeholder single-item list, never something the rep already edited.
@@ -952,6 +967,11 @@ async function refreshOffgridQuote(){
     }
     cachedPanelOptions = data.panelOptions || cachedPanelOptions;
     cachedBomItemImages = data.bomItemImages || cachedBomItemImages;
+    cachedInverterModelOptions = data.inverterModelOptions || cachedInverterModelOptions;
+    if(state.offgrid.inverterModel && !cachedInverterModelOptions.some(m=>m.model===state.offgrid.inverterModel)){
+      // the previously-picked exact model no longer exists in the catalog (e.g. admin removed/renamed it) — fall back to auto
+      state.offgrid.inverterModel = null;
+    }
     cachedBatteryVoltageOptions = data.batteryVoltageOptions || cachedBatteryVoltageOptions;
     if(!state.offgrid.batteryVoltage && cachedBatteryVoltageOptions.length){
       // default to the highest voltage (the "full bus" module) so no series-stacking is needed unless the rep changes it
@@ -961,6 +981,24 @@ async function refreshOffgridQuote(){
     if(state.offgrid.batteryModel && !cachedBatteryModelOptions.some(m=>m.model===state.offgrid.batteryModel)){
       // the previously-picked exact model no longer exists in the catalog (e.g. admin removed/renamed it) — fall back to auto
       state.offgrid.batteryModel = null;
+    }
+    // The auto-picked inverter (sized to the current registered loads) only
+    // supports specific battery voltage classes (see getInverterVoltageClasses
+    // server-side) — e.g. a tiny inverter may be 12V-only, a bigger one
+    // 24/48V. As loads change, the auto-picked inverter can change too, so
+    // a previously-valid battery voltage/brand/model choice can silently
+    // become incompatible. Snap back to a compatible choice immediately
+    // rather than letting the person pick something the backend would
+    // reject or silently override.
+    const invVoltClasses = (data.quote && Array.isArray(data.quote.invVoltageClasses)) ? data.quote.invVoltageClasses : null;
+    if(invVoltClasses && invVoltClasses.length && !invVoltClasses.includes(state.offgrid.batteryVoltage)){
+      state.offgrid.batteryVoltage = invVoltClasses.includes(48) ? 48 : Math.max(...invVoltClasses);
+      if(state.offgrid.batteryBrand && !cachedBatteryModelOptions.some(m=>m.stdVoltage===state.offgrid.batteryVoltage && m.brand===state.offgrid.batteryBrand)){
+        state.offgrid.batteryBrand = '';
+      }
+      if(state.offgrid.batteryModel && !cachedBatteryModelOptions.some(m=>m.model===state.offgrid.batteryModel && m.stdVoltage===state.offgrid.batteryVoltage)){
+        state.offgrid.batteryModel = null;
+      }
     }
     adminFinancialsOffgrid = adminData ? adminData.quote : null;
   }catch(e){
@@ -1205,6 +1243,8 @@ const state = {
     dailyKwh: 10,
     autonomyDays: 0,
     appliances: [ {name:'ثلاجة', watts:150, dayHours:4, nightHours:4, qty:1} ],
+    inverterBrand: '', // filter for the inverter model dropdown — '' = all brands
+    inverterModel: null, // null = auto-pick smallest inverter that covers the load; otherwise an exact model from inverterModelOptions (engineer override — e.g. size up, or a specific preferred brand)
     batteryVoltage: null, // null = server uses its own default (bus voltage)
     batteryBrand: '', // filter for the size(Ah) dropdown — '' = all brands; also sent to the server so "auto" respects it
     batteryModel: null, // null = auto-pick largest-capacity model at batteryVoltage; otherwise an exact "brand+Ah+voltage" model from batteryModelOptions
@@ -2004,7 +2044,7 @@ function renderOffgridCalc(){
       <input type="text" id="og_phone" value="${state.clientPhone}" placeholder="05xxxxxxxx">
     </div>
     <div class="card">
-      <h3>طريقة تحديد الحمل</h3>
+      <h3>ملف الأحمال — LOAD PROFILE</h3>
       <div class="seg preset-list" style="flex-direction:column;gap:6px;height:auto;border:0">
         <button type="button" data-ogmethod="consumption" class="${o.method==='consumption'?'active':''}" style="padding:10px">أدخل معدل الاستهلاك اليومي مباشرة</button>
         <button type="button" data-ogmethod="appliances" class="${o.method==='appliances'?'active':''}" style="padding:10px">احسب من قائمة الأجهزة</button>
@@ -2036,9 +2076,11 @@ function renderOffgridCalc(){
       </table>
       <div class="note" style="margin-top:4px">النهار افتراضيًا من 6ص لـ6م (12 ساعة)، والليل من 6م لـ6ص (12 ساعة) — الفصل ده بيحسّن دقة رسم الإنتاج/الاستهلاك تحت.</div>
       <button type="button" class="btn ghost small" id="ogAddAppliance" style="margin-top:8px">+ إضافة جهاز مخصّص</button>
-      <div class="note" style="margin-top:8px">إجمالي الاستهلاك اليومي المحسوب: <b>${q?fmt1(q.dailyKwh):'—'}</b> كيلوواط/ساعة</div>
+      <div class="note" style="margin-top:8px" id="og_live_total">إجمالي الاستهلاك اليومي (حسب المُدخل الآن): <b>${fmt1(computeLocalDailyKwh(o.appliances))}</b> كيلوواط/ساعة</div>
       `}
-      <label style="margin-top:10px">أيام الاستقلالية (بدون شمس)</label>
+      <div id="og_loads_dirty_banner" style="margin-top:8px;${offgridLoadsConfirmed?'display:none':''}" class="note">⚠️ فيه تعديلات في ملف الأحمال لسه ماتأكدتش — اضغط "تأكيد ملف الأحمال" تحت عشان الحسابات والسعر النهائي يتحدّثوا على أساسها.</div>
+      <button type="button" class="btn" id="ogConfirmLoads" style="margin-top:10px;width:100%">✓ تأكيد ملف الأحمال وإعادة الحساب</button>
+      <label style="margin-top:14px">أيام الاستقلالية (بدون شمس)</label>
       <div style="display:flex;gap:8px;align-items:center">
         <input type="number" id="og_autonomy" value="${o.autonomyDays}" min="0" step="1" style="flex:1">
         <button type="button" class="btn small" id="ogAutonomyConfirm">تأكيد</button>
@@ -2052,16 +2094,41 @@ function renderOffgridCalc(){
       </select>
     </div>
     <div class="card">
+      <h3>الانفرتر</h3>
+      <label>ماركة الانفرتر</label>
+      <select id="og_inverter_brand">
+        <option value="">الكل</option>
+        ${[...new Set(cachedInverterModelOptions.map(m=>m.brand).filter(Boolean))].sort().map(b=>`<option value="${b}" ${b===o.inverterBrand?'selected':''}>${b}</option>`).join('')}
+      </select>
+      <label style="margin-top:10px">موديل الانفرتر</label>
+      <select id="og_inverter_model">
+        <option value="">تلقائي — أصغر انفرتر كافٍ للحمل المسجّل${q?` (${fmt1(q.peakKw)} كيلوواط)`:''}</option>
+        ${cachedInverterModelOptions
+          .filter(m=>!o.inverterBrand || m.brand===o.inverterBrand)
+          .map(m=>`<option value="${m.model}" ${m.model===o.inverterModel?'selected':''}>${m.model}${m.brand?` — ${m.brand}`:''} (${fmt1(m.kw)} كيلوواط، فولت بطارية مدعوم ${m.voltageClasses.join('/')}V)</option>`).join('')}
+      </select>
+      <div class="note" style="margin-top:6px">
+        ${o.inverterModel
+          ? `هيتم استخدام موديل "<b>${o.inverterModel}</b>" بالظبط بدل الاختيار التلقائي — مفيد لو المهندس عايز يكبّر الجهاز أو يلتزم بماركة معينة حسب الخبرة الميدانية. لو قدرة الموديل ده أقل من الحمل المسجّل، الحاسبة هتوصّل عدة وحدات منه على التوازي تلقائيًا${q&&q.invCount>1?` (حاليًا: <b>${q.invCount} وحدة</b>)`:''}.`
+          : `اختيار "تلقائي" بيخلي الحاسبة تختار أصغر موديل انفرتر كافٍ لتغطية الحمل المسجّل فقط. غيّر الاختيار هنا لو محتاج جهاز أكبر أو ماركة معينة.`}
+        <br>ملحوظة: اختيار الانفرتر هو اللي بيحدد فولتات البطارية المتاحة تحت — تغيير الموديل هنا هيغيّر تلقائيًا الخيارات المتاحة في كارت البطارية.
+      </div>
+    </div>
+    <div class="card">
       <h3>البطارية</h3>
+      ${q && Array.isArray(q.invVoltageClasses) ? `<div class="note" style="margin-bottom:6px">الانفرتر المستخدم حاليًا لهذا الحمل: <b>${q.invModel}</b> — بيدعم فقط فولت <b>${q.invVoltageClasses.join('/')}V</b>، فالخيارات تحت مقصورة على الفولت ده بس.</div>` : ''}
       <label>نوع البطارية (الماركة)</label>
       <select id="og_battery_brand">
         <option value="">الكل</option>
-        ${[...new Set(cachedBatteryModelOptions.map(m=>m.brand).filter(Boolean))].sort().map(b=>`<option value="${b}" ${b===o.batteryBrand?'selected':''}>${b}</option>`).join('')}
+        ${[...new Set(cachedBatteryModelOptions.filter(m=>m.stdVoltage===o.batteryVoltage).map(m=>m.brand).filter(Boolean))].sort().map(b=>`<option value="${b}" ${b===o.batteryBrand?'selected':''}>${b}</option>`).join('')}
       </select>
       <label style="margin-top:10px">فولت البطارية</label>
       <select id="og_battery_voltage">
-        ${cachedBatteryVoltageOptions.map(v=>`<option value="${v}" ${v==o.batteryVoltage?'selected':''}>${v}V</option>`).join('')}
+        ${cachedBatteryVoltageOptions
+          .filter(v=>!q || !Array.isArray(q.invVoltageClasses) || !q.invVoltageClasses.length || q.invVoltageClasses.includes(v))
+          .map(v=>`<option value="${v}" ${v==o.batteryVoltage?'selected':''}>${v}V</option>`).join('')}
       </select>
+      <div class="note" style="margin-top:4px">القائمة دي بتعرض بس الفولتات المتوافقة كهربائيًا مع الانفرتر المستخدم حاليًا — فولت أعلى من قدرة الانفرتر مش هيظهر أصلًا، وأي ماركة بطارية متاحة بالفولت الأعلى بس مش هتظهر برضه لنفس السبب.</div>
       <label style="margin-top:10px">حجم البطارية (Ah)</label>
       <select id="og_battery_model">
         <option value="">تلقائي — أنسب سعة (أقل تكلفة إجمالية تغطي الاحتياج) عند الفولت والماركة المختارين</option>
@@ -5366,9 +5433,24 @@ function wireOffgridCalc(){
   if(clientEl) clientEl.oninput = e=>{ state.client=e.target.value; const b=document.getElementById('bannerName'); if(b) b.textContent=state.client||'—'; };
   const phoneEl = document.getElementById('og_phone');
   if(phoneEl) phoneEl.oninput = e=>{ state.clientPhone=e.target.value; const b=document.getElementById('bannerPhone'); if(b) b.textContent=state.clientPhone||'—'; };
-  document.querySelectorAll('[data-ogmethod]').forEach(b=>b.onclick=()=>{ o.method=b.dataset.ogmethod; scheduleRefreshOffgrid(0); });
+  // Load profile (method, appliances, direct kWh) editing never calls the
+  // pricing engine directly anymore — every edit here only mutates local
+  // state and marks offgridLoadsConfirmed=false. The engine (which re-sizes
+  // the inverter/battery/panels and rebuilds the BOM+price) only runs when
+  // the person presses "تأكيد ملف الأحمال", via markLoadsDirty()/local
+  // helpers below. This avoids re-running the whole quote on every keystroke.
+  function markLoadsDirty(){
+    offgridLoadsConfirmed = false;
+    const banner = document.getElementById('og_loads_dirty_banner');
+    if(banner) banner.style.display = '';
+  }
+  function updateLiveTotal(){
+    const totalEl = document.getElementById('og_live_total');
+    if(totalEl) totalEl.innerHTML = `إجمالي الاستهلاك اليومي (حسب المُدخل الآن): <b>${fmt1(computeLocalDailyKwh(o.appliances))}</b> كيلوواط/ساعة`;
+  }
+  document.querySelectorAll('[data-ogmethod]').forEach(b=>b.onclick=()=>{ o.method=b.dataset.ogmethod; markLoadsDirty(); render(); });
   const dailyEl = document.getElementById('og_dailykwh');
-  if(dailyEl) dailyEl.oninput = e=>{ o.dailyKwh = +e.target.value || 0; scheduleRefreshOffgrid(); };
+  if(dailyEl) dailyEl.oninput = e=>{ o.dailyKwh = +e.target.value || 0; markLoadsDirty(); };
   const autoEl = document.getElementById('og_autonomy');
   const confirmAutonomy = ()=>{
     const v = autoEl.value.trim();
@@ -5381,8 +5463,21 @@ function wireOffgridCalc(){
   }
   const autoConfirmBtn = document.getElementById('ogAutonomyConfirm');
   if(autoConfirmBtn) autoConfirmBtn.onclick = confirmAutonomy;
+  const confirmLoadsBtn = document.getElementById('ogConfirmLoads');
+  if(confirmLoadsBtn) confirmLoadsBtn.onclick = ()=>{ scheduleRefreshOffgrid(0); };
   const panelEl = document.getElementById('og_panel');
   if(panelEl) panelEl.onchange = e=>{ o.panelIdx = +e.target.value; scheduleRefreshOffgrid(); };
+  const invBrandEl = document.getElementById('og_inverter_brand');
+  if(invBrandEl) invBrandEl.onchange = e=>{
+    o.inverterBrand = e.target.value || '';
+    // a brand filter change can orphan the currently-picked exact inverter model
+    if(o.inverterModel && !cachedInverterModelOptions.some(m=>m.model===o.inverterModel && (!o.inverterBrand || m.brand===o.inverterBrand))){
+      o.inverterModel = null;
+    }
+    scheduleRefreshOffgrid(0);
+  };
+  const invModelEl = document.getElementById('og_inverter_model');
+  if(invModelEl) invModelEl.onchange = e=>{ o.inverterModel = e.target.value || null; scheduleRefreshOffgrid(0); };
   const battVoltEl = document.getElementById('og_battery_voltage');
   if(battVoltEl) battVoltEl.onchange = e=>{
     o.batteryVoltage = +e.target.value;
@@ -5407,21 +5502,22 @@ function wireOffgridCalc(){
     inp.oninput = ()=>{
       const i = +inp.dataset.ogapp, f = inp.dataset.af;
       o.appliances[i][f] = (f==='name') ? inp.value : (+inp.value||0);
-      scheduleRefreshOffgrid();
+      markLoadsDirty();
+      updateLiveTotal();
     };
   });
   document.querySelectorAll('[data-ogdelapp]').forEach(b=>b.onclick=()=>{
-    o.appliances.splice(+b.dataset.ogdelapp,1); scheduleRefreshOffgrid(0);
+    o.appliances.splice(+b.dataset.ogdelapp,1); markLoadsDirty(); render();
   });
   const addBtn = document.getElementById('ogAddAppliance');
-  if(addBtn) addBtn.onclick = ()=>{ o.appliances.push({name:'جهاز جديد',watts:100,dayHours:2,nightHours:2,qty:1}); scheduleRefreshOffgrid(0); };
+  if(addBtn) addBtn.onclick = ()=>{ o.appliances.push({name:'جهاز جديد',watts:100,dayHours:2,nightHours:2,qty:1}); markLoadsDirty(); render(); };
   const addPresetBtn = document.getElementById('ogAddPresetAppliance');
   if(addPresetBtn) addPresetBtn.onclick = ()=>{
     const sel = document.getElementById('ogAppliancePreset');
     const preset = OFFGRID_APPLIANCE_PRESETS[+sel.value];
     if(!preset) return;
     o.appliances.push({name:preset.name, watts:preset.watts, dayHours:preset.dayHours, nightHours:preset.nightHours, qty:1});
-    scheduleRefreshOffgrid(0);
+    markLoadsDirty(); render();
   };
   const unlockInfoBtn = document.getElementById('adminInfoTrigger');
   if(unlockInfoBtn && !adminInfoUnlocked) unlockInfoBtn.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked=true; scheduleRefreshOffgrid(0); });
