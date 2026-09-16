@@ -62,7 +62,7 @@ section.view.active{display:block;}
 
 .grid2{display:grid;grid-template-columns:minmax(340px,var(--phi-small)) minmax(0,var(--phi-large));gap:21px;align-items:start;}
 .input-rail{position:sticky;top:88px;align-self:start;}
-@media (max-width:1020px){.grid2{grid-template-columns:1fr;}.input-rail{position:static;}}
+@media (max-width:1020px){.grid2{grid-template-columns:minmax(0,1fr);}.input-rail{position:static;}}
 
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:13px;box-shadow:var(--shadow-soft);}
 .card:hover{box-shadow:0 8px 22px rgba(13,52,82,.06);}
@@ -2186,12 +2186,13 @@ function renderOffgridCalc(){
         </select>
         <button type="button" class="btn small" id="ogAddPresetAppliance">+ إضافة من القائمة</button>
       </div>
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
       <table class="admtable" id="ogApplianceTable">
         <thead><tr><th>الجهاز</th><th>واط</th><th>ساعات نهارية</th><th>ساعات ليلية</th><th>العدد</th><th></th></tr></thead>
         <tbody>
           ${o.appliances.map((a,i)=>`
             <tr>
-              <td><input data-ogapp="${i}" data-af="name" value="${a.name}" style="width:100%"></td>
+              <td><input data-ogapp="${i}" data-af="name" value="${a.name}" style="width:120px"></td>
               <td><input data-ogapp="${i}" data-af="watts" type="number" value="${a.watts}" style="width:70px"></td>
               <td><input data-ogapp="${i}" data-af="dayHours" type="number" value="${a.dayHours ?? 0}" min="0" max="12" step="0.25" style="width:60px"></td>
               <td><input data-ogapp="${i}" data-af="nightHours" type="number" value="${a.nightHours ?? 0}" min="0" max="12" step="0.25" style="width:60px"></td>
@@ -2200,6 +2201,7 @@ function renderOffgridCalc(){
             </tr>`).join('')}
         </tbody>
       </table>
+      </div>
       <div style="margin-top:4px">${infoIcon('النهار افتراضيًا من 6ص لـ6م (12 ساعة)، والليل من 6م لـ6ص (12 ساعة) — الفصل ده بيحسّن دقة رسم الإنتاج/الاستهلاك تحت.')} <span style="font-size:11.5px;color:var(--muted)">ملاحظة عن ساعات النهار/الليل</span></div>
       <button type="button" class="btn ghost small" id="ogAddAppliance" style="margin-top:8px">+ إضافة جهاز مخصّص</button>
       <div class="note" style="margin-top:8px" id="og_live_total">إجمالي الاستهلاك اليومي (حسب المُدخل الآن): <b>${fmt1(computeLocalDailyKwh(o.appliances))}</b> كيلوواط/ساعة</div>
