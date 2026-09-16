@@ -146,6 +146,9 @@ table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
 .info-icon-wrap.open .info-icon-pop{display:block;}
 @media (max-width:480px){.info-icon-pop{width:220px;}}
 
+.techsummary-charts{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+@media (max-width:640px){.techsummary-charts{grid-template-columns:1fr;gap:20px;}}
+
 /* admin — hybrid layout: sidebar + topbar + cards */
 .admin-shell{display:flex;gap:20px;align-items:flex-start;}
 .admin-sidebar{width:236px;flex:0 0 236px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;position:sticky;top:88px;box-shadow:var(--shadow-soft);}
@@ -1973,27 +1976,24 @@ const OFFGRID_APPLIANCE_PRESETS = [
 // built-in fallback for the very first load / if the server has none set yet.
 function activeAppliancePresets(){ return cachedOffgridAppliancePresets.length ? cachedOffgridAppliancePresets : OFFGRID_APPLIANCE_PRESETS; }
 
-function renderOffgridDayChart(q, o){
-  if(!q || !q.actualKw || !q.dailyKwh) return '';
-  const W = 680, H = 260, padL = 40, padR = 40, padT = 16, padB = 30;
-  const plotW = W - padL - padR, plotH = H - padT - padB;
-
+// Shared day-cycle simulation used by both the SVG day chart and the quick
+// technical summary card below, so the two always agree on the same numbers
+// (daily production, day/night consumption split, battery excess/deficit).
+function computeOffgridDaySim(q, o){
   const sunHours = q.sunHours || 5.5;
   const systemEff = q.systemEfficiency || 0.8;
   const producedDailyKwh = q.actualKw * sunHours * systemEff;
   const batteryCapKwh = q.nameplateBatteryKwh || 0;
 
-  // نافذة سطوع افتراضية (لرسم الشكل بس — مش جزء من حساب السعر الفعلي)
-  const sunrise = 6, sunset = 18, windowH = sunset - sunrise; // 12h نهار، 12h ليل
+  const sunrise = 6, sunset = 18, windowH = sunset - sunrise;
 
-  // لو العميل مدخّل الأجهزة بساعات نهار/ليل منفصلة، نستخدمها فعليًا بدل
-  // افتراض استهلاك ثابت على مدار الساعة — بيدّي دقة حقيقية للرسم
   let dayConsumptionKwh = null, nightConsumptionKwh = null;
   if(o && o.method === 'appliances' && Array.isArray(o.appliances) && o.appliances.length){
     dayConsumptionKwh = o.appliances.reduce((s,a)=> s + ((+a.watts||0)*(+a.dayHours||0)*(+a.qty||1))/1000, 0);
     nightConsumptionKwh = o.appliances.reduce((s,a)=> s + ((+a.watts||0)*(+a.nightHours||0)*(+a.qty||1))/1000, 0);
   }
   const usingRealSplit = dayConsumptionKwh !== null && (dayConsumptionKwh + nightConsumptionKwh) > 0;
+  if(!usingRealSplit){ dayConsumptionKwh = q.dailyKwh/2; nightConsumptionKwh = q.dailyKwh/2; }
   const dayKw = usingRealSplit ? dayConsumptionKwh / windowH : (q.dailyKwh/24);
   const nightKw = usingRealSplit ? nightConsumptionKwh / (24-windowH) : (q.dailyKwh/24);
 
@@ -2023,11 +2023,94 @@ function renderOffgridDayChart(q, o){
     socSeries.push(soc);
   }
   const socPct = socSeries.map(v => batteryCapKwh>0 ? (v/batteryCapKwh*100) : 0);
-
   const maxKw = Math.max(...prodScaled, dayKw, nightKw) * 1.15 || 1;
-  const xForH = h => padL + (h/24)*plotW;
+
+  return {
+    sunrise, sunset, windowH, N, stepH, hours, prodScaled, consKw, socPct, maxKw,
+    producedDailyKwh, dayConsumptionKwh, nightConsumptionKwh, usingRealSplit,
+    batteryCapKwh, excessKwhTotal, deficitKwhTotal, dayKw, nightKw,
+  };
+}
+
+// Quick at-a-glance technical summary card — headline numbers + two small
+// bar comparisons (production vs consumption, battery capacity vs night
+// draw), meant to sit above the detailed hour-by-hour chart so a rep/customer
+// can sanity-check the design in a few seconds without reading the graph.
+function renderOffgridTechSummary(q, o){
+  if(!q || !q.actualKw || !q.dailyKwh) return '';
+  const sim = computeOffgridDaySim(q, o);
+  const usableCapacityKwh = (q.nightKwh||0) + (q.batteryBufferKwh||0);
+  const usagePct = usableCapacityKwh>0 ? (q.nightKwh/usableCapacityKwh*100) : 0;
+  const invSufficient = !q.inverterSurgeWarning;
+  const stringOk = q.mpptMin!=null ? (q.stringVimp>=q.mpptMin && q.stringVoc<=q.mpptMax) : null;
+
+  const rows = [
+    [`إجمالي قدرة الألواح / الإنتاجية اليومية المتوقعة`, `${fmt1(q.actualKw)} kWp — ${fmt1(sim.producedDailyKwh)} kWh/يوم`],
+    [`إجمالي الأحمال النهارية / الليلية`, `نهار ${fmt1(sim.dayConsumptionKwh)} kWh — ليل ${fmt1(sim.nightConsumptionKwh)} kWh`],
+    [`إجمالي الطاقة المخزنة بالبطاريات (استخدام ~${Math.round(usagePct)}% من السعة الكاملة عند أقصى تفريغ مصمم)`, `${fmt1(usableCapacityKwh)} kWh`],
+    [`أقصى قدرة لحظية عند تشغيل كل الأجهزة معًا`, `${fmt1(q.peakKw)} kW — الإنفرتر: ${fmt1(q.invTotalKw)} kW مستمر / ${fmt1(q.invSurgeKw)} kW إقلاع — ${invSufficient?'كافٍ ✓':'غير كافٍ ⚠️'}`],
+    [`تكوين مصفوفة الألواح`, `${q.panelsPerString} على التوالي × ${q.arrays} بالتوازي (إجمالي ${q.totalPanels} لوح)`],
+    [`تكوين بنك البطاريات`, `${q.batterySeriesCount} على التوالي × ${q.batteryParallelCount} بالتوازي`],
+    [`أيام الاستقلالية المصممة عليها`, `${q.autonomyDays} يوم بدون شحن`],
+    [`فولت سلسلة الألواح مقابل نطاق MPPT للإنفرتر`, q.mpptMin!=null
+      ? `${fmt1(q.stringVimp)}V (النطاق ${fmt1(q.mpptMin)}–${fmt1(q.mpptMax)}V) — ${stringOk?'ضمن النطاق ✓':'خارج النطاق ⚠️'}`
+      : `بيانات MPPT غير متوفرة لهذا الموديل في الكتالوج`],
+  ];
+
+  const barsBlock = (items, title) => {
+    const max = Math.max(...items.map(it=>it.value), 0.001);
+    return `<div>
+      <div style="font-size:12px;font-weight:700;margin-bottom:12px">${esc(title)}</div>
+      <div style="display:flex;align-items:flex-end;gap:10px;height:130px">
+        ${items.map(it=>`
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%">
+            <div style="font-size:11px;font-weight:800;margin-bottom:4px">${fmt1(it.value)}</div>
+            <div style="width:100%;max-width:46px;background:${it.color};border-radius:4px 4px 0 0;height:${Math.max(4,(it.value/max)*100)}px"></div>
+          </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:10px;margin-top:6px">
+        ${items.map(it=>`<div style="flex:1;text-align:center;font-size:10.5px;color:var(--muted);line-height:1.4">${esc(it.label)}</div>`).join('')}
+      </div>
+    </div>`;
+  };
+
+  return `
+  <div class="card no-print">
+    <h3 style="margin-bottom:12px">ملخص فني سريع للمنظومة</h3>
+    <table class="admtable" style="margin-bottom:18px">
+      <tbody>
+        ${rows.map(r=>`<tr><td style="width:55%;color:var(--muted);font-size:12.5px">${r[0]}</td><td style="font-weight:700;font-size:12.5px">${r[1]}</td></tr>`).join('')}
+      </tbody>
+    </table>
+    <div class="techsummary-charts">
+      ${barsBlock([
+        {label:'إنتاج الألواح', value: sim.producedDailyKwh, color:'#E7AC12'},
+        {label:'استهلاك نهاري', value: sim.dayConsumptionKwh, color:'#155E85'},
+        {label:'استهلاك ليلي', value: sim.nightConsumptionKwh, color:'#8a7530'},
+        {label:'الفائض', value: sim.excessKwhTotal, color:'#0FA98D'},
+      ], 'إنتاج الألواح اليومي مقابل الاستهلاك (kWh)')}
+      ${barsBlock([
+        {label:'سعة البطاريات', value: usableCapacityKwh, color:'#E7AC12'},
+        {label:'استهلاك ليلي متفق عليه', value: sim.nightConsumptionKwh, color:'#0FA98D'},
+        {label:'الفائض', value: Math.max(0, usableCapacityKwh - sim.nightConsumptionKwh), color:'#0FA98D'},
+      ], 'سعة البطاريات مقابل الاستهلاك الليلي (kWh)')}
+    </div>
+    <div class="note" style="margin-top:16px">الأرقام تقديرية بناء على معطيات التصميم (ساعات الشمس القصوى، كفاءة النظام) — للتأكيد النهائي راجع مع المهندس المسؤول قبل التنفيذ.</div>
+  </div>`;
+}
+
+function renderOffgridDayChart(q, o){
+  if(!q || !q.actualKw || !q.dailyKwh) return '';
+  const W = 680, H = 260, padL = 40, padR = 40, padT = 16, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const sim = computeOffgridDaySim(q, o);
+  const { sunrise, sunset, N, stepH, hours, prodScaled, consKw, socPct, maxKw,
+    usingRealSplit, dayKw, nightKw, excessKwhTotal, deficitKwhTotal } = sim;
+  const batteryCapKwh = sim.batteryCapKwh;
   const yForKw = kw => padT + plotH - (kw/maxKw)*plotH;
   const yForPct = pct => padT + plotH - (pct/100)*plotH;
+  const xForH = h => padL + (h/24)*plotW;
 
   const prodPath = prodScaled.map((v,i)=>`${i===0?'M':'L'} ${xForH(hours[i]).toFixed(1)} ${yForKw(v).toFixed(1)}`).join(' ');
   const prodAreaPath = prodPath + ` L ${xForH(24).toFixed(1)} ${yForKw(0).toFixed(1)} L ${xForH(0).toFixed(1)} ${yForKw(0).toFixed(1)} Z`;
@@ -2213,6 +2296,7 @@ function renderOffgridCalc(){
         </div>
         ${q.batteryCount ? `<div class="note" style="margin-top:10px">تكوين بنك البطاريات: <b>${q.batteryCount}</b> بطارية ${fmt1(q.batteryUnitVoltage)}V${q.batterySeriesCount>1?` (${q.batterySeriesCount} توالي × ${q.batteryParallelCount} توازي = ${fmt1(q.batteryPackVoltage)}V)`:''}</div>` : ''}
       </div>
+      ${renderOffgridTechSummary(q, o)}
       <div class="card no-print">
         <h3 style="margin-bottom:6px">الطاقة اليومية: إنتاج مقابل استهلاك ${infoIcon('رسم استرشادي لتوزيع الإنتاج والاستهلاك على مدار اليوم — بافتراض استهلاك شبه ثابت على مدار الساعة، عشان تتأكد إن الألواح والبطارية بيغطوا الاحتياج فعلًا.')}</h3>
         ${renderOffgridDayChart(q, o)}
