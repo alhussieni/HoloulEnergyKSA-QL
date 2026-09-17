@@ -599,6 +599,7 @@ function buildGenericItems(pushImpl: any, opts: {
 function finalizeQuote(items: any[], discountFactor: number, D: any, manualDiscountAmt: number) {
   let sellTotal = 0, discountTotal = 0;
   for (const it of items) {
+    if (it.on === false) { it.discount = 0; it.net = 0; continue; }
     const margin = it.sell - it.costBasis;
     const discount = it.key === "panel" ? 0 : margin * discountFactor;
     it.discount = discount;
@@ -748,8 +749,20 @@ function computeOffgridQuote(D: any, inp: any) {
   }
 
   const items: any[] = [];
-  const push = (key: string, label: string, sell: number, costBasis: number, meta: any = {}) =>
-    items.push({ key, label, on: true, sell, costBasis, type: meta.type || "-", qty: meta.qty || "-", warranty: meta.warranty || "-" });
+  // Off-grid quote type: "توريد فقط" (materials only: panel/inverter/battery) vs
+  // "توريد وتركيب" (everything, incl. structure/cabling/install) — plus the rep
+  // can flip any individual item on/off beyond that (e.g. components + steel
+  // structure but no install). Anything not explicitly set to false stays on,
+  // so old callers that never send `toggles` keep getting the full BOM.
+  const t = inp.toggles || {};
+  const isItemOn = (key: string) => t[key] !== false;
+  const push = (key: string, label: string, sell: number, costBasis: number, meta: any = {}) => {
+    const on = isItemOn(key);
+    items.push({
+      key, label, on, sell: on ? sell : 0, costBasis,
+      type: meta.type || "-", qty: on ? (meta.qty || "-") : "لا يوجد", warranty: on ? (meta.warranty || "-") : "لا يوجد",
+    });
+  };
 
   const panelPr = panelPricing(D, panel);
   buildGenericItems(push, {

@@ -975,6 +975,7 @@ function buildOffgridInput(){
     batteryBrand: o.batteryBrand || null,
     batteryModel: o.batteryModel || null,
     qtyOverrides: o.qtyOverrides || {},
+    toggles: o.toggles || {},
     discountTierIdx: discountUnlocked ? state.discountOverrideIdx : null,
     specialDiscountAmt: state.specialDiscountAmt,
   };
@@ -1291,6 +1292,7 @@ const state = {
     batteryBrand: '', // filter for the size(Ah) dropdown — '' = all brands; also sent to the server so "auto" respects it
     batteryModel: null, // null = auto-pick largest-capacity model at batteryVoltage; otherwise an exact "brand+Ah+voltage" model from batteryModelOptions
     qtyOverrides: { panel: null, inverter: null, battery: null, structure: null }, // null = use the calculated quantity; a number = rep's manual override for that BOM line, based on field judgment
+    toggles: { panel:true, inverter:true, battery:true, structure:true, cabling:true, install:true }, // which BOM lines to include — "توريد فقط" preset flips structure/cabling/install off, "توريد وتركيب" turns everything on; the rep can also flip any single item independently
   },
   ongrid: {
     panelIdx: 0,
@@ -1932,9 +1934,9 @@ function renderQuoteBomAndTotal(q, introText, qtyEdit){
       <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
       <tbody>
         ${q.items.map((it,i)=>`
-          <tr><td>${i+1}</td><td class="bom-label">${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.offgrid?.panelIdx ?? state.ongrid?.panelIdx) : ''}</td>
+          <tr class="${it.on===false?'off':''}"><td>${i+1}</td><td class="bom-label">${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.offgrid?.panelIdx ?? state.ongrid?.panelIdx) : ''}</td>
             <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
-            <td style="font-size:11.5px">${editableKeys.includes(it.key) ? renderEditableQtyCell(it.key, bomQtyNum(it.qty), overrides[it.key], autoQty[it.key]) : it.qty}</td>
+            <td style="font-size:11.5px">${(it.on!==false && editableKeys.includes(it.key)) ? renderEditableQtyCell(it.key, bomQtyNum(it.qty), overrides[it.key], autoQty[it.key]) : it.qty}</td>
             <td style="font-size:11.5px">${it.warranty}</td></tr>`).join('')}
       </tbody>
     </table>
@@ -2192,6 +2194,10 @@ function renderOffgridDayChart(q, o){
 function renderOffgridCalc(){
   const q = cachedOffgridQuote;
   const o = state.offgrid;
+  const OFFGRID_TOGGLE_DEFS = [
+    ['panel','ألواح شمسية'], ['inverter','انفرتر'], ['battery','بنك البطاريات'],
+    ['structure','الشاسيه/الحوامل'], ['cabling','الكابلات ولوحة الحماية'], ['install','التركيب والتشغيل'],
+  ];
   const inputCard = `
     <div class="card">
       <h3>بيانات العميل</h3>
@@ -2303,6 +2309,22 @@ function renderOffgridCalc(){
               : `اختيار "تلقائي" بيخلي الحاسبة تجرّب كل الأحجام المتاحة عند الفولت والماركة المحددين، وتختار الحجم اللي هيوصلك للسعة المطلوبة بأقل تكلفة إجمالية — مش بالضرورة أكبر حجم متاح.`))
           + `<br>ملحوظة: فولت بطاريات الليثيوم الفعلي بيتفاوت شوية حتى داخل نفس الفئة (مثلًا 24.5V/25V/25.1V كلهم فئة 24V) — التصنيف هنا بالفئة القياسية (12/24/48) مش بالرقم الفعلي المطبوع على الموديل.`
         )}</div>
+    </div>
+    <div class="card">
+      <h3>نوع العرض</h3>
+      <div class="seg preset-list" style="flex-direction:column;gap:6px;height:auto;border:0">
+        <button type="button" data-ogpreset="materials" style="padding:10px">توريد خامات فقط (انفرتر + ألواح + بطاريات)</button>
+        <button type="button" data-ogpreset="turnkey" style="padding:10px">توريد وتركيب (شامل كل البنود)</button>
+      </div>
+      <div class="note" style="margin-top:10px">اختيار أحد الخيارين يعبّئ البنود تلقائيًا تحت — وتقدر بعدها تفعّل/تعطّل أي بند يدويًا (مثلاً: انفرتر وألواح بس من غير بطاريات، أو المكونات كاملة والشاسيه من غير تركيب).</div>
+    </div>
+    <div class="card">
+      <h3>البنود المُفعّلة في العرض</h3>
+      <div class="toggles">
+        ${OFFGRID_TOGGLE_DEFS.map(([k,l])=>`
+          <label class="tgl"><input type="checkbox" data-ogtgl="${k}" ${o.toggles[k]?'checked':''}> ${l}</label>
+        `).join('')}
+      </div>
     </div>`;
 
   if(!q){
@@ -5738,6 +5760,19 @@ function wireOffgridCalc(){
   document.querySelectorAll('[data-qtyreset]').forEach(b=>{
     b.onclick = ()=>{
       o.qtyOverrides[b.dataset.qtyreset] = null;
+      scheduleRefreshOffgrid(0);
+    };
+  });
+  // Supply-only vs supply+install, and per-item on/off toggles for the off-grid BOM
+  if(!o.toggles) o.toggles = { panel:true, inverter:true, battery:true, structure:true, cabling:true, install:true };
+  document.querySelectorAll('[data-ogtgl]').forEach(c=>{
+    c.onchange = ()=>{ o.toggles[c.dataset.ogtgl] = c.checked; scheduleRefreshOffgrid(0); };
+  });
+  document.querySelectorAll('[data-ogpreset]').forEach(b=>{
+    b.onclick = ()=>{
+      o.toggles = (b.dataset.ogpreset === 'materials')
+        ? { panel:true, inverter:true, battery:true, structure:false, cabling:false, install:false }
+        : { panel:true, inverter:true, battery:true, structure:true, cabling:true, install:true };
       scheduleRefreshOffgrid(0);
     };
   });
