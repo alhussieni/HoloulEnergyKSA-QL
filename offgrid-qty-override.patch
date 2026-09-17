@@ -1,0 +1,228 @@
+diff --git a/index.html b/index.html
+index 6283354..67b72bb 100644
+--- a/index.html
++++ b/index.html
+@@ -109,6 +109,8 @@ details.adv summary{cursor:pointer;font-size:13px;color:var(--night-2);font-weig
+ .stat-click{cursor:pointer;transition:.15s;}
+ .stat-click:hover{border-color:var(--teal);box-shadow:0 4px 14px rgba(13,52,82,.08);transform:translateY(-2px);}
+ 
++.qty-print-fallback{display:none;font-family:'Cairo';}
++.pdf-compact .qty-print-fallback{display:inline!important;}
+ table.bom{width:100%;border-collapse:collapse;font-size:13px;}
+ table.bom th{text-align:right;color:var(--muted);font-weight:600;font-size:11.5px;padding:6px 8px;border-bottom:2px solid var(--night);position:sticky;top:74px;background:#fff;z-index:1;}
+ table.bom td{padding:5px 8px;border-bottom:1px solid #EFEBE0;}
+@@ -632,6 +634,7 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
+ @page{ size:A4; margin:9mm; }
+ @media print{
+   header.top,.no-print,footer.foot{display:none!important;}
++  .qty-print-fallback{display:inline!important;}
+   body{background:#fff;font-size:11px!important;line-height:1.36!important;font-weight:400!important;}
+   main{padding:0!important;max-width:100%!important;}
+   .grid2{grid-template-columns:1fr!important;gap:7px!important;display:block!important;}
+@@ -971,6 +974,7 @@ function buildOffgridInput(){
+     batteryVoltage: o.batteryVoltage || null,
+     batteryBrand: o.batteryBrand || null,
+     batteryModel: o.batteryModel || null,
++    qtyOverrides: o.qtyOverrides || {},
+     discountTierIdx: discountUnlocked ? state.discountOverrideIdx : null,
+     specialDiscountAmt: state.specialDiscountAmt,
+   };
+@@ -1286,6 +1290,7 @@ const state = {
+     batteryVoltage: null, // null = server uses its own default (bus voltage)
+     batteryBrand: '', // filter for the size(Ah) dropdown — '' = all brands; also sent to the server so "auto" respects it
+     batteryModel: null, // null = auto-pick largest-capacity model at batteryVoltage; otherwise an exact "brand+Ah+voltage" model from batteryModelOptions
++    qtyOverrides: { panel: null, inverter: null, battery: null, structure: null }, // null = use the calculated quantity; a number = rep's manual override for that BOM line, based on field judgment
+   },
+   ongrid: {
+     panelIdx: 0,
+@@ -1890,20 +1895,46 @@ function renderStickyTotalBar(finalTotal){
+   </div>`;
+ }
+ 
+-function renderQuoteBomAndTotal(q, introText){
++// BOM qty strings come as "#12#" (a short-headline convention) — pull out
++// the bare number so an editable quantity field can be pre-filled with it.
++function bomQtyNum(qtyStr){
++  const m = String(qtyStr==null?'':qtyStr).match(/-?\d+(\.\d+)?/);
++  return m ? +m[0] : null;
++}
++// Editable quantity cell for BOM lines the rep/engineer is allowed to
++// override (panel/inverter/battery/structure counts on the off-grid quote):
++// a number input pre-filled with the current effective quantity, plus either
++// a "تلقائي" (auto) hint or, once overridden, a reset chip showing what the
++// calculator originally recommended so the rep can always see and undo it.
++function renderEditableQtyCell(key, calcQty, overrideVal, autoQty){
++  const isOverridden = overrideVal != null && overrideVal !== '';
++  const current = isOverridden ? overrideVal : (calcQty ?? '');
++  return `<div class="no-print" style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
++    <input type="number" min="1" step="1" data-qtyoverride="${key}" value="${current}" style="width:58px;padding:4px 6px;font-size:12px;text-align:center">
++    ${isOverridden
++      ? `<button type="button" class="btn ghost small" data-qtyreset="${key}" title="رجوع للكمية المحسوبة تلقائيًا" style="padding:2px 7px;font-size:10.5px;white-space:nowrap">↺ ${autoQty ?? calcQty}</button>`
++      : `<span style="font-size:9.5px;color:var(--muted);white-space:nowrap">تلقائي</span>`}
++  </div><span class="qty-print-fallback">#${current}#</span>`;
++}
++function renderQuoteBomAndTotal(q, introText, qtyEdit){
++  const editableKeys = (qtyEdit && qtyEdit.keys) || [];
++  const overrides = (qtyEdit && qtyEdit.overrides) || {};
++  const autoQty = (qtyEdit && qtyEdit.autoQty) || {};
+   return `
+   <div class="card">
+     <div class="note">${introText}</div>
+   </div>
+   <div class="card">
+     <h3>تفصيل عرض السعر</h3>
++    ${editableKeys.length ? `<div class="note no-print" style="margin-bottom:10px">✏️ تقدر تعدّل كمية أي بند من البنود المميّزة تحت (زوّد أو قلّل) حسب تقييمك الفني لوضع العميل والموقع — السعر والتحذيرات الفنية هيتحدّثوا تلقائيًا على أساس الكمية اللي تدخلها.</div>` : ''}
++    ${q.qtyOverrideNotice ? `<div class="note no-print" style="margin-bottom:10px;border-color:var(--sun-2);background:var(--sun-tint);color:#8a6208">${q.qtyOverrideNotice}</div>` : ''}
+     <table class="bom">
+       <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
+       <tbody>
+         ${q.items.map((it,i)=>`
+           <tr><td>${i+1}</td><td class="bom-label">${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.offgrid?.panelIdx ?? state.ongrid?.panelIdx) : ''}</td>
+             <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
+-            <td style="font-size:11.5px">${it.qty}</td>
++            <td style="font-size:11.5px">${editableKeys.includes(it.key) ? renderEditableQtyCell(it.key, bomQtyNum(it.qty), overrides[it.key], autoQty[it.key]) : it.qty}</td>
+             <td style="font-size:11.5px">${it.warranty}</td></tr>`).join('')}
+       </tbody>
+     </table>
+@@ -2303,7 +2334,11 @@ function renderOffgridCalc(){
+         <h3 style="margin-bottom:6px">الطاقة اليومية: إنتاج مقابل استهلاك ${infoIcon('رسم استرشادي لتوزيع الإنتاج والاستهلاك على مدار اليوم — بافتراض استهلاك شبه ثابت على مدار الساعة، عشان تتأكد إن الألواح والبطارية بيغطوا الاحتياج فعلًا.')}</h3>
+         ${renderOffgridDayChart(q, o)}
+       </div>
+-      ${renderQuoteBomAndTotal(q, `عرض سعر منظومة طاقة شمسية أوف-جريد (مستقلة عن الشبكة) بسعة ${fmt1(q.actualKw)} كيلوواط وبنك بطاريات ${fmt1(q.nameplateBatteryKwh)} كيلوواط/ساعة.`)}
++      ${renderQuoteBomAndTotal(q, `عرض سعر منظومة طاقة شمسية أوف-جريد (مستقلة عن الشبكة) بسعة ${fmt1(q.actualKw)} كيلوواط وبنك بطاريات ${fmt1(q.nameplateBatteryKwh)} كيلوواط/ساعة.`, {
++        keys: ['panel','inverter','battery','structure'],
++        overrides: o.qtyOverrides || {},
++        autoQty: q.autoQty || {},
++      })}
+       <div class="card no-print">
+         <h3 id="adminInfoTrigger" style="cursor:default">معلومات إضافية</h3>
+         ${adminInfoUnlocked ? (adminFinancialsOffgrid ? renderAdminFinancials(adminFinancialsOffgrid) : `<div class="note">جارِ التحميل...</div>`) : ``}
+@@ -5688,6 +5723,24 @@ function wireOffgridCalc(){
+   };
+   const unlockInfoBtn = document.getElementById('adminInfoTrigger');
+   if(unlockInfoBtn && !adminInfoUnlocked) unlockInfoBtn.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked=true; scheduleRefreshOffgrid(0); });
++  // Manual BOM-quantity overrides (panel/inverter/battery/structure) — lets
++  // the rep/engineer raise or lower a calculated quantity based on their
++  // technical read of the site, without touching the underlying inputs.
++  if(!o.qtyOverrides) o.qtyOverrides = { panel:null, inverter:null, battery:null, structure:null };
++  document.querySelectorAll('[data-qtyoverride]').forEach(inp=>{
++    inp.onchange = ()=>{
++      const key = inp.dataset.qtyoverride;
++      const val = +inp.value;
++      o.qtyOverrides[key] = (inp.value !== '' && isFinite(val) && val > 0) ? Math.round(val) : null;
++      scheduleRefreshOffgrid(0);
++    };
++  });
++  document.querySelectorAll('[data-qtyreset]').forEach(b=>{
++    b.onclick = ()=>{
++      o.qtyOverrides[b.dataset.qtyreset] = null;
++      scheduleRefreshOffgrid(0);
++    };
++  });
+ }
+ 
+ function wireOngridCalc(){
+diff --git a/index.ts b/index.ts
+index 1566bf0..9d40c72 100644
+--- a/index.ts
++++ b/index.ts
+@@ -544,10 +544,23 @@ function pickCatalogBattery(D: any, nameplateKwhNeeded: number, requestedStandar
+   };
+ }
+ 
++// Off-grid BOM quantities (panels/inverter/battery/structure) are engineering
++// recommendations from the sizing formulas below — but the rep/engineer on
++// site may need to raise or lower any of them based on field judgment (site
++// conditions, client budget, stock on hand, etc). `qtyOverrides` on the quote
++// input carries those manual quantities; this resolves one field of it,
++// ignoring anything not a positive number so a bad/empty value silently
++// falls back to the calculated quantity instead of breaking the quote.
++function applyQtyOverride(auto: number, override: any): number {
++  const n = Number(override);
++  if (override === null || override === undefined || override === "" || !isFinite(n) || n <= 0) return auto;
++  return Math.min(500, Math.round(n));
++}
++
+ function buildGenericItems(pushImpl: any, opts: {
+   panel: any; totalPanels: number; calcKW: number; panelCostPerWatt: number; panelSellPerWatt: number;
+   inverterLabel: string; inverterType: string; inverterCostBasis: number; inverterSell: number; inverterCount?: number;
+-  structureCost: number; structureSell: number;
++  structureCost: number; structureSell: number; structureQty?: number;
+   cablingCost: number; cablingSell: number;
+   installCost: number; installSell: number;
+   battery?: { unit: any; count: number; totalKwh: number; costBasis: number; sell: number; seriesCount?: number; parallelCount?: number; packVoltage?: number };
+@@ -573,7 +586,7 @@ function buildGenericItems(pushImpl: any, opts: {
+     });
+   }
+   pushImpl("structure", "الشاسيه/الحوامل", opts.structureSell, opts.structureCost, {
+-    type: "-", qty: `#${opts.totalPanels}#`, warranty: "عشر سنوات",
++    type: "-", qty: `#${opts.structureQty ?? opts.totalPanels}#`, warranty: "عشر سنوات",
+   });
+   pushImpl("cabling", "الكابلات ولوحة الحماية", opts.cablingSell, opts.cablingCost, {
+     type: "-", qty: "#1#", warranty: "سنة واحدة",
+@@ -605,6 +618,7 @@ function finalizeQuote(items: any[], discountFactor: number, D: any, manualDisco
+ function computeOffgridQuote(D: any, inp: any) {
+   const og = D.offgrid;
+   const panel = inp.panel;
++  const ov = inp.qtyOverrides || {};
+ 
+   const dailyKwh = inp.method === "appliances"
+     ? (inp.appliances || []).reduce((s: number, a: any) => {
+@@ -657,6 +671,9 @@ function computeOffgridQuote(D: any, inp: any) {
+     inv.totalKw = inv.kw * inv.count;
+     inverterSurgeWarning = `⚠️ تيار البدء المطلوب (يعادل تقريبًا ${requiredSurgeKw.toFixed(2)} كيلوواط ذروة${surgeInfo?.largestSurgeApplianceName ? `، أكبره من "${surgeInfo.largestSurgeApplianceName}"` : ""}) يتجاوز قدرة الذروة لانفرتر ${inv.model} الواحد (${(inv.kw * inverterSurgeRatio).toFixed(2)} كيلوواط تقريبًا) — تم رفع عدد الوحدات من ${oldCount} إلى ${inv.count} لضمان تشغيل الحمل عند بدء التشغيل.`;
+   }
++  const autoInverterCount = inv.count;
++  inv.count = applyQtyOverride(inv.count, ov.inverter);
++  inv.totalKw = inv.kw * inv.count;
+ 
+   const requestedBatteryVoltage = [12, 24, 48].includes(+inp.batteryVoltage) ? (+inp.batteryVoltage as 12 | 24 | 48) : null;
+   let standardVoltage: 12 | 24 | 48;
+@@ -675,13 +692,22 @@ function computeOffgridQuote(D: any, inp: any) {
+     throw new Error(`موديل البطارية "${inp.batteryModel}" فولته ${battery.unit.stdVoltage}V، وانفرتر ${inv.model} يدعم فقط ${invVoltageClasses.join('/')}V — اختر موديل بطارية بفولت متوافق، أو غيّر موديل الانفرتر.`);
+   }
+   const batteryPricing = resolveCatalogPricing(D, battery.category, battery.unit.brand, battery.unit.listPrice, og.batteryMarkupPct);
++  const autoBatteryCount = battery.count;
++  battery.count = applyQtyOverride(battery.count, ov.battery);
++  battery.parallelCount = battery.count;
++  battery.totalKwh = battery.unit.kwh * battery.count;
+ 
+   const chargeLossFactor = og.chargeLossFactor || 1.04;
+   const recoveryDays = og.recoveryDays || 3;
+   const batteryBufferKwh = Math.max(0, battery.totalKwh * og.batteryDoD - nightKwh);
+   const requiredArrayKw = (dailyKwh + nightKwh * chargeLossFactor + batteryBufferKwh / recoveryDays) / (og.sunHours * og.systemEfficiency);
+-  const totalPanels = Math.max(1, Math.ceil((requiredArrayKw * 1000) / panel.power));
+-  const calcKW = (totalPanels * panel.power) / 1000;
++  const autoTotalPanels = Math.max(1, Math.ceil((requiredArrayKw * 1000) / panel.power));
++  let totalPanels = applyQtyOverride(autoTotalPanels, ov.panel);
++  let calcKW = (totalPanels * panel.power) / 1000;
++  // Structure/mounting normally follows the panel count 1:1, but the rep may
++  // reuse existing structure or need extra — so it gets its own override on
++  // top of whatever panel count (auto or overridden) ends up being used.
++  const structureQty = applyQtyOverride(totalPanels, ov.structure);
+ 
+   const invMaxPvKw = getInverterMaxPvKw(D, inv.model);
+   const PV_OVERSIZE_TOLERANCE = 1.30;
+@@ -730,7 +756,7 @@ function computeOffgridQuote(D: any, inp: any) {
+     panel, totalPanels, calcKW, panelCostPerWatt: panelPr.costPerWatt, panelSellPerWatt: panelPr.sellPerWatt,
+     inverterLabel: "شاحن/انفرتر هجين MPPT", inverterType: `${inv.model} أو ما يعادله`,
+     inverterCostBasis: invPricing.costBasis, inverterSell: invPricing.sell, inverterCount: inv.count,
+-    structureCost: totalPanels * og.structurePerPanelCost, structureSell: totalPanels * og.structurePerPanelSell,
++    structureCost: structureQty * og.structurePerPanelCost, structureSell: structureQty * og.structurePerPanelSell, structureQty,
+     cablingCost: og.cablingFixedCost, cablingSell: og.cablingFixedSell,
+     installCost: calcKW * og.installPerKwCost, installSell: calcKW * og.installPerKwSell,
+     battery: { ...battery, costBasis: batteryPricing.costBasis * battery.count, sell: batteryPricing.sell * battery.count },
+@@ -751,6 +777,13 @@ function computeOffgridQuote(D: any, inp: any) {
+     batteryModel: battery.unit.model, batteryBrand: battery.unit.brand, batteryAh: battery.unit.current,
+     chargeLossFactor, recoveryDays, batteryBufferKwh,
+     sunHours: og.sunHours, systemEfficiency: og.systemEfficiency,
++    autoQty: { panel: autoTotalPanels, inverter: autoInverterCount, battery: autoBatteryCount, structure: totalPanels },
++    qtyOverrideNotice: (
++      (ov.panel != null && applyQtyOverride(autoTotalPanels, ov.panel) !== autoTotalPanels) ||
++      (ov.inverter != null && applyQtyOverride(autoInverterCount, ov.inverter) !== autoInverterCount) ||
++      (ov.battery != null && applyQtyOverride(autoBatteryCount, ov.battery) !== autoBatteryCount) ||
++      (ov.structure != null && structureQty !== totalPanels)
++    ) ? "تم تعديل كمية بند واحد أو أكثر يدويًا عن الكمية المحسوبة تلقائيًا — الأسعار والتحذيرات الفنية أعلاه محسوبة على أساس الكميات المعدَّلة، فيرجى التأكد من أنها تغطي احتياج الموقع فعليًا بناءً على تقييمك الفني." : null,
+     items, ...totals, sarPerKW: totals.finalTotal / calcKW,
+   };
+ }

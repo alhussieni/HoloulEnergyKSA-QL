@@ -544,10 +544,23 @@ function pickCatalogBattery(D: any, nameplateKwhNeeded: number, requestedStandar
   };
 }
 
+// Off-grid BOM quantities (panels/inverter/battery/structure) are engineering
+// recommendations from the sizing formulas below — but the rep/engineer on
+// site may need to raise or lower any of them based on field judgment (site
+// conditions, client budget, stock on hand, etc). `qtyOverrides` on the quote
+// input carries those manual quantities; this resolves one field of it,
+// ignoring anything not a positive number so a bad/empty value silently
+// falls back to the calculated quantity instead of breaking the quote.
+function applyQtyOverride(auto: number, override: any): number {
+  const n = Number(override);
+  if (override === null || override === undefined || override === "" || !isFinite(n) || n <= 0) return auto;
+  return Math.min(500, Math.round(n));
+}
+
 function buildGenericItems(pushImpl: any, opts: {
   panel: any; totalPanels: number; calcKW: number; panelCostPerWatt: number; panelSellPerWatt: number;
   inverterLabel: string; inverterType: string; inverterCostBasis: number; inverterSell: number; inverterCount?: number;
-  structureCost: number; structureSell: number;
+  structureCost: number; structureSell: number; structureQty?: number;
   cablingCost: number; cablingSell: number;
   installCost: number; installSell: number;
   battery?: { unit: any; count: number; totalKwh: number; costBasis: number; sell: number; seriesCount?: number; parallelCount?: number; packVoltage?: number };
@@ -573,7 +586,7 @@ function buildGenericItems(pushImpl: any, opts: {
     });
   }
   pushImpl("structure", "الشاسيه/الحوامل", opts.structureSell, opts.structureCost, {
-    type: "-", qty: `#${opts.totalPanels}#`, warranty: "عشر سنوات",
+    type: "-", qty: `#${opts.structureQty ?? opts.totalPanels}#`, warranty: "عشر سنوات",
   });
   pushImpl("cabling", "الكابلات ولوحة الحماية", opts.cablingSell, opts.cablingCost, {
     type: "-", qty: "#1#", warranty: "سنة واحدة",
@@ -605,6 +618,7 @@ function finalizeQuote(items: any[], discountFactor: number, D: any, manualDisco
 function computeOffgridQuote(D: any, inp: any) {
   const og = D.offgrid;
   const panel = inp.panel;
+  const ov = inp.qtyOverrides || {};
 
   const dailyKwh = inp.method === "appliances"
     ? (inp.appliances || []).reduce((s: number, a: any) => {
@@ -657,6 +671,9 @@ function computeOffgridQuote(D: any, inp: any) {
     inv.totalKw = inv.kw * inv.count;
     inverterSurgeWarning = `⚠️ تيار البدء المطلوب (يعادل تقريبًا ${requiredSurgeKw.toFixed(2)} كيلوواط ذروة${surgeInfo?.largestSurgeApplianceName ? `، أكبره من "${surgeInfo.largestSurgeApplianceName}"` : ""}) يتجاوز قدرة الذروة لانفرتر ${inv.model} الواحد (${(inv.kw * inverterSurgeRatio).toFixed(2)} كيلوواط تقريبًا) — تم رفع عدد الوحدات من ${oldCount} إلى ${inv.count} لضمان تشغيل الحمل عند بدء التشغيل.`;
   }
+  const autoInverterCount = inv.count;
+  inv.count = applyQtyOverride(inv.count, ov.inverter);
+  inv.totalKw = inv.kw * inv.count;
 
   const requestedBatteryVoltage = [12, 24, 48].includes(+inp.batteryVoltage) ? (+inp.batteryVoltage as 12 | 24 | 48) : null;
   let standardVoltage: 12 | 24 | 48;
@@ -675,13 +692,22 @@ function computeOffgridQuote(D: any, inp: any) {
     throw new Error(`موديل البطارية "${inp.batteryModel}" فولته ${battery.unit.stdVoltage}V، وانفرتر ${inv.model} يدعم فقط ${invVoltageClasses.join('/')}V — اختر موديل بطارية بفولت متوافق، أو غيّر موديل الانفرتر.`);
   }
   const batteryPricing = resolveCatalogPricing(D, battery.category, battery.unit.brand, battery.unit.listPrice, og.batteryMarkupPct);
+  const autoBatteryCount = battery.count;
+  battery.count = applyQtyOverride(battery.count, ov.battery);
+  battery.parallelCount = battery.count;
+  battery.totalKwh = battery.unit.kwh * battery.count;
 
   const chargeLossFactor = og.chargeLossFactor || 1.04;
   const recoveryDays = og.recoveryDays || 3;
   const batteryBufferKwh = Math.max(0, battery.totalKwh * og.batteryDoD - nightKwh);
   const requiredArrayKw = (dailyKwh + nightKwh * chargeLossFactor + batteryBufferKwh / recoveryDays) / (og.sunHours * og.systemEfficiency);
-  const totalPanels = Math.max(1, Math.ceil((requiredArrayKw * 1000) / panel.power));
-  const calcKW = (totalPanels * panel.power) / 1000;
+  const autoTotalPanels = Math.max(1, Math.ceil((requiredArrayKw * 1000) / panel.power));
+  let totalPanels = applyQtyOverride(autoTotalPanels, ov.panel);
+  let calcKW = (totalPanels * panel.power) / 1000;
+  // Structure/mounting normally follows the panel count 1:1, but the rep may
+  // reuse existing structure or need extra — so it gets its own override on
+  // top of whatever panel count (auto or overridden) ends up being used.
+  const structureQty = applyQtyOverride(totalPanels, ov.structure);
 
   const invMaxPvKw = getInverterMaxPvKw(D, inv.model);
   const PV_OVERSIZE_TOLERANCE = 1.30;
@@ -730,7 +756,7 @@ function computeOffgridQuote(D: any, inp: any) {
     panel, totalPanels, calcKW, panelCostPerWatt: panelPr.costPerWatt, panelSellPerWatt: panelPr.sellPerWatt,
     inverterLabel: "شاحن/انفرتر هجين MPPT", inverterType: `${inv.model} أو ما يعادله`,
     inverterCostBasis: invPricing.costBasis, inverterSell: invPricing.sell, inverterCount: inv.count,
-    structureCost: totalPanels * og.structurePerPanelCost, structureSell: totalPanels * og.structurePerPanelSell,
+    structureCost: structureQty * og.structurePerPanelCost, structureSell: structureQty * og.structurePerPanelSell, structureQty,
     cablingCost: og.cablingFixedCost, cablingSell: og.cablingFixedSell,
     installCost: calcKW * og.installPerKwCost, installSell: calcKW * og.installPerKwSell,
     battery: { ...battery, costBasis: batteryPricing.costBasis * battery.count, sell: batteryPricing.sell * battery.count },
@@ -751,6 +777,13 @@ function computeOffgridQuote(D: any, inp: any) {
     batteryModel: battery.unit.model, batteryBrand: battery.unit.brand, batteryAh: battery.unit.current,
     chargeLossFactor, recoveryDays, batteryBufferKwh,
     sunHours: og.sunHours, systemEfficiency: og.systemEfficiency,
+    autoQty: { panel: autoTotalPanels, inverter: autoInverterCount, battery: autoBatteryCount, structure: totalPanels },
+    qtyOverrideNotice: (
+      (ov.panel != null && applyQtyOverride(autoTotalPanels, ov.panel) !== autoTotalPanels) ||
+      (ov.inverter != null && applyQtyOverride(autoInverterCount, ov.inverter) !== autoInverterCount) ||
+      (ov.battery != null && applyQtyOverride(autoBatteryCount, ov.battery) !== autoBatteryCount) ||
+      (ov.structure != null && structureQty !== totalPanels)
+    ) ? "تم تعديل كمية بند واحد أو أكثر يدويًا عن الكمية المحسوبة تلقائيًا — الأسعار والتحذيرات الفنية أعلاه محسوبة على أساس الكميات المعدَّلة، فيرجى التأكد من أنها تغطي احتياج الموقع فعليًا بناءً على تقييمك الفني." : null,
     items, ...totals, sarPerKW: totals.finalTotal / calcKW,
   };
 }
