@@ -1,0 +1,34 @@
+name: Verify live site after deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for GitHub Pages to publish
+        run: sleep 30
+
+      - name: Check homepage responds
+        run: |
+          set -euo pipefail
+          URL="https://alhussieni.github.io/HoloulEnergyKSA-QL/index.html"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+          echo "Homepage returned HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Homepage did not return 200 after deploy."
+            exit 1
+          fi
+
+      - name: Check page actually contains expected content
+        run: |
+          set -euo pipefail
+          URL="https://alhussieni.github.io/HoloulEnergyKSA-QL/index.html"
+          if ! curl -s "$URL" | grep -q "HoloulEnergy"; then
+            echo "::error::Homepage did not contain expected content — possible broken deploy."
+            exit 1
+          fi
+          echo "Homepage content check passed."
