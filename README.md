@@ -1,5 +1,19 @@
 # Backend for HoloulEnergy KSA – Quote Line
 
+## Repo structure
+- `index.html`, `crm.html`, `pump-calculator.html` — the frontend pages.
+- `assets/css/`, `assets/js/modules/` — the frontend's styles and code,
+  split out of `index.html` (see `CHANGELOG.md`).
+- `supabase/functions/compute-quote/`, `supabase/functions/crm-api/` — the
+  source of the two deployed Edge Functions, kept here for reference and
+  history; deploy changes to them with `supabase functions deploy <name>`.
+- `supabase/migrations/` — every SQL migration, in order, `0001_init.sql`
+  through the latest-numbered file.
+- `archive/` — old `.patch` files and a superseded source file, kept for
+  history rather than deleted.
+- `tests/regression/` — automated tests for the calculation logic in
+  `assets/js/modules/`.
+
 **Status: `index.html` is now fully wired to this backend** (Project URL and
 anon key are already embedded in the file). Nothing left to edit in the
 frontend — just deploy the steps below and it works. The full flow (quote
@@ -22,16 +36,11 @@ prices, never the underlying cost/margin data, and the admin password is
 checked on the server.
 
 ## 1) Deploy the database schema
-In the Supabase dashboard → SQL Editor, paste and run, in order:
-`0001_init.sql`, `0002_inverter_brands.sql`, `0003_reps_and_quotes.sql`,
-`0004_product_catalog.sql`, `0005_product_images_bucket.sql`,
-`0006_session_tokens.sql`, `0007_veichi_inverter_specs_phase1.sql`,
-`0008_veichi_inverter_specs_phase234.sql`, `0009_veichi_pump_inverter_specs.sql`,
-`0010_veichi_battery_specs.sql`, `0011_veichi_accessories_specs.sql`,
-`0012_portfolio_content.sql`, `0013_offgrid_ongrid_ready_systems.sql`,
-`0014_veichi_ready_systems_repricing.sql`, `0015_customers.sql`
+In the Supabase dashboard → SQL Editor, paste and run, in order, every file
+in `supabase/migrations/` (`0001_init.sql` through the latest-numbered file):
 
-(or, if you use the Supabase CLI locally: `supabase db push`)
+(or, if you use the Supabase CLI locally: `supabase db push`, run from the
+repo root — it reads `supabase/migrations/` automatically)
 
 This creates all tables, fully locked down by Row Level Security with
 **no policies at all** — meaning the browser (anon key) cannot read or write
