@@ -1,0 +1,63 @@
+name: Daily database backup
+
+# Runs every day at 02:00 Riyadh time (23:00 UTC the day before) and can also
+# be triggered manually from the Actions tab ("Run workflow").
+on:
+  schedule:
+    - cron: "0 23 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install postgresql-client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Checkout backups branch
+        uses: actions/checkout@v4
+        with:
+          ref: backups
+          fetch-depth: 1
+
+      - name: Dump database
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "::error::SUPABASE_DB_URL secret is not set. See README-BACKUPS.md."
+            exit 1
+          fi
+          mkdir -p backups
+          STAMP=$(date -u +"%Y-%m-%d_%H%M")
+          pg_dump "$SUPABASE_DB_URL" \
+            --no-owner --no-privileges --schema=public \
+            -f "backups/${STAMP}.sql"
+          gzip "backups/${STAMP}.sql"
+
+      - name: Commit and push backup
+        run: |
+          git config user.name "backup-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add backups/
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore(backup): daily database snapshot $(date -u +"%Y-%m-%d")"
+            git push origin backups
+          fi
+
+      - name: Prune backups older than 90 days
+        run: |
+          find backups -name "*.sql.gz" -mtime +90 -print -delete || true
+          git config user.name "backup-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add backups/
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(backup): prune snapshots older than 90 days"
+            git push origin backups
+          fi
