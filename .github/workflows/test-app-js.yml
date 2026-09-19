@@ -1,0 +1,24 @@
+name: Regression tests for app.js
+
+on:
+  pull_request:
+    paths:
+      - "assets/js/app.js"
+  push:
+    branches: [main]
+    paths:
+      - "assets/js/app.js"
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run pure-function regression tests
+        run: node tests/regression/pure-functions.test.js
