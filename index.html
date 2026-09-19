@@ -44,7 +44,19 @@
   </a>
 </div>
 <footer class="foot">سجل تجاري: 7037810988 · الرقم الضريبي: 311386341200003 · للتواصل: 966561274344+</footer>
-<script src="assets/js/app.js"></script>
+<!-- Loaded as plain (non-module) scripts, in this exact order, so every
+     function and variable stays in the SAME global scope as before —
+     required because several are called from inline onclick="..." handlers
+     in the HTML, and later files (e.g. 08-wiring.js) call functions
+     defined in earlier ones (e.g. 05-render-calculator.js). -->
+<script src="assets/js/modules/01-supabase-engine.js"></script>
+<script src="assets/js/modules/02-client-cache.js"></script>
+<script src="assets/js/modules/03-admin-auth.js"></script>
+<script src="assets/js/modules/04-state.js"></script>
+<script src="assets/js/modules/05-render-calculator.js"></script>
+<script src="assets/js/modules/06-render-feasibility.js"></script>
+<script src="assets/js/modules/07-render-admin.js"></script>
+<script src="assets/js/modules/08-wiring.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </body>

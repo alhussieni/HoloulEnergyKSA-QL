@@ -10,7 +10,24 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-const APP_JS_PATH = path.join(__dirname, "..", "..", "assets", "js", "app.js");
+// app.js was split into ordered module files (see index.html for the load
+// order — this list MUST match it exactly, since some functions defined
+// in an earlier file are used by ones in a later file, same as the plain
+// <script> tags in the real page).
+const MODULE_FILES = [
+  "01-supabase-engine.js",
+  "02-client-cache.js",
+  "03-admin-auth.js",
+  "04-state.js",
+  "05-render-calculator.js",
+  "06-render-feasibility.js",
+  "07-render-admin.js",
+  "08-wiring.js",
+].map((f) => path.join(__dirname, "..", "..", "assets", "js", "modules", f));
+
+function readAppSource() {
+  return MODULE_FILES.map((p) => fs.readFileSync(p, "utf8")).join("\n\n");
+}
 
 function extractFunctionSource(src, name) {
   const startMarker = `function ${name}(`;
@@ -41,7 +58,7 @@ function extractFunctionSource(src, name) {
  * computeFeasibility can call irr if both are requested together).
  */
 function loadFunctions(names) {
-  const src = fs.readFileSync(APP_JS_PATH, "utf8");
+  const src = readAppSource();
   const sources = names.map((n) => extractFunctionSource(src, n));
   // vm context doesn't have `module` by default — provide it explicitly.
   const sandbox = { module: { exports: {} }, console };
