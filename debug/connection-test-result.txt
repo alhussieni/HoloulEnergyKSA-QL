@@ -1,4 +1,4 @@
-=== Sun Sep 20 23:29:04 UTC 2026 ===
+=== Sun Sep 20 23:33:19 UTC 2026 ===
 Secret SUPABASE_DB_URL is set: yes
 Secret length (chars): 112
 
@@ -12,7 +12,7 @@ starts with postgres://: no
 contains trailing whitespace/newline at end: no
 
 --- psql connection test ---
-psql: error: connection to server at "aws-1-ap-south-1.pooler.supabase.com" (3.111.225.200), port 5432 failed: FATAL:  password authentication failed for user "postgres"
-connection to server at "aws-1-ap-south-1.pooler.supabase.com" (3.111.225.200), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+psql: error: connection to server at "aws-1-ap-south-1.pooler.supabase.com" (3.109.171.244), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "aws-1-ap-south-1.pooler.supabase.com" (3.109.171.244), port 5432 failed: FATAL:  password authentication failed for user "postgres"
 
 psql exit code: 0
