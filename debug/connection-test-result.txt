@@ -1,0 +1,18 @@
+=== Sun Sep 20 12:32:24 UTC 2026 ===
+Secret SUPABASE_DB_URL is set: yes
+Secret length (chars): 112
+
+--- Structure check (password never printed) ---
+user: postgres.xhgwvszdatqlvlgqiikj
+password length (chars): 18
+host:port: aws-1-ap-south-1.pooler.supabase.com:5432
+dbname: postgres
+starts with postgresql://: yes
+starts with postgres://: no
+contains trailing whitespace/newline at end: no
+
+--- psql connection test ---
+psql: error: connection to server at "aws-1-ap-south-1.pooler.supabase.com" (3.111.225.200), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+connection to server at "aws-1-ap-south-1.pooler.supabase.com" (3.111.225.200), port 5432 failed: FATAL:  password authentication failed for user "postgres"
+
+psql exit code: 0
