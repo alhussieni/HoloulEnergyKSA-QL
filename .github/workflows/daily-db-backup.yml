@@ -40,33 +40,27 @@ jobs:
             echo "Secret SUPABASE_DB_URL is set: $([ -n "$SUPABASE_DB_URL" ] && echo yes || echo no)"
             echo "Secret length (chars): ${#SUPABASE_DB_URL}"
             echo ""
-            echo "--- Parsed URL structure (password redacted) ---"
-            python3 -c "
-import os, re
-url = os.environ.get('SUPABASE_DB_URL', '')
-m = re.match(r'^(postgresql|postgres)://([^:]+):([^@]*)@([^:/]+):(\d+)/(.+)$', url)
-if not m:
-    print('URL did NOT match the expected postgresql://user:pass@host:port/db pattern.')
-    print('First 15 chars:', repr(url[:15]))
-    print('Last 15 chars:', repr(url[-15:]))
-else:
-    scheme, user, pw, host, port, db = m.groups()
-    print('scheme:', scheme)
-    print('user:', repr(user))
-    print('password length:', len(pw))
-    print('password has literal @ (would break parsing):', '@' in pw)
-    print('password has literal : (would break parsing):', ':' in pw)
-    print('password starts/ends with whitespace:', pw != pw.strip())
-    print('host:', repr(host))
-    print('port:', repr(port))
-    print('db:', repr(db))
-    print('db has trailing whitespace/newline:', db != db.strip())
-"
+            echo "--- Structure check (password never printed) ---"
+            USERPASS="${SUPABASE_DB_URL#postgresql://}"
+            USERPASS="${USERPASS#postgres://}"
+            USERPASS="${USERPASS%%@*}"
+            REST="${SUPABASE_DB_URL#*@}"
+            HOSTPORT="${REST%%/*}"
+            DBNAME="${REST#*/}"
+            USERNAME="${USERPASS%%:*}"
+            PASSLEN=$(( ${#USERPASS} - ${#USERNAME} - 1 ))
+            echo "user: $USERNAME"
+            echo "password length (chars): $PASSLEN"
+            echo "host:port: $HOSTPORT"
+            echo "dbname: $DBNAME"
+            echo "starts with postgresql://: $([[ "$SUPABASE_DB_URL" == postgresql://* ]] && echo yes || echo no)"
+            echo "starts with postgres://: $([[ "$SUPABASE_DB_URL" == postgres://* ]] && echo yes || echo no)"
+            echo "contains trailing whitespace/newline at end: $([[ "$SUPABASE_DB_URL" =~ [[:space:]]$ ]] && echo yes || echo no)"
             echo ""
-            echo "--- psql connection test (SELECT current_user, current_database()) ---"
+            echo "--- psql connection test ---"
             psql "$SUPABASE_DB_URL" -c "select current_user, current_database(), version();" 2>&1
             echo ""
-            echo "exit code: $?"
+            echo "psql exit code: $?"
           } > debug/connection-test-result.txt 2>&1
           cat debug/connection-test-result.txt
 
@@ -76,7 +70,7 @@ else:
           git config user.name "backup-bot"
           git config user.email "actions@users.noreply.github.com"
           git add debug/
-          git commit -m "debug: connection test result $(date -u +"%Y-%m-%d_%H%M")" || echo "nothing to commit"
+          git commit -m "debug: connection test result $(date -u +'%Y-%m-%d_%H%M')" || echo "nothing to commit"
           git push origin backups
 
       - name: Dump database
