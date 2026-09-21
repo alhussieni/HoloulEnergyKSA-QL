@@ -1,3 +1,0 @@
-pg_dump: error: aborting because of server version mismatch
-pg_dump: detail: server version: 17.6; pg_dump version: 16.15 (Ubuntu 16.15-1.pgdg24.04+2)
-pg_dump exit code: 1
