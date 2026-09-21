@@ -1,18 +1,21 @@
-=== Mon Sep 21 09:17:07 UTC 2026 ===
+=== Mon Sep 21 09:21:50 UTC 2026 ===
 Secret SUPABASE_DB_URL is set: yes
-Secret length (chars): 88
+Secret length (chars): 110
 
 --- Structure check (password never printed) ---
-user: postgres
+user: postgres.xhgwvszdatqlvlgqiikj
 password length (chars): 16
-host:port: db.xhgwvszdatqlvlgqiikj.supabase.co:5432
+host:port: aws-1-ap-south-1.pooler.supabase.com:5432
 dbname: postgres
 starts with postgresql://: yes
 starts with postgres://: no
 contains trailing whitespace/newline at end: no
 
 --- psql connection test ---
-psql: error: connection to server at "db.xhgwvszdatqlvlgqiikj.supabase.co" (2406:da1a:314:7101:b2b1:337f:6534:be24), port 5432 failed: Network is unreachable
-	Is the server running on that host and accepting TCP/IP connections?
+ current_user | current_database |                                      version                                       
+--------------+------------------+------------------------------------------------------------------------------------
+ postgres     | postgres         | PostgreSQL 17.6 on aarch64-unknown-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit
+(1 row)
+
 
 psql exit code: 0
