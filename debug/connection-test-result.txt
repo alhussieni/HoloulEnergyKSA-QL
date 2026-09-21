@@ -1,4 +1,4 @@
-=== Mon Sep 21 09:21:50 UTC 2026 ===
+=== Mon Sep 21 09:24:49 UTC 2026 ===
 Secret SUPABASE_DB_URL is set: yes
 Secret length (chars): 110
 
@@ -19,3 +19,11 @@ contains trailing whitespace/newline at end: no
 
 
 psql exit code: 0
+
+--- pg_dump version ---
+pg_dump (PostgreSQL) 16.15 (Ubuntu 16.15-1.pgdg24.04+2)
+
+--- pg_dump test run (schema-only, first 30 lines of stderr) ---
+pg_dump: error: aborting because of server version mismatch
+pg_dump: detail: server version: 17.6; pg_dump version: 16.15 (Ubuntu 16.15-1.pgdg24.04+2)
+pg_dump exit code: 0
