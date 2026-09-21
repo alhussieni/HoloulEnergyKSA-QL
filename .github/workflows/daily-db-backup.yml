@@ -14,71 +14,21 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Install postgresql-client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Install postgresql-client 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg lsb-release
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+          echo "deb https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          pg_dump --version
 
       - name: Checkout backups branch
         uses: actions/checkout@v4
         with:
           ref: backups
           fetch-depth: 1
-
-      # TEMPORARY DEBUG STEP — safe to remove once the connection issue is
-      # resolved. Never echoes the password: only the parsed host/user/port
-      # (from the URL structure, not the DB), and psql's own connection
-      # result, which by design never includes the password either. Result
-      # is committed to this branch so it can be inspected without needing
-      # GitHub's log viewer.
-      - name: Debug connection (redacted)
-        env:
-          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
-        run: |
-          set +e
-          mkdir -p debug
-          {
-            echo "=== $(date -u) ==="
-            echo "Secret SUPABASE_DB_URL is set: $([ -n "$SUPABASE_DB_URL" ] && echo yes || echo no)"
-            echo "Secret length (chars): ${#SUPABASE_DB_URL}"
-            echo ""
-            echo "--- Structure check (password never printed) ---"
-            USERPASS="${SUPABASE_DB_URL#postgresql://}"
-            USERPASS="${USERPASS#postgres://}"
-            USERPASS="${USERPASS%%@*}"
-            REST="${SUPABASE_DB_URL#*@}"
-            HOSTPORT="${REST%%/*}"
-            DBNAME="${REST#*/}"
-            USERNAME="${USERPASS%%:*}"
-            PASSLEN=$(( ${#USERPASS} - ${#USERNAME} - 1 ))
-            echo "user: $USERNAME"
-            echo "password length (chars): $PASSLEN"
-            echo "host:port: $HOSTPORT"
-            echo "dbname: $DBNAME"
-            echo "starts with postgresql://: $([[ "$SUPABASE_DB_URL" == postgresql://* ]] && echo yes || echo no)"
-            echo "starts with postgres://: $([[ "$SUPABASE_DB_URL" == postgres://* ]] && echo yes || echo no)"
-            echo "contains trailing whitespace/newline at end: $([[ "$SUPABASE_DB_URL" =~ [[:space:]]$ ]] && echo yes || echo no)"
-            echo ""
-            echo "--- psql connection test ---"
-            psql "$SUPABASE_DB_URL" -c "select current_user, current_database(), version();" 2>&1
-            echo ""
-            echo "psql exit code: $?"
-            echo ""
-            echo "--- pg_dump version ---"
-            pg_dump --version
-            echo ""
-            echo "--- pg_dump test run (schema-only, first 30 lines of stderr) ---"
-            pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges --schema=public --schema-only 2>&1 1>/dev/null | head -30
-            echo "pg_dump exit code: $?"
-          } > debug/connection-test-result.txt 2>&1
-          cat debug/connection-test-result.txt
-
-      - name: Commit debug result
-        if: always()
-        run: |
-          git config user.name "backup-bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add debug/
-          git commit -m "debug: connection test result $(date -u +'%Y-%m-%d_%H%M')" || echo "nothing to commit"
-          git push origin backups
 
       - name: Dump database
         env:
