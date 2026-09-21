@@ -61,6 +61,13 @@ jobs:
             psql "$SUPABASE_DB_URL" -c "select current_user, current_database(), version();" 2>&1
             echo ""
             echo "psql exit code: $?"
+            echo ""
+            echo "--- pg_dump version ---"
+            pg_dump --version
+            echo ""
+            echo "--- pg_dump test run (schema-only, first 30 lines of stderr) ---"
+            pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges --schema=public --schema-only 2>&1 1>/dev/null | head -30
+            echo "pg_dump exit code: $?"
           } > debug/connection-test-result.txt 2>&1
           cat debug/connection-test-result.txt
 
