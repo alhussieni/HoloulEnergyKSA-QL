@@ -511,7 +511,7 @@ function renderSimilarProducts(catalog, catIdx, excludeRowIdx){
         const img = d.image || cat.categoryImage;
         const price = r[nCols-2];
         return `<div class="ready-card" data-similar="${catIdx}:${i}">
-          <div class="visual">${img ? `<img src="${img}" alt="${r[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}</div>
+          <div class="visual">${img ? `<img src="${img}" alt="${r[0]}">` : `<div class="noimg">📦</div>`}</div>
           <div class="body">
             <h3 class="name">${r[0]}</h3>
             <div class="price" style="color:var(--teal-dark)">${price} ﷼</div>
@@ -591,7 +591,7 @@ function renderCartQuoteDocument(){
           <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
           <div>
             <div style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">سجل تجاري: 7037810988 · الرقم الضريبي: 311386341200003</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">الرقم الوطني الموحد: 7037810988 · السجل التجاري: 1010970687 · الرقم الضريبي: 311386341200003</div>
             <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
           </div>
         </div>
@@ -713,7 +713,7 @@ function renderProducts(){
       </div>
       <div class="card">
         <div class="detail-split">
-          <div class="photo">${img ? `<img src="${img}" alt="${row[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}</div>
+          <div class="photo">${img ? `<img src="${img}" alt="${row[0]}">` : `<div class="noimg">📦</div>`}</div>
           <div>
             <span class="detail-cat-badge">${cat.category}</span>
             <div style="display:flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap;margin-top:var(--sp-1)">
@@ -893,7 +893,7 @@ function renderProducts(){
           const nCols = cat.columns.length;
           const priceVal = nCols>=2 ? row[nCols-2] : row[nCols-1];
           return `<div class="model-card${available?'':' unavailable-row'}">
-            ${thumb ? `<img class="thumb" src="${thumb}" alt="${row[0]}" loading="lazy">` : `<div class="thumb-noimg">📦</div>`}
+            ${thumb ? `<img class="thumb" src="${thumb}" alt="${row[0]}">` : `<div class="thumb-noimg">📦</div>`}
             <div class="body">
               <div class="name">${row[0]}${!available?' <span class="unavail-chip">غير متاح</span>':''}</div>
               <div class="specs"><span>${cat.category}</span></div>
@@ -924,7 +924,7 @@ function renderProducts(){
       </div>
       ${catalog.map((cat,ci)=>`
         <div class="category-card" data-opencat="${ci}">
-          ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}" loading="lazy">` : `<div class="noimg">📦</div>`}
+          ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="${cat.category}">` : `<div class="noimg">📦</div>`}
           <div class="overlay">
             <h3>${cat.category}</h3>
             <div class="count">${cat.rows.length} موديل</div>
@@ -1065,7 +1065,7 @@ function renderReadySystems(){
     ${systems.map(s=>`
       <div class="pcard2">
         <span class="pcard2-badge ${s.status==='متوفر'?'avail':'unavail'}">${s.status}</span>
-        <div class="pcard2-photo">${s.image ? `<img src="${s.image}" alt="${s.name}" loading="lazy">` : `<div class="noimg">🗂️</div>`}</div>
+        <div class="pcard2-photo">${s.image ? `<img src="${s.image}" alt="${s.name}">` : `<div class="noimg">🗂️</div>`}</div>
         <div class="pcard2-body">
           <div class="pcard2-name">${s.name}</div>
           <div class="pcard2-specs">
@@ -1148,7 +1148,7 @@ function renderReadySystemDetail(id){
   return `
   <div class="card">
     <div class="detail-split">
-      <div class="photo">${s.image ? `<img src="${s.image}" alt="${s.name}" loading="lazy">` : `<div class="noimg">🗂️</div>`}</div>
+      <div class="photo">${s.image ? `<img src="${s.image}" alt="${s.name}">` : `<div class="noimg">🗂️</div>`}</div>
       <div>
         <span class="detail-cat-badge">منظومة أوف-جريد جاهزة</span>
         <div style="display:flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap;margin-top:var(--sp-1)">
@@ -1632,7 +1632,7 @@ ${(function(){
       ${BOM_GENERIC_ITEM_KEYS.map(([key,label])=>`
         <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:var(--radius);padding:var(--sp-1) var(--sp-2)">
           <div class="bom-thumb" style="width:44px;height:44px;flex:0 0 44px">
-            ${adminConfig.bomItemImages && adminConfig.bomItemImages[key] ? `<img src="${adminConfig.bomItemImages[key]}" alt="${label}" loading="lazy">` : `<div class="noimg" style="font-size:16px">📦</div>`}
+            ${adminConfig.bomItemImages && adminConfig.bomItemImages[key] ? `<img src="${adminConfig.bomItemImages[key]}">` : `<div class="noimg" style="font-size:16px">📦</div>`}
           </div>
           <div style="flex:1;min-width:0">
             <div style="font-size:12px;font-weight:600">${label}</div>

@@ -110,7 +110,7 @@ function renderIrrigationCalc(){
           <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
           <div>
             <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">سجل تجاري: 7037810988 · الرقم الضريبي: 311386341200003</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">الرقم الوطني الموحد: 7037810988 · السجل التجاري: 1010970687 · الرقم الضريبي: 311386341200003</div>
             <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
           </div>
         </div>
@@ -267,7 +267,7 @@ function renderQuoteHeaderBanner(){
       <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
       <div>
         <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px">سجل تجاري: 7037810988 · الرقم الضريبي: 311386341200003</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">الرقم الوطني الموحد: 7037810988 · السجل التجاري: 1010970687 · الرقم الضريبي: 311386341200003</div>
         <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
       </div>
     </div>
