@@ -43,3 +43,11 @@
   Auth: يحتاج تفعيل يدوي من الداشبورد (لا يوجد API متاح لهذا الإعداد).
 - **`SUPABASE_DB_URL` secret** في GitHub Actions: يحتاج القيمة الحقيقية
   من صاحب المشروع (لا يمكن توليدها أو جلبها آليًا لأسباب أمنية).
+
+## Unreleased — E-invoicing Phase-1 hardening (ZATCA guide alignment)
+- QR: seller name = registered name (same as printed), timestamp without milliseconds, single QR only (removed the invoice-number QR), 96px print size.
+- Invoice: exact titles (فاتورة ضريبية / فاتورة ضريبية مبسطة), issue date+time in Asia/Riyadh, amounts with 2 decimals, per-line VAT rounding that foots to the total, document discount shown as its own row.
+- Standard (B2B) invoices now require buyer name, address and VAT/CR (VAT format validated).
+- Issued invoices can no longer be deleted or edited (DB triggers); cancellation = credit note (`crm-create-credit-note`).
+- Atomic sequence counter (`next_invoice_seq`) using Saudi-time day boundaries; legacy project-invoice creator disabled.
+- Migration `0018_einvoice_compliance.sql`. NOT included: Phase 2 (UBL XML, cryptographic stamp, CSID, clearance/reporting, QR tags 6-9).

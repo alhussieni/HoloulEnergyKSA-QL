@@ -193,10 +193,42 @@ table.admtable tbody tr:hover td{background:var(--sand);}
 body.printing-invoice{background:#fff!important;}
 body.printing-invoice > *:not(#invoicePrintArea){display:none!important;}
 body.printing-invoice #invoicePrintArea{display:block!important;}
+/* On-screen preview mode: dim backdrop, the A4 page floats centered and
+   scrolls if the viewport is shorter than it — this is what "👁️ عرض" opens.
+   None of this applies on the actual printed page (see @media print below). */
+@media screen{
+  body.printing-invoice{overflow-x:hidden;overflow-y:auto;}
+  body.printing-invoice #invoicePrintArea{min-height:100vh;background:#4b5563;padding:16px 12px 40px;box-sizing:border-box;}
+  /* invViewport is what actually gets zoomed down to fit a phone's screen
+     width (see fitInvoiceToViewport()) — invPage itself always stays a true
+     718px (= A4's printable width) so the print-fit math stays exact. */
+  .invViewport{margin:0 auto;}
+  body.printing-invoice .invPage{box-shadow:0 6px 24px rgba(0,0,0,.35);}
+}
+.viewerBar{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;justify-content:center;gap:10px;padding:10px;margin-bottom:16px;}
+.viewerBar .btn{box-shadow:0 2px 8px rgba(0,0,0,.25);}
 @media print{
   @page{size:A4;margin:10mm;}
   body.printing-invoice > *:not(#invoicePrintArea){display:none!important;}
-  body.printing-invoice #invoicePrintArea{display:block!important;}
+  body.printing-invoice #invoicePrintArea{display:block!important;padding:0!important;margin:0!important;}
+  /* Belt-and-braces centering: equal left/right space around the sheet on
+     the printed page, regardless of any screen-mode padding/scroll state
+     that was in effect a moment ago in the preview. */
+  .invViewport,.invPage{margin-left:auto!important;margin-right:auto!important;}
+  .no-print{display:none!important;}
+  /* A phone's narrow screen must never shrink the actual printed page — undo
+     fitInvoiceToViewport()'s zoom here, unconditionally, right before print. */
+  .invViewport{transform:none!important;width:auto!important;height:auto!important;}
+  /* Safety net for a rare invoice with many line items: rather than shrinking
+     text to an unreadable size to force one page, let it flow cleanly onto a
+     second page — but never split a table row, the totals block, the terms,
+     the warranty summary or the QR footer awkwardly across the page break,
+     and repeat the item-table header row if it does continue onto page 2. */
+  .invSheet2 .itemsTable2 tr{page-break-inside:avoid;}
+  .invSheet2 .itemsTable2 thead{display:table-header-group;}
+  .invSheet2 .qrMetaGrid,
+  .invSheet2 .totalsWarrantyGrid,
+  .invSheet2 .termsBlock{page-break-inside:avoid;}
 }
 
 #certPrintArea{display:none;}
@@ -271,39 +303,66 @@ body.printing-cert #certPrintArea{display:block!important;}
 .tag.warn{background:#FDECD2;color:#B5720B;border-radius:12px;padding:3px 10px;font-size:11.5px;font-weight:700;}
 
 /* ---- print sheet v2 (matches the reference tax invoice) ---- */
-.invSheet2{font-family:'Cairo',sans-serif;max-width:800px;margin:0 auto;padding:16px;color:var(--night);font-size:12px;}
+.invSheet2 .trialMark{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%) rotate(-24deg);font-size:64px;font-weight:800;color:rgba(176,67,44,.16);border:6px solid rgba(176,67,44,.16);padding:6px 26px;border-radius:14px;pointer-events:none;white-space:nowrap;z-index:5;}
+.invPage{width:718px;margin:0 auto;background:#fff;}
+.invSheet2{position:relative;font-family:'Cairo',sans-serif;width:718px;box-sizing:border-box;padding:16px;color:var(--night);font-size:12px;}
 .invSheet2 .topBar{height:8px;background:var(--teal-dark,#0B6E5C);border-radius:3px;margin-bottom:14px;}
 .invSheet2 .head2{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;}
 .invSheet2 .coName{font-weight:800;font-size:15px;}
 .invSheet2 .coMeta{font-size:10.5px;color:var(--muted);margin-top:6px;line-height:1.7;}
 .invSheet2 .coMeta span{color:var(--night);font-weight:600;}
 .invSheet2 .logoBlock img{width:66px;height:66px;object-fit:contain;}
-.invSheet2 .titleBlock{text-align:center;margin:12px 0 14px;}
+.invSheet2 .titleBlock{text-align:center;margin:0 0 8px;}
 .invSheet2 .titleBlock .tAr{font-weight:800;font-size:16px;color:var(--teal-dark,#0B6E5C);}
 .invSheet2 .titleBlock .tEn{font-size:11px;color:var(--muted);letter-spacing:1px;}
-.invSheet2 .metaTable{width:100%;border-collapse:collapse;margin-bottom:14px;border:1px solid var(--line);}
+/* QR sits next to the invoice's own identifying details (date/number/customer)
+   right under the letterhead — first thing seen and scanned, not buried at
+   the bottom. metaCard first in source = right column in RTL, qrBlock second
+   = left column (same left/right logic as .head2 above). */
+.invSheet2 .qrMetaGrid{display:flex;gap:14px;align-items:stretch;margin:14px 0;}
+.invSheet2 .metaCard{flex:1;min-width:0;}
+.invSheet2 .qrBlock{flex:0 0 112px;display:flex;align-items:center;justify-content:center;padding:6px;}  /* no outer frame/border, per request */
+.invSheet2 .metaTable{width:100%;border-collapse:collapse;border:1px solid var(--line);}
 .invSheet2 .metaTable td{border:1px solid var(--line);padding:6px 10px;font-size:11.5px;}
 .invSheet2 .metaTable .lbl{background:var(--sand);font-weight:700;width:38%;text-align:right;}
 .invSheet2 .metaTable .val{text-align:center;}
-.invSheet2 .itemsTable2{width:100%;border-collapse:collapse;font-size:10.5px;margin-bottom:12px;}
-.invSheet2 .itemsTable2 th{background:var(--teal-dark,#0B6E5C);color:#fff;padding:6px 6px;font-size:9.5px;}
-.invSheet2 .itemsTable2 td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top;}
+/* table-layout:fixed pins every column to the % width given on its <th> below,
+   so a long unbroken product code/name can NEVER push the table (and the whole
+   invoice) wider than the page — it wraps onto extra lines inside its own
+   column instead of overflowing past the sheet's edge. */
+.invSheet2 .itemsTable2{width:100%;table-layout:fixed;border-collapse:collapse;font-size:10.5px;margin-bottom:12px;}
+.invSheet2 .itemsTable2 th{background:var(--teal-dark,#0B6E5C);color:#fff;padding:6px 4px;font-size:9.5px;overflow-wrap:anywhere;word-break:break-word;}
+.invSheet2 .itemsTable2 td{padding:6px 4px;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere;word-break:break-word;}
 .invSheet2 .itemsTable2 .num{text-align:center;}
+.invSheet2 .itemsTable2 th:nth-child(1){width:3%;}
+.invSheet2 .itemsTable2 th:nth-child(2){width:12%;}
+.invSheet2 .itemsTable2 th:nth-child(3){width:19%;}
+.invSheet2 .itemsTable2 th:nth-child(4){width:7%;}
+.invSheet2 .itemsTable2 th:nth-child(5){width:6%;}
+.invSheet2 .itemsTable2 th:nth-child(6){width:10%;}
+.invSheet2 .itemsTable2 th:nth-child(7){width:10%;}
+.invSheet2 .itemsTable2 th:nth-child(8){width:9%;}
+.invSheet2 .itemsTable2 th:nth-child(9){width:10%;}
+.invSheet2 .itemsTable2 th:nth-child(10){width:14%;}
 .invSheet2 .itemsTable2 tfoot .sumRow td{border-top:2px solid var(--teal-dark,#0B6E5C);background:var(--sand);}
-.invSheet2 .totalsTable2{width:280px;margin-inline-start:auto;border-collapse:collapse;font-size:11.5px;margin-bottom:10px;}
+/* Totals card + warranty summary side by side (warranty first in source =
+   right column, totals second = left column) instead of stacked, so the
+   invoice stays compact and comfortably fits one A4 page. */
+.invSheet2 .totalsWarrantyGrid{display:flex;gap:14px;align-items:stretch;margin:10px 0;}
+.invSheet2 .totalsWarrantyGrid > *{flex:1;min-width:0;}
+.invSheet2 .totalsTable2{width:100%;border-collapse:collapse;font-size:11.5px;}
 .invSheet2 .totalsTable2 td{padding:6px 10px;border:1px solid var(--line);}
 .invSheet2 .totalsTable2 .lbl{background:var(--sand);text-align:right;}
 .invSheet2 .totalsTable2 .val{text-align:center;font-weight:700;}
 .invSheet2 .totalsTable2 .grandRow td{background:var(--teal-dark,#0B6E5C);color:#fff;font-weight:800;font-size:13px;}
 .invSheet2 .wordsLine{font-size:11.5px;margin:4px 0;text-align:center;}
 .invSheet2 .termsBlock{font-size:10px;color:var(--muted);margin-top:12px;line-height:1.7;text-align:center;}
-.invSheet2 .warrantyBlock{font-size:10px;color:#1E4E7A;background:#EFF5FB;border:1px solid #C7DCF0;border-radius:9px;margin-top:10px;padding:9px 12px;line-height:1.8;}
+.invSheet2 .warrantyBlock{font-size:10px;color:#1E4E7A;background:#EFF5FB;border:1px solid #C7DCF0;border-radius:9px;padding:9px 12px;line-height:1.8;}
 .invSheet2 .warrantyBlock .wTitle{font-weight:700;margin-bottom:4px;}
 .invSheet2 .warrantyBlock ul{margin:0;padding-inline-start:16px;}
 .invSheet2 .warrantyBlock li{margin:1px 0;}
 .invSheet2 .sigRow{display:flex;justify-content:space-between;margin-top:26px;font-size:11.5px;}
-.invSheet2 .footRow2{display:flex;justify-content:space-between;align-items:center;margin-top:18px;border-top:1px solid var(--line);padding-top:10px;}
-.invSheet2 .printQr{width:66px;height:66px;}
+.invSheet2 .printQr{width:100px;height:100px;}  /* the JS above also forces this after QRCode.toCanvas runs — kept here too so it is correct even before that JS fires */
 .invSheet2 .legal2{font-size:10px;color:var(--muted);}
 .invSheet2 #invQrCanvas{border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff;}
 </style>
@@ -458,6 +517,7 @@ body.printing-cert #certPrintArea{display:block!important;}
         <input type="text" id="invoiceSearchInput" placeholder="دور برقم الفاتورة أو اسم العميل أو رقم الجوال...">
         <button class="btn" id="newInvoiceBtn" type="button">+ فاتورة جديدة</button>
       </div>
+      <div id="trialBanner" style="display:none;margin-bottom:10px;padding:10px 14px;border:1px dashed #E7AC12;background:#FCF3DE;border-radius:10px;font-size:12.5px;"></div>
       <div class="card" style="padding:0;overflow:auto;"><div id="invoicesTableWrap"><div class="loadingNote">بيحمّل الفواتير...</div></div></div>
     </section>
 
@@ -519,7 +579,7 @@ body.printing-cert #certPrintArea{display:block!important;}
 <div id="invoicePrintArea"></div>
 <div id="certPrintArea"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js" onerror="window.__qrLibFailed=true;"></script>
 
 <script>
 /* ============ CONFIG (same project as index.html) ============ */
@@ -527,6 +587,8 @@ const SUPABASE_URL = 'https://xhgwvszdatqlvlgqiikj.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_4qWmgl6fWMpoU6F_o__ykg_Z0Xy_aJY';
 const ENGINE_FN = SUPABASE_URL + '/functions/v1/compute-quote'; // login only
 const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything else
+const INVOICE_FN = SUPABASE_URL + '/functions/v1/invoice-api';  // e-invoices (QR, credit notes, numbering)
+const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live']);
 
 let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[],
   customerTypes:[], classifications:[], regions:[], energySources:[], contactMethods:[], decisionPowerLevels:[],
@@ -550,7 +612,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch(CRM_FN, {
+  const res = await fetch(INVOICE_ACTIONS.has(action) ? INVOICE_FN : CRM_FN, {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -1777,7 +1839,7 @@ function printWarrantyCertificate(asset, customer){
         <div>
           <div class="coName">${SELLER.name}</div>
           <div class="coMeta">
-            ${SELLER.nameEn} · سجل تجاري: ${SELLER.cr} · الرقم الضريبي: ${SELLER.vat}<br>${SELLER.phone}
+            ${SELLER.nameEn} · الرقم الوطني الموحد: ${SELLER.cr} · السجل التجاري: ${SELLER.crNo} · الرقم الضريبي: ${SELLER.vat}<br>${SELLER.phone}
           </div>
         </div>
         <div class="logoBlock"><img src="assets/logo.png" alt="logo" onerror="this.style.display='none'"></div>
@@ -1881,7 +1943,7 @@ async function printGroupWarrantyCertificate(assetsList, customer){
         <div>
           <div class="coName">${SELLER.name}</div>
           <div class="coMeta">
-            ${SELLER.nameEn} · سجل تجاري: ${SELLER.cr} · الرقم الضريبي: ${SELLER.vat}<br>${SELLER.phone}
+            ${SELLER.nameEn} · الرقم الوطني الموحد: ${SELLER.cr} · السجل التجاري: ${SELLER.crNo} · الرقم الضريبي: ${SELLER.vat}<br>${SELLER.phone}
           </div>
         </div>
         <div class="logoBlock"><img src="assets/logo.png" alt="logo" onerror="this.style.display='none'"></div>
@@ -2806,7 +2868,9 @@ function closeInvoiceModal(){ invoiceOverlay.classList.remove('show'); }
 document.getElementById('newInvoiceBtn').addEventListener('click', ()=> openInvoiceModal());
 
 const PAY_METHOD_LABELS = {cash:'نقدي', card:'شبكة / بطاقة', transfer:'تحويل بنكي', other:'أخرى'};
-const SELLER = { name: 'حلول الطاقة المتجددة والمقاولات', nameEn: 'HoloulEnergy', cr: '7037810988', vat: '311386341200003', nationalAddress: 'RDMC8001', phone: '966561274344+' };
+const SELLER = { name: 'مؤسسة حلول الطاقة المتجددة والمقاولات', nameEn: 'HoloulEnergy', cr: '7037810988', crNo: '1010970687', vat: '311386341200003', nationalAddress: 'RDMC8001', phone: '966561274344+',
+  // Address per National Address proof no. 1077132936 (empty parts are not printed).
+  address: { buildingNo:'8001', street:'أحمد الكازروني', district:'حي المهدية', city:'الرياض', postalCode:'13752', additionalNo:'2343', country:'المملكة العربية السعودية' } };
 
 let CATALOG_PRODUCTS = null, CATALOG_PACKAGES = null;
 let invSelectedCustomer = null; // {id, name, phone, city, vat_number, commercial_registration} — must be an existing, registered customer
@@ -3455,6 +3519,7 @@ document.addEventListener('click', async (e)=>{
     btn.disabled = true; btn.textContent = 'بيحفظ...';
     try{
       const d = await crmApi('crm-create-pos-invoice', payload);
+      window.__einvoiceTrial = !!d.trialMode;
       closeInvoiceModal();
       if(SESSION.role === 'admin'){
         toast('✅ اتحفظت واتوافقت الفاتورة رقم '+d.invoice.invoice_number);
@@ -3479,17 +3544,49 @@ document.addEventListener('click', async (e)=>{
     }catch(err){ toast('تعذر الاعتماد: '+err.message); }
   }
 
-  if(e.target && e.target.classList.contains('deleteInvBtn')){
+  if(e.target && e.target.classList.contains('trialDelBtn')){
     const id = e.target.dataset.id;
-    if(!confirm('متأكد إنك عايز تحذف الفاتورة دي؟ الإجراء ده نهائي.')) return;
+    if(!confirm('حذف فاتورة تجريبية؟ (متاح في فترة التجربة بس)')) return;
     try{
-      await crmApi('admin-crm-delete-invoice', {invoiceId:id});
-      toast('🗑️ اتحذفت الفاتورة');
+      await crmApi('crm-delete-trial-invoice', {invoiceId:id});
+      toast('🗑️ اتحذفت الفاتورة التجريبية');
       loadInvoices();
     }catch(err){ toast('تعذر الحذف: '+err.message); }
   }
+
+  if(e.target && e.target.classList.contains('creditNoteBtn')){
+    const id = e.target.dataset.id;
+    const reason = (prompt('سبب الإشعار الدائن (إلغاء / مرتجع) — مطلوب:') || '').trim();
+    if(reason.length < 3) return;
+    if(!confirm('هيتصدر إشعار دائن بكامل قيمة الفاتورة وهتتحسب الفاتورة ملغاة. الإجراء ده نهائي. متأكد؟')) return;
+    try{
+      const d = await crmApi('crm-create-credit-note', {invoiceId:id, reason});
+      window.__einvoiceTrial = !!d.trialMode;
+      toast('✅ اتصدر الإشعار الدائن رقم '+d.invoice.invoice_number);
+      await loadInvoices();
+      printInvoice(d.invoice);
+    }catch(err){ toast('تعذر إصدار الإشعار: '+err.message); }
+  }
 });
 
+function renderTrialBanner(isAdmin){
+  const el = document.getElementById('trialBanner');
+  if(!el) return;
+  if(!window.__einvoiceTrial){ el.style.display='none'; return; }
+  el.style.display='block';
+  el.innerHTML = '🧪 <b>الفترة التجريبية:</b> الفواتير هنا للتجربة بس (بتطبع بعلامة "نسخة تجريبية") ويمكن حذفها. '
+    + (isAdmin ? '<button class="btn small" id="goLiveBtn" type="button" style="margin-inline-start:8px;">🚀 إنهاء التجربة وبدء الفواتير الفعلية</button>' : '');
+  const b = document.getElementById('goLiveBtn');
+  if(b) b.addEventListener('click', async ()=>{
+    if(!confirm('هيتم مسح كل فواتير التجربة وإعادة الترقيم من 001، وبعدها مينفعش حذف أي فاتورة (الإلغاء بإشعار دائن بس). الإجراء ده لا رجعة فيه. متأكد؟')) return;
+    if((prompt('اكتب كلمة  GO-LIVE  للتأكيد:')||'').trim() !== 'GO-LIVE') return;
+    try{
+      const r = await crmApi('crm-einvoice-go-live', {confirm:'GO-LIVE'});
+      toast('✅ بدأت الفواتير الفعلية — اتمسح '+r.deleted+' فاتورة تجريبية');
+      loadInvoices();
+    }catch(err){ toast('تعذر: '+err.message); }
+  });
+}
 async function loadInvoices(){
   const wrap = document.getElementById('invoicesTableWrap');
   wrap.innerHTML = '<div class="loadingNote">بيحمّل الفواتير...</div>';
@@ -3497,16 +3594,22 @@ async function loadInvoices(){
     const search = document.getElementById('invoiceSearchInput').value.trim();
     const d = await crmApi('crm-list-pos-invoices', {search});
     const isAdmin = SESSION.role === 'admin';
+    window.__invList = d.invoices;
+    window.__einvoiceTrial = !!d.trialMode;
+    renderTrialBanner(isAdmin);
     if(!d.invoices.length){ wrap.innerHTML = '<div class="loadingNote">مفيش فواتير لسه</div>'; return; }
     wrap.innerHTML = `<table class="admtable"><thead><tr>
       <th>رقم الفاتورة</th><th>العميل</th><th>الهاتف</th><th>الإجمالي</th><th>طريقة السداد</th><th>المندوب</th><th>الحالة</th><th>التاريخ</th><th></th>
       </tr></thead><tbody>
       ${d.invoices.map(inv=>{
         const approved = inv.approval_status === 'approved';
-        const badge = approved
-          ? '<span class="tag good">✅ معتمدة</span>'
+        const isCredit = inv.document_type === 'credit_note';
+        const badge = isCredit ? '<span class="tag warn">↩️ إشعار دائن</span>'
+          : inv.status === 'cancelled' ? '<span class="tag warn">🚫 ملغاة (بإشعار دائن)</span>'
+          : approved ? '<span class="tag good">✅ معتمدة</span>'
           : '<span class="tag warn">⏳ بانتظار الموافقة</span>';
         const actions = [];
+        actions.push(`<button class="btn ghost small previewInvBtn" data-id="${inv.id}">👁️ عرض</button>`);
         if(approved){
           actions.push(`<button class="btn ghost small reprintBtn" data-id="${inv.id}">🖨️ طباعة</button>`);
         } else if(isAdmin){
@@ -3514,7 +3617,9 @@ async function loadInvoices(){
         } else {
           actions.push(`<span style="color:var(--muted);font-size:11.5px;">بانتظار الأدمن</span>`);
         }
-        if(isAdmin) actions.push(`<button class="btn ghost small deleteInvBtn" data-id="${inv.id}" style="color:var(--bad);">🗑️</button>`);
+        // Issued invoices are never deleted — cancellation is done with a credit note.
+        if(isAdmin && window.__einvoiceTrial) actions.push(`<button class="btn ghost small trialDelBtn" data-id="${inv.id}" style="color:var(--bad);" title="حذف فاتورة تجريبية">🗑️</button>`);
+        if(isAdmin && approved && !isCredit && inv.status !== 'cancelled') actions.push(`<button class="btn ghost small creditNoteBtn" data-id="${inv.id}" style="color:var(--bad);">↩️ إشعار دائن</button>`);
         return `<tr>
           <td class="num">${inv.invoice_number}</td>
           <td>${inv.customer_name||'<span style="color:var(--muted)">بدون اسم</span>'}</td>
@@ -3523,7 +3628,7 @@ async function loadInvoices(){
           <td>${PAY_METHOD_LABELS[inv.payment_method]||inv.payment_method||'-'}</td>
           <td>${inv.rep_username||'-'}</td>
           <td>${badge}</td>
-          <td>${fmtDate(inv.created_at)}</td>
+          <td>${fmtDate(inv.issued_at || inv.created_at)}</td>
           <td style="display:flex;gap:6px;">${actions.join('')}</td>
         </tr>`;
       }).join('')}
@@ -3534,20 +3639,42 @@ async function loadInvoices(){
         if(inv) printInvoice(inv);
       });
     });
+    wrap.querySelectorAll('.previewInvBtn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const inv = d.invoices.find(x=>String(x.id)===String(btn.dataset.id));
+        if(inv) previewInvoice(inv);
+      });
+    });
   }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
 }
 function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 document.getElementById('invoiceSearchInput').addEventListener('input', debounce(loadInvoices, 400));
 
-function printInvoice(inv){
-  if(inv.approval_status !== 'approved'){
-    toast('⏳ الفاتورة دي لسه بانتظار موافقة الأدمن — مينفعش تتطبع للعميل قبل الاعتماد');
-    return;
-  }
+// Invoice money is always shown with 2 decimals (halalas) in Western digits so the
+// printed figures match the QR payload exactly (QR tags 4/5 are "1150.00" style).
+const invMoney = (v)=> Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2});
+const invRound2 = (n)=> Math.round((Number(n)+Number.EPSILON)*100)/100;
+function invIssueParts(inv){
+  // Same instant that is encoded in QR tag 3, shown in Saudi time.
+  const d = new Date(inv.issued_at || inv.created_at || Date.now());
+  const date = new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Riyadh', day:'2-digit', month:'long', year:'numeric'}).format(d);
+  const time = new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Riyadh', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false}).format(d);
+  return {date, time};
+}
+function buildInvoiceSheetHtml(inv){
   const items = Array.isArray(inv.items) ? inv.items : [];
-  const invoiceTypeLabel = inv.invoice_type === 'standard' ? 'فاتورة مبيعات ضريبية' : 'فاتورة مبيعات ضريبية مبسطة';
-  const dateStr = new Date(inv.created_at || Date.now()).toLocaleDateString('en-GB', {day:'2-digit', month:'long', year:'numeric'});
-  const area = document.getElementById('invoicePrintArea');
+  const isCredit = inv.document_type === 'credit_note';
+  const isStd = inv.invoice_type === 'standard';
+  // Titles exactly as required: "فاتورة ضريبية" / "فاتورة ضريبية مبسطة" (+ credit-note variants)
+  const titleAr = isCredit ? (isStd ? 'إشعار دائن لفاتورة ضريبية' : 'إشعار دائن لفاتورة ضريبية مبسطة')
+                           : (isStd ? 'فاتورة ضريبية' : 'فاتورة ضريبية مبسطة');
+  const titleEn = isCredit ? (isStd ? 'CREDIT NOTE' : 'SIMPLIFIED CREDIT NOTE')
+                           : (isStd ? 'TAX INVOICE' : 'SIMPLIFIED TAX INVOICE');
+  const {date:dateStr, time:timeStr} = invIssueParts(inv);
+  const rate = Number(inv.vat_percent)/100;
+  const orig = isCredit ? (window.__invList||[]).find(x=>String(x.id)===String(inv.related_invoice_id)) : null;
+  const a = SELLER.address || {};
+  const sellerAddr = [a.buildingNo, a.street, a.district, a.city, a.postalCode, a.additionalNo ? ('الرقم الإضافي '+a.additionalNo) : '', a.country].filter(Boolean).join('، ');
 
   const itemsRowsHtml = items.map((it, idx)=>{
     const nameCell = it.type === 'package'
@@ -3557,31 +3684,43 @@ function printInvoice(inv){
            (it.components||[]).map(c=>`<li>${c.name}${c.serial?` <span style="color:var(--muted);">(S/N: ${c.serial})</span>`:''}</li>`).join('')+
            '</ol>' : ''}`
       : it.name;
-    const beforeTax = it.qty * it.unitPrice - (it.discount||0);
-    const vatVal = beforeTax * (inv.vat_percent/100);
+    const beforeTax = invRound2(it.qty * it.unitPrice - (it.discount||0));
+    const vatVal = invRound2(beforeTax * rate);           // same per-line rounding as the server
     return `<tr>
       <td class="num">${idx+1}</td>
       <td class="num">${it.code||''}</td>
       <td>${nameCell}</td>
       <td class="num">${it.type==='package' ? 'باكدج' : 'قطعة'}</td>
       <td class="num">${it.qty}</td>
-      <td class="num">${fmtMoney(it.unitPrice)}</td>
-      <td class="num">${fmtMoney(beforeTax)}</td>
+      <td class="num">${invMoney(it.unitPrice)}</td>
+      <td class="num">${invMoney(beforeTax)}</td>
       <td class="num">${inv.vat_percent}%</td>
-      <td class="num">${fmtMoney(vatVal)}</td>
-      <td class="num" style="font-weight:700;">${fmtMoney(beforeTax+vatVal)}</td>
+      <td class="num">${invMoney(vatVal)}</td>
+      <td class="num" style="font-weight:700;">${invMoney(beforeTax+vatVal)}</td>
     </tr>`;
   }).join('');
 
-  area.innerHTML = `
-    <div class="invSheet2">
+  // A document-level discount is shown as its own (negative) row so the table foots exactly.
+  const disc = invRound2(inv.discount_total||0);
+  const discVat = invRound2(disc * rate);
+  const discRowHtml = disc > 0 ? `<tr>
+      <td class="num">${items.length+1}</td><td></td><td>خصم على الفاتورة</td><td></td><td></td><td></td>
+      <td class="num">-${invMoney(disc)}</td><td class="num">${inv.vat_percent}%</td>
+      <td class="num">-${invMoney(discVat)}</td><td class="num" style="font-weight:700;">-${invMoney(disc+discVat)}</td></tr>` : '';
+  const grossBeforeDiscount = invRound2(Number(inv.subtotal) + disc);
+
+  return `
+    <div class="invSheet2" id="invSheetInner">
+      ${window.__einvoiceTrial ? '<div class="trialMark">نسخة تجريبية — ليست فاتورة</div>' : ''}
       <div class="topBar"></div>
       <div class="head2">
         <div class="coBlock">
           <div class="coName">${SELLER.name}</div>
           <div class="coMeta">
             <div><span>العنوان الوطني:</span> ${SELLER.nationalAddress}</div>
+            ${sellerAddr?`<div><span>العنوان:</span> ${sellerAddr}</div>`:''}
             <div><span>الرقم الوطني الموحد:</span> ${SELLER.cr}</div>
+            <div><span>السجل التجاري:</span> ${SELLER.crNo}</div>
             <div><span>الرقم الضريبي (VAT):</span> ${SELLER.vat}</div>
             <div>SALES@HoloulEnergy.com</div>
           </div>
@@ -3590,98 +3729,202 @@ function printInvoice(inv){
           <img src="assets/logo.png" alt="logo" onerror="this.style.display='none'">
         </div>
       </div>
-      <div class="titleBlock">
-        <div class="tAr">${invoiceTypeLabel}</div>
-        <div class="tEn">TAX INVOICE</div>
+      <!-- QR moved up next to the invoice's own identifying details, so it's
+           the first thing seen/scanned — not buried at the very bottom.
+           metaCard first in source = right column in RTL, qrBlock second =
+           left column (same left/right logic as .head2 above). -->
+      <div class="qrMetaGrid">
+        <div class="metaCard">
+          <div class="titleBlock">
+            <div class="tAr">${titleAr}</div>
+            <div class="tEn">${titleEn}</div>
+          </div>
+          <table class="metaTable">
+            <tr><td class="val" dir="ltr" style="text-align:right;">${dateStr} — ${timeStr}</td><td class="lbl">تاريخ ووقت الإصدار</td></tr>
+            <tr><td class="val">${inv.invoice_number}</td><td class="lbl">${isCredit?'رقم الإشعار':'رقم الفاتورة'}</td></tr>
+            ${isCredit?`<tr><td class="val">${orig?orig.invoice_number:('#'+inv.related_invoice_id)}</td><td class="lbl">الفاتورة الأصلية</td></tr>
+            <tr><td class="val">${inv.reason||'-'}</td><td class="lbl">سبب الإشعار</td></tr>`:''}
+            <tr><td class="val">${inv.customer_name||'عميل نقدي'}</td><td class="lbl">اسم العميل</td></tr>
+            ${inv.customer_address?`<tr><td class="val">${inv.customer_address}</td><td class="lbl">عنوان العميل</td></tr>`:''}
+            ${inv.customer_vat_number?`<tr><td class="val">${inv.customer_vat_number}</td><td class="lbl">الرقم الضريبي للعميل</td></tr>`:''}
+            ${inv.customer_cr_number?`<tr><td class="val">${inv.customer_cr_number}</td><td class="lbl">السجل التجاري للعميل</td></tr>`:''}
+            <tr><td class="val">${inv.customer_phone||'-'}</td><td class="lbl">رقم الجوال</td></tr>
+          </table>
+        </div>
+        <div class="qrBlock">
+          <!-- ONE QR only: the ZATCA TLV/Base64 code. No other QR may sit on the invoice. -->
+          ${inv.qr_base64 ? '<canvas id="invQrCanvas" class="printQr"></canvas>' : '<div style="font-size:10px;color:var(--bad,#B0432C);text-align:center;">⚠️ بدون QR</div>'}
+        </div>
       </div>
-
-      <table class="metaTable">
-        <tr><td class="val">${dateStr}</td><td class="lbl">التاريخ</td></tr>
-        <tr><td class="val">${inv.invoice_number}</td><td class="lbl">رقم الفاتورة</td></tr>
-        <tr><td class="val">${inv.customer_name||'عميل نقدي'}</td><td class="lbl">اسم العميل</td></tr>
-        ${inv.customer_address?`<tr><td class="val">${inv.customer_address}</td><td class="lbl">عنوان العميل</td></tr>`:''}
-        ${inv.customer_vat_number?`<tr><td class="val">${inv.customer_vat_number}</td><td class="lbl">الرقم الضريبي للعميل</td></tr>`:''}
-        <tr><td class="val">${inv.customer_phone||'-'}</td><td class="lbl">رقم الجوال</td></tr>
-      </table>
 
       <table class="itemsTable2">
         <thead><tr>
           <th>#</th><th>رمز الصنف</th><th>اسم الصنف</th><th>الوحدة</th><th>الكمية</th>
           <th>سعر الوحدة قبل</th><th>الإجمالي قبل</th><th>نسبة الضريبة</th><th>قيمة الضريبة</th><th>الإجمالي شامل</th>
         </tr></thead>
-        <tbody>${itemsRowsHtml}</tbody>
+        <tbody>${itemsRowsHtml}${discRowHtml}</tbody>
         <tfoot><tr class="sumRow">
           <td colspan="6" style="text-align:left;font-weight:700;">الإجمالي</td>
-          <td class="num" style="font-weight:700;">${fmtMoney(inv.subtotal + (inv.discount_total||0))}</td>
+          <td class="num" style="font-weight:700;">${invMoney(inv.subtotal)}</td>
           <td></td>
-          <td class="num" style="font-weight:700;">${fmtMoney(inv.vat_amount)}</td>
-          <td class="num" style="font-weight:700;">${fmtMoney(inv.total)}</td>
+          <td class="num" style="font-weight:700;">${invMoney(inv.vat_amount)}</td>
+          <td class="num" style="font-weight:700;">${invMoney(inv.total)}</td>
         </tr></tfoot>
       </table>
 
-      <table class="totalsTable2">
-        <tr><td class="val">${fmtMoney(inv.subtotal + (inv.discount_total||0))}</td><td class="lbl">الإجمالي قبل الخصم</td></tr>
-        ${inv.discount_total?`<tr><td class="val">${fmtMoney(inv.discount_total)}</td><td class="lbl">الخصم</td></tr>`:''}
-        <tr><td class="val">${fmtMoney(inv.subtotal)}</td><td class="lbl">الإجمالي بعد الخصم وقبل الضريبة</td></tr>
-        <tr><td class="val">${fmtMoney(inv.vat_amount)}</td><td class="lbl">ضريبة القيمة المضافة (${inv.vat_percent}%)</td></tr>
-        <tr class="grandRow"><td class="val">${fmtMoney(inv.total)}</td><td class="lbl">الإجمالي المستحق شامل</td></tr>
-      </table>
+      <div class="totalsWarrantyGrid">
+        <div class="warrantyBlock">
+          <div class="wTitle">🛡️ ملخص الضمانات</div>
+          <ul>
+            <li>ضمان الألواح الشمسية: 30 عام على إنتاجية الطاقة، و12 عام ضد عيوب الصناعة.</li>
+            <li>ضمان المحولات (Inverters): عام واحد.</li>
+            <li>ضمان صناديق التجميع: عام واحد.</li>
+            <li>ضمان محولات الـ High Voltage: خمس أعوام.</li>
+            <li>ضمان بطاريات الـ High Voltage: عشر أعوام.</li>
+          </ul>
+        </div>
+        <table class="totalsTable2">
+          <tr><td class="val">${invMoney(grossBeforeDiscount)}</td><td class="lbl">الإجمالي قبل الخصم</td></tr>
+          ${disc>0?`<tr><td class="val">${invMoney(disc)}</td><td class="lbl">الخصم</td></tr>`:''}
+          <tr><td class="val">${invMoney(inv.subtotal)}</td><td class="lbl">الإجمالي الخاضع للضريبة (بعد الخصم)</td></tr>
+          <tr><td class="val">${invMoney(inv.vat_amount)}</td><td class="lbl">ضريبة القيمة المضافة (${inv.vat_percent}%)</td></tr>
+          <tr class="grandRow"><td class="val">${invMoney(inv.total)}</td><td class="lbl">${isCredit?'إجمالي الإشعار شامل الضريبة':'الإجمالي المستحق شامل الضريبة'}</td></tr>
+        </table>
+      </div>
 
-      <div class="wordsLine">الإجمالي المستحق كتابة: ${tafqitSar(inv.total)}</div>
-      <div class="wordsLine" style="font-weight:700;color:var(--good,#0FA98D);">✅ مدفوعة بالكامل — ${PAY_METHOD_LABELS[inv.payment_method]||inv.payment_method||''}</div>
+      <div class="wordsLine">${isCredit?'الإجمالي':'الإجمالي المستحق'} كتابة: ${tafqitSar(inv.total)}</div>
+      ${isCredit ? '' : `<div class="wordsLine" style="font-weight:700;color:var(--good,#0FA98D);">✅ مدفوعة بالكامل — ${PAY_METHOD_LABELS[inv.payment_method]||inv.payment_method||''}</div>`}
 
       <div class="termsBlock">
         الشروط والملاحظات:<br>
         ${inv.notes ? inv.notes : 'لا يوجد ملاحظات إضافية على هذه الفاتورة.'}
       </div>
-
-      <div class="warrantyBlock">
-        <div class="wTitle">🛡️ ملخص الضمانات</div>
-        <ul>
-          <li>ضمان الألواح الشمسية: 30 عام على إنتاجية الطاقة، و12 عام ضد عيوب الصناعة.</li>
-          <li>ضمان المحولات (Inverters): عام واحد.</li>
-          <li>ضمان صناديق التجميع: عام واحد.</li>
-          <li>ضمان محولات الـ High Voltage: خمس أعوام.</li>
-          <li>ضمان بطاريات الـ High Voltage: عشر أعوام.</li>
-        </ul>
-      </div>
-
-      <div class="footRow2" style="justify-content:flex-end;border-top:none;margin-top:14px;padding-top:0;">
-        <div style="display:flex;gap:14px;align-items:flex-end;">
-          <canvas id="invNumberQrCanvas" class="printQr"></canvas>
-          <canvas id="invQrCanvas" class="printQr"></canvas>
-        </div>
-      </div>
     </div>
   `;
-  document.body.classList.add('printing-invoice');
-  const finishPrint = ()=>{
-    window.print();
-    setTimeout(()=> document.body.classList.remove('printing-invoice'), 300);
-  };
-  // Two separate QR codes, each rendered at a high internal bitmap resolution
-  // (300px) then scaled DOWN to a small display size via CSS (.printQr).
-  // Printing/PDF export rasterizes at much higher DPI than screen — a QR
-  // drawn small (e.g. 74px) gets stretched back up for print and turns into
-  // a blurry, unscannable noise block. Rendering large and letting the
-  // browser downscale keeps every module sharp at print resolution.
-  //  - invNumberQrCanvas: plain text = the invoice number itself, so a staff
-  //    member can scan it with any phone camera and eyeball-match it against
-  //    the printed number — a quick tamper/mismatch check independent of the tax QR.
-  //  - invQrCanvas: the official simplified-tax-invoice TLV payload.
-  const QR_RENDER_PX = 300;
-  const drawInvoiceNumberQr = (cb) => {
-    if(window.QRCode){
-      QRCode.toCanvas(document.getElementById('invNumberQrCanvas'), String(inv.invoice_number||''), {width:QR_RENDER_PX, margin:1}, cb);
-    } else cb();
-  };
-  const drawZatcaQr = (cb) => {
-    if(window.QRCode && inv.qr_base64){
-      QRCode.toCanvas(document.getElementById('invQrCanvas'), inv.qr_base64, {width:QR_RENDER_PX, margin:1}, cb);
-    } else cb();
-  };
-  drawInvoiceNumberQr(()=> drawZatcaQr(finishPrint));
 }
+
+// A4 printable content box at 10mm margins (matches the @page rule below),
+// A4's printable content box at 10mm margins, in CSS px (96 px/in is fixed by
+// the CSS spec regardless of screen/printer DPI): 190mm × 277mm ≈ 718 × 1047px.
+// The sheet is designed (compact spacing below) to fit inside this for a
+// normal invoice. We deliberately do NOT auto-shrink text to force a fit —
+// on real printers/PDF exporters that behaved unpredictably (fonts could end
+// up too small to read, or clipped, depending on the browser/margins/paper
+// size in play). Instead: page-break-inside:avoid (CSS, further down) keeps
+// every block intact, so if an invoice genuinely has too many line items for
+// one page, it cleanly continues onto a second page instead of being crushed.
+const A4_CONTENT_W = 718;
+// Final on-page QR size. 64px scanned unreliably, went to 80px, then bumped
+// another 25% (80 * 1.25 = 100) for an even more reliable scan.
+const QR_DISPLAY_SIZE = 100;
+
+// Zooms the ENTIRE invoice page down so it
+// is fully visible on a narrow phone screen instead of running off the right
+// edge. Screen-only: the @media print rule below forcibly resets this before
+// anything is sent to a printer, so a phone's screen width can never shrink
+// what actually gets printed.
+function fitInvoiceToViewport(){
+  const outer = document.getElementById('invViewport');
+  const wrap = document.getElementById('invPageWrap');
+  if(!outer || !wrap) return;
+  outer.style.transform = 'none';
+  outer.style.width = 'auto';
+  outer.style.height = 'auto';
+  const available = (outer.parentElement ? outer.parentElement.clientWidth : 0) || window.innerWidth || 0;
+  const naturalW = wrap.offsetWidth || A4_CONTENT_W;   // always the sheet's true, unshrunk width (718px)
+  const naturalH = wrap.offsetHeight || 0;
+  if(available > 0 && naturalW > available){
+    const s = available / naturalW;
+    outer.style.transformOrigin = 'top center';
+    outer.style.transform = `scale(${s})`;
+    outer.style.height = Math.round(naturalH * s) + 'px';
+  }
+}
+
+let __invViewerResizeHandler = null;
+
+function closeInvoiceViewer(){
+  document.body.classList.remove('printing-invoice');
+  if(__invViewerResizeHandler){ window.removeEventListener('resize', __invViewerResizeHandler); __invViewerResizeHandler = null; }
+}
+
+// Shared renderer behind both printInvoice() and previewInvoice(). Draws the
+// invoice full-screen (everything else in the app is hidden via the
+// .printing-invoice body class), fits it to one A4 page, then either opens
+// the print dialog right away (autoPrint) or leaves it on screen with a
+// small toolbar (👁️ preview) so the person can check it, print it from
+// there, or just close it without printing anything.
+function openInvoiceViewer(inv, autoPrint){
+  const area = document.getElementById('invoicePrintArea');
+  const toolbarHtml = `
+    <div class="viewerBar no-print">
+      <button type="button" class="btn small" id="invViewerPrintBtn">🖨️ طباعة</button>
+      <button type="button" class="btn ghost small" id="invViewerCloseBtn">✖️ إغلاق${autoPrint?'':' المعاينة'}</button>
+    </div>`;
+  area.innerHTML = `${toolbarHtml}<div class="invViewport" id="invViewport"><div class="invPage" id="invPageWrap">${buildInvoiceSheetHtml(inv)}</div></div>`;
+  document.body.classList.add('printing-invoice');
+  document.getElementById('invViewerCloseBtn').addEventListener('click', closeInvoiceViewer);
+  document.getElementById('invViewerPrintBtn').addEventListener('click', ()=>{ fitInvoiceToViewport(); window.print(); });
+
+  const ready = ()=>{
+    fitInvoiceToViewport();
+    if(autoPrint){
+      window.print();
+      setTimeout(closeInvoiceViewer, 300);
+    } else {
+      __invViewerResizeHandler = ()=> fitInvoiceToViewport();
+      window.addEventListener('resize', __invViewerResizeHandler);
+    }
+  };
+  if(!inv.qr_base64){
+    ready();
+  } else if(!window.QRCode){
+    toast('⚠️ مكتبة رسم الـ QR ماتحمّلتش — حدّث الصفحة (Ctrl+Shift+R) وجرّب تاني');
+    ready();
+  } else {
+    // Drawn at 300 native pixels for a crisp, high-density print bitmap, then
+    // forced back down to our intended small on-page display size — the
+    // qrcode.js library itself sets an INLINE style="width:...;height:..."
+    // matching the {width:300} option, which silently overrides the
+    // ".printQr{width:...}" CSS class (inline beats an external stylesheet),
+    // so that override has to be undone explicitly, right here, every time.
+    QRCode.toCanvas(document.getElementById('invQrCanvas'), inv.qr_base64, {width:300, margin:1, errorCorrectionLevel:'M'}, (err)=>{
+      if(err){ toast('⚠️ تعذر رسم QR: '+err.message); }
+      else {
+        const c = document.getElementById('invQrCanvas');
+        c.style.width = QR_DISPLAY_SIZE + 'px';
+        c.style.height = QR_DISPLAY_SIZE + 'px';
+      }
+      ready();
+    });
+  }
+}
+
+// Actual print (used right after creating an invoice/credit note, and from
+// the 🖨️ طباعة button in the list). Enforces the same compliance checks as
+// before: must be approved, must have a QR.
+function printInvoice(inv){
+  if(inv.approval_status !== 'approved'){
+    toast('⏳ الفاتورة دي لسه بانتظار موافقة الأدمن — مينفعش تتطبع للعميل قبل الاعتماد');
+    return;
+  }
+  if(!inv.qr_base64){
+    toast('⚠️ الفاتورة دي مفيهاش QR محفوظ في قاعدة البيانات — مينفعش تتطبع');
+    return;
+  }
+  openInvoiceViewer(inv, true);
+}
+
+// View-only: opens the exact same one-page layout on screen — no print
+// dialog, nothing sent to a printer. Works even for a not-yet-approved
+// invoice or one missing its QR, so it can be used to check the numbers
+// before approving/printing.
+function previewInvoice(inv){
+  if(inv.approval_status !== 'approved') toast('👁️ معاينة فقط — الفاتورة دي لسه بانتظار الاعتماد ومينفعش تتطبع للعميل.');
+  else if(!inv.qr_base64) toast('👁️ معاينة فقط — الفاتورة دي مفيهاش QR ومينفعش تتطبع.');
+  openInvoiceViewer(inv, false);
+}
+
 
 </script>
 </body>
