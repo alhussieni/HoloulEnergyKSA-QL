@@ -596,6 +596,34 @@ let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[]
   assetTypes:[], assetStatuses:[], quotationStatuses:[],
   leadSources:[], projectScopeTypes:[], projectStatuses:[], costTypes:[], paymentMethods:[],
   ticketPriorities:[], ticketStatuses:[], maintenanceContractStatuses:[], milestoneStatuses:[] };
+// --- Cross-app admin single sign-on -----------------------------------
+// index.html (the calculator, with its own "لوحة التحكم" admin panel) and
+// this CRM page are two separate pages on the same site. Both verify admin
+// tokens against the same server-side session, so a token issued by
+// logging into one is already valid on the other — this just shares that
+// ONE token via localStorage (same origin) so logging into either logs the
+// admin into both, with no second password prompt.
+const ADMIN_SSO_KEY = 'holoul_admin_sso_v1';
+function decodeAdminTokenExp(token){
+  try{
+    let s = token.split('.')[0].replace(/-/g,'+').replace(/_/g,'/');
+    while(s.length % 4) s += '=';
+    return JSON.parse(atob(s)).exp || null; // unix seconds, set by the server to match the token's real TTL
+  }catch(e){ return null; }
+}
+function shareAdminSession(token){
+  const exp = decodeAdminTokenExp(token);
+  if(exp) localStorage.setItem(ADMIN_SSO_KEY, JSON.stringify({token, exp}));
+}
+function readSharedAdminSession(){
+  let saved;
+  try{ saved = JSON.parse(localStorage.getItem(ADMIN_SSO_KEY)||'null'); }catch(e){ saved = null; }
+  if(!saved || !saved.token || !saved.exp) return null;
+  if(saved.exp * 1000 <= Date.now()){ localStorage.removeItem(ADMIN_SSO_KEY); return null; }
+  return saved.token;
+}
+function clearSharedAdminSession(){ localStorage.removeItem(ADMIN_SSO_KEY); }
+
 let SESSION = null; // { role, token, displayName }
 let loginRole = 'rep';
 
@@ -656,11 +684,13 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
     if(data.error || !data.token){ errEl.textContent = loginRole==='admin' ? "كلمة السر غير صحيحة" : "بيانات الدخول غير صحيحة"; return; }
     SESSION = { role: loginRole, token: data.token, displayName: loginRole==='admin' ? 'الأدمن' : data.displayName };
     sessionStorage.setItem('holoul_crm_session', JSON.stringify(SESSION));
+    if(loginRole === 'admin') shareAdminSession(data.token); // let index.html's لوحة التحكم pick this up too
     enterApp();
   }catch(err){ errEl.textContent = "مشكلة في الاتصال، حاول تاني"; }
 });
 
 document.getElementById('logoutBtn').addEventListener('click', ()=>{
+  if(SESSION && SESSION.role === 'admin') clearSharedAdminSession();
   sessionStorage.removeItem('holoul_crm_session');
   location.reload();
 });
@@ -691,9 +721,30 @@ async function enterApp(){
   loadCustomers();
 }
 
-(function tryRestoreSession(){
+(async function tryRestoreSession(){
   const saved = sessionStorage.getItem('holoul_crm_session');
-  if(saved){ SESSION = JSON.parse(saved); enterApp(); }
+  if(saved){ SESSION = JSON.parse(saved); enterApp(); return; }
+  // No CRM-local session in this tab — but the admin may have just logged
+  // into index.html's لوحة التحكم; pick that session up instead of asking
+  // for the password again here. Verified against the server first so an
+  // expired/rotated shared token doesn't drop the admin into a half-broken
+  // screen — it just falls back to the normal login form.
+  const shared = readSharedAdminSession();
+  if(!shared) return;
+  try{
+    const res = await fetch(CRM_FN, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer "+SUPABASE_ANON_KEY, "apikey": SUPABASE_ANON_KEY },
+      body: JSON.stringify({ action: 'admin-crm-settings', adminToken: shared })
+    });
+    const data = await res.json();
+    if(data.error) throw new Error(data.error);
+    SESSION = { role: 'admin', token: shared, displayName: 'الأدمن' };
+    sessionStorage.setItem('holoul_crm_session', JSON.stringify(SESSION));
+    enterApp();
+  }catch(e){
+    clearSharedAdminSession(); // invalid/expired server-side — stop retrying, show the normal login form
+  }
 })();
 
 /* ============ TABS ============ */
