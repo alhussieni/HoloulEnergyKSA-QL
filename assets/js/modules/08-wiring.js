@@ -34,6 +34,39 @@ let deepLinkReadySystemId = null;
    with a 14-day expiry so it survives closing the browser entirely. ---- */
 const REP_REMEMBER_KEY = 'holoul_rep_remember_v1';
 const ADMIN_REMEMBER_KEY = 'holoul_admin_remember_v1';
+
+// --- Cross-app admin single sign-on -----------------------------------
+// The calculator (this page) and the CRM (crm.html) are two separate pages
+// on the same site, each with its own login screen — but they both verify
+// admin tokens against the SAME server-side session (compute-quote /
+// crm-api / invoice-api all check the same admin_secret.session_version),
+// so a token issued by logging into one is already valid on the other.
+// This just shares that ONE token between them via localStorage (same
+// origin, so both pages can read/write it) so logging into either one logs
+// the admin into both, without touching the separate "remember me on this
+// device for two weeks" feature above (ADMIN_REMEMBER_KEY), which keeps
+// working exactly as it did.
+const ADMIN_SSO_KEY = 'holoul_admin_sso_v1';
+function decodeAdminTokenExp(token){
+  try{
+    let s = token.split('.')[0].replace(/-/g,'+').replace(/_/g,'/');
+    while(s.length % 4) s += '=';
+    return JSON.parse(atob(s)).exp || null; // unix seconds, set by the server to match the token's real TTL
+  }catch(e){ return null; }
+}
+function shareAdminSession(token){
+  const exp = decodeAdminTokenExp(token);
+  if(exp) localStorage.setItem(ADMIN_SSO_KEY, JSON.stringify({token, exp}));
+}
+function readSharedAdminSession(){
+  let saved;
+  try{ saved = JSON.parse(localStorage.getItem(ADMIN_SSO_KEY)||'null'); }catch(e){ saved = null; }
+  if(!saved || !saved.token || !saved.exp) return null;
+  if(saved.exp * 1000 <= Date.now()){ localStorage.removeItem(ADMIN_SSO_KEY); return null; }
+  return saved.token;
+}
+function clearSharedAdminSession(){ localStorage.removeItem(ADMIN_SSO_KEY); }
+
 let repAuthed = false, repUsername = null, repTokenMem = null, repDisplayName = null, repPermissions = {};
 try{
   const remembered = JSON.parse(localStorage.getItem(REP_REMEMBER_KEY)||'null');
@@ -173,6 +206,7 @@ function wire(){
         } else {
           localStorage.removeItem(ADMIN_REMEMBER_KEY);
         }
+        shareAdminSession(adminTokenMem); // let crm.html pick this session up too, no re-login needed there
         render();
       }catch(e){ adminTokenMem = null; alert('كلمة المرور غير صحيحة'); }
     };
@@ -792,6 +826,7 @@ function wire(){
         const data = await callEngine('change-admin-password', { adminToken: adminTokenMem, newPassword: np });
         adminTokenMem = data.token; // server rotates the session; old tokens elsewhere are now invalid
         if(localStorage.getItem(ADMIN_REMEMBER_KEY)) localStorage.setItem(ADMIN_REMEMBER_KEY, JSON.stringify({token: adminTokenMem, expiresAt: Date.now() + 14*24*3600*1000}));
+        shareAdminSession(adminTokenMem); // keep crm.html's copy of the session in sync with the rotated token
         alert('تم تحديث كلمة المرور ✔');
       }catch(e){ alert('تعذر التحديث: '+e.message); }
       render();
@@ -799,6 +834,7 @@ function wire(){
     document.getElementById('adm_logout').onclick = ()=>{
       adminAuthed = false; adminTokenMem = null; adminConfig = null; currentView='calc';
       localStorage.removeItem(ADMIN_REMEMBER_KEY);
+      clearSharedAdminSession();
       document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
       document.querySelector('[data-view="calc"]').classList.add('active');
       render();
@@ -1364,9 +1400,15 @@ refresh();
 (async function restoreRememberedAdminSession(){
   let saved;
   try{ saved = JSON.parse(localStorage.getItem(ADMIN_REMEMBER_KEY)||'null'); }catch(e){ saved = null; }
+  let fromRememberMe = true;
   if(!saved || !saved.token || saved.expiresAt <= Date.now()){
     if(saved) localStorage.removeItem(ADMIN_REMEMBER_KEY);
-    return;
+    // No "remember me on this device" session here — but the admin may have
+    // just logged in over on crm.html; pick that session up instead so they
+    // don't have to type the password again on this page too.
+    const shared = readSharedAdminSession();
+    if(!shared) return;
+    saved = { token: shared }; fromRememberMe = false;
   }
   try{
     adminTokenMem = saved.token;
@@ -1376,10 +1418,12 @@ refresh();
       const repsData = await callEngine('admin-list-reps', { adminToken: adminTokenMem });
       adminReps = repsData.reps || [];
     }catch(e){ adminReps = []; }
+    if(!fromRememberMe) shareAdminSession(adminTokenMem); // refresh our copy's exp tracking either way
     render();
   }catch(e){
     adminTokenMem = null; adminAuthed = false;
-    localStorage.removeItem(ADMIN_REMEMBER_KEY); // token expired/invalidated server-side — stop retrying
+    if(fromRememberMe) localStorage.removeItem(ADMIN_REMEMBER_KEY); // token expired/invalidated server-side — stop retrying
+    else clearSharedAdminSession();
   }
 })();
 

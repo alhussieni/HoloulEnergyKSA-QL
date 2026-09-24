@@ -16,10 +16,20 @@ function normalizeAdminConfig(cfg){
 
 function adminPasswordGate(cb){
   if(adminTokenMem){ cb(); return; }
+  const shared = readSharedAdminSession();
+  if(shared){
+    adminTokenMem = shared;
+    callEngine('admin-config', { adminToken: adminTokenMem }).then(data=>{
+      adminConfig = normalizeAdminConfig(data.config);
+      cb();
+    }).catch(()=>{ adminTokenMem = null; clearSharedAdminSession(); adminPasswordGate(cb); });
+    return;
+  }
   const p = prompt('كلمة سر الأدمن:');
   if(p==null) return;
   callEngine('admin-login', { adminPassword: p }).then(loginData=>{
     adminTokenMem = loginData.token;
+    shareAdminSession(adminTokenMem);
     return callEngine('admin-config', { adminToken: adminTokenMem });
   }).then(data=>{
     adminConfig = normalizeAdminConfig(data.config);
