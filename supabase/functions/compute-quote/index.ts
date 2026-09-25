@@ -118,11 +118,6 @@ function computeQuote(D: any, inp: any) {
   }
 
   const reactorModel = pickLadder(D.reactorLadder, Iimp);
-  // Reactor/cables/MC4 now price the same way panels/inverters/batteries
-  // already do: resolveCatalogPricing(category, brand, listPrice) reads the
-  // catalog reference price + whatever supplierDiscountPct/sellDiscountPct
-  // is registered for that (category, brand) in الخصومات. reactorMarkupPct
-  // stays only as the fallback markup if no discount row is registered yet.
   const reactorRow = findExactCatalogRow(D, "الريأكتور", `VEICHI Reactor ${reactorModel}A`);
   const reactorPricing = resolveCatalogPricing(D, reactorRow.category, reactorRow.brand, reactorRow.listPrice, D.reactorMarkupPct || 0);
   const reactorPrice = reactorRow.listPrice;
@@ -544,13 +539,6 @@ function pickCatalogBattery(D: any, nameplateKwhNeeded: number, requestedStandar
   };
 }
 
-// Off-grid BOM quantities (panels/inverter/battery/structure) are engineering
-// recommendations from the sizing formulas below — but the rep/engineer on
-// site may need to raise or lower any of them based on field judgment (site
-// conditions, client budget, stock on hand, etc). `qtyOverrides` on the quote
-// input carries those manual quantities; this resolves one field of it,
-// ignoring anything not a positive number so a bad/empty value silently
-// falls back to the calculated quantity instead of breaking the quote.
 function applyQtyOverride(auto: number, override: any): number {
   const n = Number(override);
   if (override === null || override === undefined || override === "" || !isFinite(n) || n <= 0) return auto;
@@ -705,9 +693,6 @@ function computeOffgridQuote(D: any, inp: any) {
   const autoTotalPanels = Math.max(1, Math.ceil((requiredArrayKw * 1000) / panel.power));
   let totalPanels = applyQtyOverride(autoTotalPanels, ov.panel);
   let calcKW = (totalPanels * panel.power) / 1000;
-  // Structure/mounting normally follows the panel count 1:1, but the rep may
-  // reuse existing structure or need extra — so it gets its own override on
-  // top of whatever panel count (auto or overridden) ends up being used.
   const structureQty = applyQtyOverride(totalPanels, ov.structure);
 
   const invMaxPvKw = getInverterMaxPvKw(D, inv.model);
@@ -749,11 +734,6 @@ function computeOffgridQuote(D: any, inp: any) {
   }
 
   const items: any[] = [];
-  // Off-grid quote type: "توريد فقط" (materials only: panel/inverter/battery) vs
-  // "توريد وتركيب" (everything, incl. structure/cabling/install) — plus the rep
-  // can flip any individual item on/off beyond that (e.g. components + steel
-  // structure but no install). Anything not explicitly set to false stays on,
-  // so old callers that never send `toggles` keep getting the full BOM.
   const t = inp.toggles || {};
   const isItemOn = (key: string) => t[key] !== false;
   const push = (key: string, label: string, sell: number, costBasis: number, meta: any = {}) => {
@@ -1071,10 +1051,27 @@ Deno.serve(async (req: Request) => {
     return { username: data.username, displayName: data.display_name, permissions: data.permissions || {} };
   }
 
+  // Normalizes any phone number the calculator/CRM might type into the SAME
+  // canonical Saudi local-dialing format used everywhere in this app: a
+  // leading "0" followed by the 9-digit subscriber number (e.g.
+  // "0561274344"). Accepts input with or without a "+966"/"966"/"00966"
+  // country-code prefix, with or without the leading 0, with spaces,
+  // dashes, etc. — all collapse to the same key so the SAME customer is
+  // always matched/deduped regardless of how the number was typed.
+  //
+  // IMPORTANT: this must stay byte-for-byte in sync with the phoneKey() in
+  // crm-api/index.ts and invoice-api/index.ts — all three functions write
+  // into the shared customers/quotes tables and MUST normalize identically,
+  // or the same customer ends up as two different rows (this happened once
+  // in production: this file used to just keep the last 9 digits, dropping
+  // the leading 0, while the CRM kept it — same person, two customer rows).
   function phoneKey(raw: string) {
-  const digits = (raw || "").replace(/\D/g, "");
-  return digits.length > 9 ? digits.slice(-9) : digits;
-}
+    let digits = (raw || "").replace(/\D/g, "");
+    if (digits.startsWith("00966")) digits = digits.slice(5);
+    else if (digits.startsWith("966") && digits.length > 9) digits = digits.slice(3);
+    if (digits.length === 9) digits = "0" + digits;
+    return digits;
+  }
 
   async function upsertCustomer(name: string, phone: string, repUsername: string | null): Promise<number | null> {
     if (!phone) return null;
