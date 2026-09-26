@@ -51,3 +51,64 @@
 - Issued invoices can no longer be deleted or edited (DB triggers); cancellation = credit note (`crm-create-credit-note`).
 - Atomic sequence counter (`next_invoice_seq`) using Saudi-time day boundaries; legacy project-invoice creator disabled.
 - Migration `0018_einvoice_compliance.sql`. NOT included: Phase 2 (UBL XML, cryptographic stamp, CSID, clearance/reporting, QR tags 6-9).
+
+## 2026-09-24 — Structure cleanup, accessibility, and repo/DB sync
+
+### Frontend structure
+- Split `assets/js/app.js` (5165 lines) into 8 logical modules under
+  `assets/js/modules/`, following the section boundaries already marked in
+  the code (`01-supabase-engine.js` through `08-wiring.js`). Loaded as plain
+  (non-module) scripts, in order, so global scope is unchanged.
+- Added `tests/regression/`: 20 automated tests for the calculation
+  functions that drive customer-facing numbers (payback period, IRR, phone
+  normalization, appliance load, XSS-safety of `esc`/`escAttr`). Runs
+  automatically in CI on any change to `assets/js/modules/`.
+- Removed ~12MB of dead duplicate image assets (an orphaned `/curves/`
+  directory, itself containing a further duplicate at `curves/curves/`, and
+  two duplicate copies of the logo) — confirmed via exhaustive grep that
+  nothing referenced them before deleting. The live, used copy
+  (`assets/curves/`) was untouched.
+- Reorganized loose root files into `supabase/migrations/`,
+  `supabase/functions/{compute-quote,crm-api}/`, and `archive/` (old
+  patches, a superseded source file) — a conventional structure instead of
+  everything sitting at repo root.
+
+### Accessibility / performance (Lighthouse-style pass)
+- Fixed a failing color-contrast pair in the portfolio timeline
+  (`.timeline-item strong`): gold text on a pale-gold background measured
+  1.84:1 against WCAG AA's 4.5:1 minimum. Added `--sun-dark`, a darker gold
+  in the same hue (same technique as the existing `--teal`/`--teal-dark`
+  pair), bringing it to 5.04:1.
+- Added `loading="lazy"` (and `alt` text where missing) to list/grid images
+  in the admin panel (catalog cards, category cards, ready-system cards,
+  BOM item thumbnails) — deferred loading images no different for the
+  admin's list. Twice reverted by manual file uploads that were based on a
+  stale local copy, and re-applied both times.
+- Declined: compressing `assets/curves/` pump-curve images — the technical
+  data inside them needs to stay at full quality for the engineer reading
+  them.
+
+### Repo/database sync (after invoice/ZATCA work done outside git)
+A chunk of e-invoicing work happened directly via the Supabase dashboard
+and GitHub's web upload, bypassing this repo's branches/PRs entirely. A
+full audit turned up:
+- `supabase/functions/invoice-api/index.ts` — a **third Edge Function**
+  that had never been tracked anywhere (QR codes, credit notes, atomic
+  invoice numbering, trial-mode). Synced from the live deployment.
+- `supabase/functions/compute-quote/index.ts` had drifted (v106 → v114),
+  including a real bug fix: `phoneKey()` used to drop the leading "0" from
+  Saudi numbers while `crm-api`/`invoice-api` kept it, so the same customer
+  could end up as two different database rows. Now consistent everywhere.
+- `supabase/migrations/0018_einvoice_compliance.sql` — reconstructed from
+  the live schema (not guessed): `einvoice_config`, `invoice_counters` +
+  `next_invoice_seq()`, `einvoice_go_live()`, and the 3 integrity triggers
+  that make an issued invoice immutable/undeletable.
+- `supabase/migrations/0019_fix_invoice_trigger_search_path.sql` — a real
+  security finding from this review (Supabase advisor:
+  `function_search_path_mutable` on the 3 new trigger functions), fixed on
+  the live database and captured as a migration.
+
+Two more manual uploads added a legitimate feature (shared admin login
+between `index.html` and `crm.html` via the same server-verified token) —
+reviewed, no issues, left as-is.
+
