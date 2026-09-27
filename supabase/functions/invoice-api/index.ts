@@ -364,6 +364,37 @@ Deno.serve(async (req: Request) => {
         });
       }
 
+      // --- Optional: link to one of the customer's raw CALCULATOR estimates
+      // (the public solar-calculator's quick "how much would this cost"
+      // runs — `quotes`, a different table/feature from the formal
+      // `quotations` above). Only the inputs (hp, panel/toggles) and the
+      // final total were ever saved for these, never an itemized breakdown,
+      // so — unlike a formal quotation — this can't be exploded into real
+      // line items. Instead it becomes ONE summary line at EXACTLY the
+      // total the customer was already quoted (never recomputed: catalog
+      // prices may have moved since, and the point is to honor what they
+      // were told, not silently reprice it).
+      let sourceCalcQuoteId: number | null = null;
+      if (body.calcQuoteId) {
+        const { data: cq, error: cqErr } = await supabase.from("quotes")
+          .select("id, customer_id, hp, final_total, created_at").eq("id", body.calcQuoteId).maybeSingle();
+        if (cqErr) throw cqErr;
+        if (!cq || Number(cq.customer_id) !== Number(customerId)) {
+          return json({ error: "عرض سعر الحاسبة المحدد غير مرتبط بهذا العميل" }, 400);
+        }
+        const total = Number(cq.final_total) || 0;
+        if (total <= 0) return json({ error: "عرض سعر الحاسبة ده مفيهوش سعر إجمالي محفوظ" }, 400);
+        sourceCalcQuoteId = cq.id;
+        const CALC_QUOTE_VAT_RATE = 0.15; // matches the rate this whole system prices at
+        const preVat = round2(total / (1 + CALC_QUOTE_VAT_RATE));
+        const dateLabel = new Date(cq.created_at).toLocaleDateString("ar-SA", { day: "2-digit", month: "2-digit", year: "numeric" });
+        quotationItems.push({
+          type: "quotation", code: null,
+          name: `نظام طاقة شمسية (${cq.hp || "-"} حصان) — حسب عرض سعر الحاسبة بتاريخ ${dateLabel}`.slice(0, 300),
+          qty: 1, unitPrice: preVat, discount: 0, lineTotal: preVat,
+        });
+      }
+
       if (!rawItems.length && !quotationItems.length) {
         return json({ error: "لازم صنف واحد على الأقل — من المنتجات/الباكدجات، أو من عرض سعر للعميل" }, 400);
       }
@@ -462,6 +493,7 @@ Deno.serve(async (req: Request) => {
       const row = {
         project_id: null, customer_id: customerId, milestone_id: null,
         source_quotation_id: sourceQuotationId,
+        source_calc_quote_id: sourceCalcQuoteId,
         invoice_number: invoiceNumber, invoice_type: invoiceType, document_type: "invoice",
         issued_at: nowIso,
         due_date: null,
@@ -484,6 +516,23 @@ Deno.serve(async (req: Request) => {
       if (error) throw error;
       await logAudit(auth, "create", "invoice", data.id, invoiceNumber, null, { total: data.total, status: data.status, type: invoiceType, approval: row.approval_status });
       return json({ ok: true, invoice: data, seller: SELLER_INFO, trialMode: await isTrialMode() });
+    }
+
+    // Lists a customer's price quotes for the "🔗 اختار عرض سعر" picker in
+    // the invoice form — both formal CRM quotations (quotations table) and
+    // raw calculator estimates (quotes table; see the calcQuoteId note
+    // above crm-create-pos-invoice for why those become a single line).
+    if (action === "crm-list-customer-quotations") {
+      if (!body.customerId) return json({ error: "customerId required" }, 400);
+      const { data, error } = await supabase.from("quotations")
+        .select("id, quotation_number, version, scope_type, status, items, subtotal, vat_amount, total, created_at")
+        .eq("customer_id", body.customerId).order("created_at", { ascending: false });
+      if (error) throw error;
+      const { data: calcData, error: calcErr } = await supabase.from("quotes")
+        .select("id, hp, final_total, created_at")
+        .eq("customer_id", body.customerId).order("created_at", { ascending: false });
+      if (calcErr) throw calcErr;
+      return json({ ok: true, quotations: data || [], calcQuotes: calcData || [] });
     }
 
     if (action === "crm-list-pos-invoices") {
