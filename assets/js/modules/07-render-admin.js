@@ -1539,7 +1539,7 @@ ${(function(){
         <label>معلومة عامة تخص كل منتجات الفئة دي (تظهر أعلى صفحة الفئة)</label>
         <textarea data-pinfo="${ci}" rows="2" placeholder="مثال: عائلة انفرترات VEICHI الهجينة لأنظمة التخزين المنزلية...">${cat.categoryInfo||''}</textarea>
         <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
-          ${cat.categoryImage ? `<img src="${cat.categoryImage}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
+          ${cat.categoryImage ? `<img src="${cat.categoryImage}" alt="صورة الفئة الحالية: ${cat.category||''}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
           <label class="btn ghost small" style="cursor:pointer">📷 ${cat.categoryImage?'تغيير صورة الفئة':'رفع صورة الفئة'}<input type="file" accept="image/*" data-catimg="${ci}" style="display:none"></label>
         </div>
         <table class="admtable" style="margin-top:10px">
@@ -1591,7 +1591,7 @@ ${(function(){
     <h3>تفاصيل المنتج</h3>
     <input type="hidden" id="pde_target">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <img id="pde_imgpreview" src="" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:none">
+      <img id="pde_imgpreview" src="" alt="معاينة صورة المنتج المختارة" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:none">
       <label class="btn ghost small" style="cursor:pointer">📷 رفع صورة المنتج<input type="file" accept="image/*" id="pde_imgfile" style="display:none"></label>
       <button class="btn ghost small" id="pde_useForOthers" type="button">استخدم نفس الصورة لموديلات تانية</button>
     </div>
@@ -1681,7 +1681,7 @@ ${(function(){
           <div><label>السعر (﷼)</label><input data-readysys="${i}" data-rf="priceSar" type="number" value="${s.priceSar}"></div>
         </div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
-          ${s.image ? `<img src="${s.image}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
+          ${s.image ? `<img src="${s.image}" alt="صورة المنظومة الجاهزة: ${s.name||''}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
           <label class="btn ghost small" style="cursor:pointer">📷 ${s.image?'تغيير صورة المنظومة':'رفع صورة المنظومة (اختياري)'}<input type="file" accept="image/*" data-readysysimg="${i}" style="display:none"></label>
         </div>
         <div style="display:flex;gap:10px;align-items:center;margin-top:10px">
@@ -1716,7 +1716,7 @@ ${(function(){
     <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px">
       <h4 style="margin:0 0 8px">الواجهة الرئيسية</h4>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        ${adminConfig.portfolio?.hero?.image ? `<img src="${adminConfig.portfolio.hero.image}" style="width:90px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
+        ${adminConfig.portfolio?.hero?.image ? `<img src="${adminConfig.portfolio.hero.image}" alt="صورة واجهة البورتفوليو الرئيسية" style="width:90px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">` : ''}
         <label class="btn ghost small" style="cursor:pointer">📷 ${adminConfig.portfolio?.hero?.image?'تغيير صورة الواجهة':'رفع صورة الواجهة'}<input type="file" accept="image/*" id="pf_heroimg_file" style="display:none"></label>
       </div>
       <label>العنوان</label>
@@ -1753,7 +1753,7 @@ ${(function(){
             <button class="btn danger small" data-delpftl="${i}">🗑 حذف المرحلة</button>
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            ${t.image?`<img src="${t.image}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`:''}
+            ${t.image?`<img src="${t.image}" alt="صورة مرحلة التايم لاين: ${t.title||t.label||''}" style="width:50px;height:50px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`:''}
             <label class="btn ghost small" style="cursor:pointer">📷 ${t.image?'تغيير الصورة':'رفع صورة (اختياري)'}<input type="file" accept="image/*" data-pftlimg="${i}" style="display:none"></label>
             ${t.image?`<button class="btn ghost small" data-delpftlimg="${i}" type="button">✕ إزالة الصورة</button>`:''}
           </div>
@@ -1791,7 +1791,7 @@ ${(function(){
             <button class="btn danger small" data-delpfproj="${i}">🗑 حذف المشروع</button>
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            ${p.img?`<img src="${p.img}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`:''}
+            ${p.img?`<img src="${p.img}" alt="صورة مشروع البورتفوليو رقم ${i+1}" style="width:70px;height:70px;object-fit:cover;border-radius:8px;border:1px solid var(--line)">`:''}
             <label class="btn ghost small" style="cursor:pointer">📷 ${p.img?'تغيير الصورة':'رفع صورة المشروع'}<input type="file" accept="image/*" data-pfprojimg="${i}" style="display:none"></label>
           </div>
           <div class="row2">
@@ -1827,7 +1827,7 @@ ${(function(){
       <h4 style="margin:0 0 8px">شركاء وتقنيات</h4>
       ${(adminConfig.portfolio?.partners||[]).map((p,i)=>`
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-          ${p.img?`<img src="${p.img}" style="width:44px;height:44px;object-fit:contain;border-radius:8px;border:1px solid var(--line);background:#fff">`:''}
+          ${p.img?`<img src="${p.img}" alt="شعار الشريك: ${p.name||''}" style="width:44px;height:44px;object-fit:contain;border-radius:8px;border:1px solid var(--line);background:#fff">`:''}
           <label class="btn ghost small" style="cursor:pointer">📷<input type="file" accept="image/*" data-pfpartnerimg="${i}" style="display:none"></label>
           <input data-pfpartner="${i}" data-f="name" value="${p.name||''}" placeholder="اسم الشريك" style="max-width:200px">
           <button class="btn danger small" data-delpfpartner="${i}">✕</button>
