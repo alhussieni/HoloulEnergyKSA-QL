@@ -588,7 +588,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_4qWmgl6fWMpoU6F_o__ykg_Z0Xy_aJY';
 const ENGINE_FN = SUPABASE_URL + '/functions/v1/compute-quote'; // login only
 const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything else
 const INVOICE_FN = SUPABASE_URL + '/functions/v1/invoice-api';  // e-invoices (QR, credit notes, numbering)
-const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live']);
+const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live','crm-list-customer-quotations']);
 
 let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[],
   customerTypes:[], classifications:[], regions:[], energySources:[], contactMethods:[], decisionPowerLevels:[],
@@ -2926,6 +2926,7 @@ const SELLER = { name: 'مؤسسة حلول الطاقة المتجددة وال
 let CATALOG_PRODUCTS = null, CATALOG_PACKAGES = null;
 let invSelectedCustomer = null; // {id, name, phone, city, vat_number, commercial_registration} — must be an existing, registered customer
 let invSelectedQuotation = null; // {id, quotation_number, scope_type, items} — optional link to an existing quotation
+let invSelectedCalcQuote = null; // {id, hp, final_total, created_at} — optional link to a raw calculator estimate instead
 async function ensureCatalogLoaded(){
   if(CATALOG_PRODUCTS && CATALOG_PACKAGES) return;
   const d = await crmApi('crm-list-catalog', {});
@@ -3123,6 +3124,7 @@ function openInvoiceModal(prefill){
   invoiceOverlay.classList.add('show');
   invSelectedCustomer = prefill.customer || null;
   invSelectedQuotation = null;
+  invSelectedCalcQuote = null;
   currentQuotationItemsTotal = 0;
 
   document.getElementById('invoiceModal').innerHTML = `
@@ -3222,7 +3224,7 @@ function openInvoiceModal(prefill){
       document.getElementById('invB2bFields').classList.remove('hidden');
     }
     document.getElementById('invChangeCustBtn').addEventListener('click', ()=>{
-      invSelectedCustomer = null; invSelectedQuotation = null;
+      invSelectedCustomer = null; invSelectedQuotation = null; invSelectedCalcQuote = null;
       currentQuotationItemsTotal = 0;
       document.getElementById('invCustSearch').value = '';
       document.getElementById('invQuotationLinkNote').textContent = '';
@@ -3271,15 +3273,50 @@ function openInvoiceModal(prefill){
     try{
       const d = await crmApi('crm-list-customer-quotations', {customerId: invSelectedCustomer.id});
       const list = d.quotations || [];
-      if(!list.length){ toast('العميل ده مفيش له أي عروض أسعار محفوظة'); return; }
+      const calcList = d.calcQuotes || [];
+      if(!list.length && !calcList.length){ toast('العميل ده مفيش له أي عروض أسعار محفوظة'); return; }
       const scopeLabel = (v)=> (SETTINGS.idScopeTypes||[]).find(s=>s.value===v)?.label || v || 'غير محدد';
-      openGenericPicker('📄 اختار عرض السعر', list.map(q=>({
-        id: q.id,
-        title: `${q.quotation_number} v${q.version||1}`,
+      const formalOptions = list.map(q=>({
+        id: 'q:'+q.id, kind:'quotation', ref:q,
+        title: `📄 ${q.quotation_number} v${q.version||1}`,
         subtitle: `${scopeLabel(q.scope_type)} · ${fmtMoney(q.total)} ﷼`,
-      })), (id)=>{
-        const q = list.find(x=>String(x.id)===String(id));
-        if(!q) return;
+      }));
+      // Calculator estimates: only hp + a final total were ever saved (no
+      // itemized breakdown), so these show as a distinct "تقدير" group —
+      // picking one adds ONE summary line to the invoice at that same total.
+      const calcOptions = calcList.map(q=>({
+        id: 'c:'+q.id, kind:'calc', ref:q,
+        title: `🧮 تقدير حاسبة — ${new Date(q.created_at).toLocaleDateString('ar-SA')}`,
+        subtitle: `${q.hp||'-'} حصان · ${fmtMoney(q.final_total)} ﷼ شامل الضريبة`,
+      }));
+      openGenericPicker('📄 اختار عرض السعر', [...formalOptions, ...calcOptions], (pickedId)=>{
+        const picked = [...formalOptions, ...calcOptions].find(x=>x.id===pickedId);
+        if(!picked) return;
+        if(picked.kind === 'calc'){
+          invSelectedQuotation = null;
+          invSelectedCalcQuote = picked.ref;
+          currentQuotationItemsTotal = Math.round((Number(picked.ref.final_total)||0) / 1.15 * 100) / 100;
+          const dateLabel = new Date(picked.ref.created_at).toLocaleDateString('ar-SA');
+          document.getElementById('invQuotationLinkNote').innerHTML = `🔗 مربوطة بتقدير حاسبة (${dateLabel}) — هيتضاف كبند واحد بنفس السعر اللي اتقال للعميل
+            <button type="button" class="btn ghost small" id="invUnlinkQuotationBtn" style="padding:3px 8px;margin-inline-start:8px;">إلغاء الربط</button>`;
+          document.getElementById('invQuotationItemsPreview').innerHTML = `
+            <div style="background:var(--sand);border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px;font-size:12.5px;">
+              <b>بند من تقدير الحاسبة:</b>
+              <ul style="margin:6px 0 0;padding-inline-start:18px;">
+                <li>نظام طاقة شمسية (${picked.ref.hp||'-'} حصان) — ${fmtMoney(currentQuotationItemsTotal)} ﷼ (قبل الضريبة)</li>
+              </ul>
+            </div>`;
+          document.getElementById('invUnlinkQuotationBtn').addEventListener('click', ()=>{
+            invSelectedCalcQuote = null; currentQuotationItemsTotal = 0;
+            document.getElementById('invQuotationLinkNote').textContent = '';
+            document.getElementById('invQuotationItemsPreview').innerHTML = '';
+            recalcInvoiceTotals();
+          });
+          recalcInvoiceTotals();
+          return;
+        }
+        const q = picked.ref;
+        invSelectedCalcQuote = null;
         invSelectedQuotation = q;
         currentQuotationItemsTotal = (q.items||[]).reduce((s,it)=> s + Math.max(0, (Number(it.quantity)||0)*(Number(it.unitPrice)||0) - (Number(it.discount)||0)), 0);
         document.getElementById('invQuotationLinkNote').innerHTML = `🔗 مربوطة بـ <b>${q.quotation_number}</b> (${scopeLabel(q.scope_type)}) — أصنافه هتتضاف تلقائيًا للفاتورة
@@ -3551,7 +3588,7 @@ document.addEventListener('click', async (e)=>{
       }
     });
     if(!invSelectedCustomer){ errEl.textContent = 'اختار عميل مسجّل مسبقًا — الفاتورة مينفعش تتصدر لعميل غير مسجّل'; return; }
-    if(!items.length && !invSelectedQuotation){ errEl.textContent = 'لازم صنف واحد على الأقل من المنتجات/الباكدجات، أو اربط الفاتورة بعرض سعر للعميل'; return; }
+    if(!items.length && !invSelectedQuotation && !invSelectedCalcQuote){ errEl.textContent = 'لازم صنف واحد على الأقل من المنتجات/الباكدجات، أو اربط الفاتورة بعرض سعر للعميل'; return; }
     if(invalid){ errEl.textContent = 'فيه صنف ناقص بيانات (لازم تختاره من الكتالوج بسعر صحيح)'; return; }
 
     const payload = {
@@ -3562,6 +3599,7 @@ document.addEventListener('click', async (e)=>{
       customerCrNumber: document.getElementById('invB2bToggle').checked ? document.getElementById('invCustCr').value.trim() : '',
       items,
       quotationId: invSelectedQuotation ? invSelectedQuotation.id : null,
+      calcQuoteId: invSelectedCalcQuote ? invSelectedCalcQuote.id : null,
       discountTotal: Number(document.getElementById('invDiscountTotal').value)||0,
       paymentMethod: document.getElementById('invPayMethod').value,
       notes: document.getElementById('invNotes').value.trim(),
@@ -3893,6 +3931,21 @@ function fitInvoiceToViewport(){
 }
 
 let __invViewerResizeHandler = null;
+
+// Belt-and-braces, browser-verified way to guarantee the printed page is
+// centered with equal margins: rather than relying on a CSS !important rule
+// to out-cascade fitInvoiceToViewport()'s inline style (which only our own
+// "🖨️ طباعة" button was resetting — a raw Ctrl+P bypasses that entirely),
+// strip the zoom inline styles directly via the browser's own beforeprint
+// event, which fires for ANY print trigger, then restore them afterward so
+// the on-screen zoom comes back for continued viewing.
+window.addEventListener('beforeprint', ()=>{
+  const outer = document.getElementById('invViewport');
+  if(outer){ outer.style.transform = ''; outer.style.width = ''; outer.style.height = ''; }
+});
+window.addEventListener('afterprint', ()=>{
+  if(document.body.classList.contains('printing-invoice')) fitInvoiceToViewport();
+});
 
 function closeInvoiceViewer(){
   document.body.classList.remove('printing-invoice');
