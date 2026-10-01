@@ -876,6 +876,161 @@ async function openCustomer(id){
   }catch(err){ document.getElementById('custModal').innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
 }
 
+/* ===== سجل عروض الأسعار: عرض تفصيلي بالأسعار + إعادة طباعة بشكل العميل ===== */
+function qpFmt(n){ return Math.round(Number(n)||0).toLocaleString('en-US'); }
+function qpFrozen(q){ return (q && q.snapshot && q.snapshot.frozenQuote) ? q.snapshot.frozenQuote : null; }
+function qpDateGB(v){ try{ return new Date(v).toLocaleDateString('en-GB'); }catch(e){ return ''; } }
+function qpQLCode(q, fq){
+  const d = new Date(q.created_at);
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const ds = String(d.getDate()).padStart(2,'0')+months[d.getMonth()]+d.getFullYear();
+  const panel = String(fq.panelLabel||'').replace(/\s+/g,'').replace(/W$/,'');
+  const st = (q.snapshot && q.snapshot.structureType) || '';
+  return `QL-${ds}-P-${fq.hp||q.hp} HP-${fq.invBrandName||'VEICHI'} ${fq.invKW} KW-${panel}-${st}-`;
+}
+function qpPaymentHtml(fq, toggles){
+  const t = toggles || {};
+  const hasSupply = !!t.supply, hasInstall = !!(t.civilworks || t.elecworks);
+  const P = (v, l) => `<div><div class="p num">${qpFmt(v)} ﷼</div><div class="l">${l}</div></div>`;
+  const T = fq.finalTotal;
+  if(hasSupply && hasInstall) return `<div class="pay3">${P(T*0.4,'دفعة مقدمة 40%')}${P(T*0.3,'بعد زيارة الموقع وتحديد المساحات المطلوبة 30%')}${P(T*0.3,'بعد الأعمال المدنية وقبل توريد باقي المكونات 30%')}</div>`;
+  if(hasInstall) return `<div class="pay3">${P(T*0.5,'عند الاتفاق 50%')}${P(T*0.35,'مع الأعمال 35%')}${P(T*0.15,'عند الانتهاء 15%')}</div>`;
+  return `<div class="pay3" style="grid-template-columns:1fr"><div><div class="p num">${qpFmt(T)} ﷼ (100%)</div><div class="l">${hasSupply?'تُسدَّد كامل القيمة عند التوريد':'تُسدَّد كامل القيمة قبل التوريد'}</div></div></div>`;
+}
+function buildCustomerQuoteHtml(q, c){
+  const fq = qpFrozen(q);
+  const origin = location.href.replace(/[^\/]*$/, '');
+  const adj = (Number(fq.discountTotal)||0) + (Number(fq.manualDiscountAmt)||0);
+  const isInc = adj < 0;
+  const dateGB = qpDateGB(q.created_at);
+  const isGuest = !q.rep_display_name || String(q.rep_display_name).startsWith('الحاسبة الآلية');
+  const rows = fq.items.map((it,i)=>`<tr class="${it.on?'':'off'}"><td>${i+1}</td><td class="bom-label">${it.label}</td><td style="font-size:11.5px;color:var(--muted)">${it.type}</td><td style="font-size:11.5px">${it.qty}</td><td style="font-size:11.5px">${it.warranty}</td></tr>`).join('');
+  const adjBlock = adj !== 0 ? `
+    <div class="note" style="margin-top:10px">
+      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>السعر الأساسي</span><span class="num" style="color:var(--ink)">${qpFmt(fq.sellTotal)} ﷼</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;color:${isInc?'var(--teal-dark)':'var(--bad)'}"><span>${isInc?'زيادة':'الخصم'}</span><span class="num">${isInc?'+':'-'} ${qpFmt(Math.abs(adj))} ﷼</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;font-weight:600"><span>الصافي بعد الخصم (قبل الضريبة)</span><span class="num" style="color:var(--ink)">${qpFmt(fq.netAfterManual)} ﷼</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0"><span>ضريبة القيمة المضافة (${fq.netAfterManual ? (fq.vat/fq.netAfterManual*100).toFixed(0) : 15}%)</span><span class="num" style="color:var(--ink)">${qpFmt(fq.vat)} ﷼</span></div>
+    </div>` : '';
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>عرض سعر - ${escapeHtml(c.name||c.phone||'')} - ${dateGB}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="${origin}assets/css/styles.css">
+<style>body{background:#fff;padding:14px;max-width:900px;margin:0 auto;} @page{size:A4;margin:10mm;}</style></head><body>
+<div id="quotePrintArea" class="quote-shell">
+  <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <img src="${origin}assets/logo.png" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
+      <div>
+        <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">الرقم الوطني الموحد: 7037810988 · السجل التجاري: 1010970687 · الرقم الضريبي: 311386341200003</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
+      </div>
+    </div>
+    <div>
+      <div style="font-size:11px;color:var(--muted);letter-spacing:.02em">عرض سعر مُقدَّم إلى</div>
+      <div id="bannerName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:18px;margin-top:1px">${escapeHtml(c.name||'—')}</div>
+      <div id="bannerPhone" class="num" style="font-size:12.5px;color:var(--muted);margin-top:1px">${escapeHtml(c.phone||'—')}</div>
+    </div>
+    <div style="text-align:left">
+      <div style="font-size:11px;color:var(--muted);letter-spacing:.02em">تاريخ العرض</div>
+      <div class="num" style="font-size:14px;font-weight:700;margin-top:1px">${dateGB}</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="num" style="font-size:11px;color:var(--muted);margin-bottom:8px">${qpQLCode(q, fq)}</div>
+    <h3 style="margin-bottom:2px">العرض المالي</h3>
+    <div style="font-size:13px;margin:8px 0 4px">تحية طيبة وبعد،</div>
+    <div style="font-size:13px;color:var(--ink);line-height:1.8">نتشرف بتقديم عرض سعر منظومة توليد الكهرباء من خلال الطاقة الشمسية للتشغيل راس كهرباء /محرك غطاس ${fq.hp||q.hp} حصان</div>
+    <div class="note" style="margin-top:8px">${isGuest ? '🖥️ تم إصدار هذا العرض مباشرة عبر الحاسبة الإلكترونية' : `📋 قدّم هذا العرض: <b>${escapeHtml(q.rep_display_name)}</b>`}</div>
+  </div>
+  <div class="card">
+    <h3>تفصيل عرض السعر</h3>
+    <table class="bom"><thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead><tbody>${rows}</tbody></table>
+    ${adjBlock}
+    <div class="totalbar" style="justify-content:center"><div class="line"><div class="lbl">السعر النهائي شامل الضريبة</div><div class="big num">${qpFmt(fq.finalTotal)} ﷼</div></div></div>
+    ${qpPaymentHtml(fq, q.snapshot && q.snapshot.toggles)}
+    <div class="legal-note" style="margin-top:12px;font-size:11px;color:#B0432C;line-height:1.9">
+      يقع على عاتق العميل تجهيز الموقع (أعمال الحفر والصب اللازمة) قبل موعد التوريد.<br>
+      الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${dateGB}).
+    </div>
+    <div class="support-note" style="margin-top:8px;background:#EAF7F1;border:1px solid #BFE6D6;border-radius:9px;padding:9px 12px;font-size:11.5px;color:#146C4C">نلتزم بتوفير الدعم الفني وقطع الغيار للمنظومة حتى 10 سنوات من تاريخ التشغيل.</div>
+    <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
+      <b style="color:var(--ink)">للتواصل</b><br>info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
+      Website - LinkedIn - Youtube - FB - Tiktok : HoloulEnergy<br><span class="num">966561274344+</span>
+    </div>
+  </div>
+</div></body></html>`;
+}
+function printCustomerQuote(q, c){
+  if(!qpFrozen(q)){ toast('تفاصيل العرض ده غير محفوظة (اتحفظ قبل تفعيل حفظ التفاصيل)'); return; }
+  const w = window.open('', '_blank');
+  if(!w){ toast('المتصفح منع النافذة — اسمح بالنوافذ المنبثقة وجرب تاني'); return; }
+  w.document.open(); w.document.write(buildCustomerQuoteHtml(q, c)); w.document.close();
+  w.addEventListener('load', ()=>{ setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 700); });
+}
+function openQuoteDetail(q, c){
+  const fq = qpFrozen(q);
+  const frozenItems = q.snapshot && Array.isArray(q.snapshot.frozenItems) ? q.snapshot.frozenItems : null;
+  const old = document.getElementById('quoteDetailOverlay'); if(old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'quoteDetailOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,30,.55);z-index:10000;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px;';
+  const th = 'text-align:right;padding:6px 8px;border-bottom:2px solid #123;font-size:12px;';
+  const td = 'padding:6px 8px;border-bottom:1px solid #e6e6e6;font-size:13px;';
+  let body = '';
+  if(fq){
+    const adj = (Number(fq.discountTotal)||0) + (Number(fq.manualDiscountAmt)||0);
+    body = `
+      <table style="width:100%;border-collapse:collapse;margin-top:10px;">
+        <thead><tr><th style="${th}">#</th><th style="${th}">البند</th><th style="${th}">النوع</th><th style="${th}">العدد</th><th style="${th}">الضمان</th><th style="${th}text-align:left;">سعر البيع (﷼)</th></tr></thead>
+        <tbody>${fq.items.filter(it=>it.on).map((it,i)=>`<tr><td style="${td}">${i+1}</td><td style="${td}font-weight:600;">${escapeHtml(it.label)}</td><td style="${td}font-size:12px;color:#555;">${escapeHtml(it.type)}</td><td style="${td}">${escapeHtml(it.qty)}</td><td style="${td}font-size:12px;">${escapeHtml(it.warranty)}</td><td style="${td}text-align:left;font-weight:700;">${qpFmt(it.sell)}</td></tr>`).join('')}</tbody>
+      </table>
+      <div style="margin-top:12px;max-width:380px;margin-inline-start:auto;font-size:13px;">
+        <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>السعر الأساسي (قبل الخصم)</span><b>${qpFmt(fq.sellTotal)} ﷼</b></div>
+        ${adj!==0 ? `<div style="display:flex;justify-content:space-between;padding:3px 0;color:${adj<0?'#146C4C':'#B0432C'};"><span>${adj<0?'زيادة':'الخصم'}</span><b>${adj<0?'+':'-'} ${qpFmt(Math.abs(adj))} ﷼</b></div>` : ''}
+        <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>الصافي قبل الضريبة</span><b>${qpFmt(fq.netAfterManual)} ﷼</b></div>
+        <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>ضريبة القيمة المضافة</span><b>${qpFmt(fq.vat)} ﷼</b></div>
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #123;margin-top:4px;font-size:16px;"><span>الإجمالي شامل الضريبة</span><b>${qpFmt(fq.finalTotal)} ﷼</b></div>
+      </div>`;
+  } else if(frozenItems && frozenItems.length){
+    body = `
+      <div style="background:#FFF6E0;border:1px solid #F0D58C;border-radius:8px;padding:8px 12px;margin-top:10px;font-size:12px;">العرض ده اتحفظ بالبنود وأسعارها بس (من غير النوع والضمان)، فإعادة الطباعة بشكل العميل مش متاحة له.</div>
+      <table style="width:100%;border-collapse:collapse;margin-top:10px;">
+        <thead><tr><th style="${th}">#</th><th style="${th}">البند</th><th style="${th}">العدد</th><th style="${th}text-align:left;">سعر البيع قبل الخصم (﷼)</th></tr></thead>
+        <tbody>${frozenItems.map((it,i)=>`<tr><td style="${td}">${i+1}</td><td style="${td}font-weight:600;">${escapeHtml(it.label)}</td><td style="${td}">${escapeHtml(it.qty)}</td><td style="${td}text-align:left;font-weight:700;">${qpFmt(it.sell)}</td></tr>`).join('')}</tbody>
+      </table>
+      <div style="margin-top:12px;max-width:380px;margin-inline-start:auto;font-size:16px;display:flex;justify-content:space-between;border-top:2px solid #123;padding-top:8px;"><span>الإجمالي شامل الضريبة (المحفوظ)</span><b>${qpFmt(q.final_total)} ﷼</b></div>`;
+  } else {
+    const s = q.snapshot || {};
+    body = `
+      <div style="background:#FFF6E0;border:1px solid #F0D58C;border-radius:8px;padding:10px 12px;margin-top:10px;font-size:13px;line-height:1.8;">
+        العرض ده اتحفظ قبل ما النظام يبدأ يحفظ تفاصيل البنود، فأسعار كل بند غير متاحة، ولا يمكن إعادة طباعته بشكل العميل.<br>
+        المتاح: القدرة <b>${escapeHtml(String(q.hp||'-'))}</b> · الإجمالي المحفوظ <b>${qpFmt(q.final_total)} ﷼</b>${s.structureType?` · الشاسيه <b>${s.structureType==='ROTATIONAL'?'متحرك':'ثابت'}</b>`:''}.
+      </div>`;
+  }
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:14px;max-width:880px;width:100%;padding:18px 20px;font-family:'Cairo',sans-serif;direction:rtl;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+        <div>
+          <div style="font-size:18px;font-weight:800;">📄 تفاصيل عرض السعر #${q.id}</div>
+          <div style="font-size:12.5px;color:#555;margin-top:3px;">${escapeHtml(c.name||'')} · ${escapeHtml(c.phone||'')} · ${qpDateGB(q.created_at)} · ${escapeHtml(q.rep_display_name||'')}</div>
+          ${fq ? `<div style="font-size:12.5px;color:#555;margin-top:2px;">${fq.hp||q.hp} حصان · ${escapeHtml(fq.panelLabel||'')} × ${fq.totalPanels} لوح (${(Number(fq.calcKW)||0).toFixed(1)} KW) · انفرتر ${escapeHtml(String(fq.invBrandName||''))} ${fq.invKW} KW</div>` : ''}
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn small" id="qdPrintBtn" ${fq?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>🖨️ طباعة بشكل العميل</button>
+          <button type="button" class="btn ghost small" id="qdCloseBtn">✖ إغلاق</button>
+        </div>
+      </div>
+      ${body}
+      ${fq && Math.abs(Number(fq.finalTotal) - Number(q.final_total||0)) >= 1 ? `<div style="font-size:11.5px;color:#777;margin-top:10px;">ملاحظة: الإجمالي المحسوب بالتفصيل (${qpFmt(fq.finalTotal)}) وإجمالي العرض كما ظهر للعميل (${qpFmt(q.final_total)}) فرقهم تقريب شاشة.</div>` : ''}
+    </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', (e)=>{ if(e.target === ov) ov.remove(); });
+  ov.querySelector('#qdCloseBtn').addEventListener('click', ()=>ov.remove());
+  const pb = ov.querySelector('#qdPrintBtn');
+  if(fq) pb.addEventListener('click', ()=>printCustomerQuote(q, c));
+}
+
 function renderCustomerModal(c, quotes, interactions, contacts, sites, opportunities, assets){
   const m = document.getElementById('custModal');
   const canDelete = SESSION.role === 'admin';
@@ -1017,7 +1172,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       ${quotes.length ? quotes.map(q=>`
         <div class="quoteRow" data-quote-id="${q.id}"><div class="top"><span>${fmtDate(q.created_at)}</span><span>${q.rep_display_name||''}</span></div>
         <div>القدرة: <b>${q.hp||'-'}</b> · الإجمالي: <b>${fmtMoney(q.final_total)} ﷼</b></div>
-        <div class="saveBar" style="margin-top:6px;"><div></div><div class="right"><button class="btn ghost small useQuoteBtn" data-quote-id="${q.id}" type="button">+ صفقة من العرض ده</button></div></div>
+        <div class="saveBar" style="margin-top:6px;"><div></div><div class="right"><button class="btn ghost small viewQuoteBtn" data-quote-id="${q.id}" type="button">📄 تفاصيل العرض</button> <button class="btn ghost small useQuoteBtn" data-quote-id="${q.id}" type="button">+ صفقة من العرض ده</button></div></div>
         </div>`).join('')
         : '<div class="emptyNote">لسه ملوش عروض مسجلة بالرقم ده</div>'}
     </div>
@@ -1139,6 +1294,9 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
   m.querySelector('#addOppFromCustBtn').addEventListener('click', ()=>openOpportunityEditor(null, c.id, c.name));
   m.querySelectorAll('#oppsMiniList [data-opp-id]').forEach(row=>{
     row.addEventListener('click', ()=>openOpportunityEditor(row.dataset.oppId));
+  });
+  m.querySelectorAll('.viewQuoteBtn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ const qq = quotes.find(x=>String(x.id)===btn.dataset.quoteId); if(qq) openQuoteDetail(qq, c); });
   });
   m.querySelectorAll('.useQuoteBtn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
