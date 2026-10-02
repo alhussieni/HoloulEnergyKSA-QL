@@ -880,13 +880,23 @@ async function openCustomer(id){
 function qpFmt(n){ return Math.round(Number(n)||0).toLocaleString('en-US'); }
 function qpFrozen(q){ return (q && q.snapshot && q.snapshot.frozenQuote) ? q.snapshot.frozenQuote : null; }
 function qpDateGB(v){ try{ return new Date(v).toLocaleDateString('en-GB'); }catch(e){ return ''; } }
-function qpQLCode(q, fq){
+function qpQLCode(q, fq, phone){
+  const sn = q.snapshot || {};
+  if(sn.qlCode) return sn.qlCode; // الكود المحفوظ وقت الحفظ
   const d = new Date(q.created_at);
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const ds = String(d.getDate()).padStart(2,'0')+months[d.getMonth()]+d.getFullYear();
   const panel = String(fq.panelLabel||'').replace(/\s+/g,'').replace(/W$/,'');
-  const st = (q.snapshot && q.snapshot.structureType) || '';
-  return `QL-${ds}-P-${fq.hp||q.hp} HP-${fq.invBrandName||'VEICHI'} ${fq.invKW} KW-${panel}-${st}-`;
+  const t = sn.toggles || {};
+  const inst = !!(t.civilworks || t.elecworks);
+  const scope = !inst ? 'SUP' : (t.supply ? 'SI' : 'INS');
+  const dg = String(phone||'').replace(/\D/g,'');
+  const p4 = dg.length>=4 ? '-'+dg.slice(-4) : '';
+  return `QL-${ds}-P-${fq.hp||q.hp} HP-${fq.invBrandName||'VEICHI'} ${fq.invKW} KW-${panel}-${sn.structureType||''}-${scope}${p4}`;
+}
+function qpRefLine(q, fq, phone){
+  const ref = q.snapshot && q.snapshot.refCode;
+  return (ref ? ref + ' · ' : '') + qpQLCode(q, fq, phone);
 }
 function qpPaymentHtml(fq, toggles){
   const t = toggles || {};
@@ -937,7 +947,7 @@ function buildCustomerQuoteHtml(q, c){
     </div>
   </div>
   <div class="card">
-    <div class="num" style="font-size:11px;color:var(--muted);margin-bottom:8px">${qpQLCode(q, fq)}</div>
+    <div class="num" dir="ltr" style="font-size:11px;color:var(--muted);margin-bottom:8px;text-align:right">${qpRefLine(q, fq, c.phone)}</div>
     <h3 style="margin-bottom:2px">العرض المالي</h3>
     <div style="font-size:13px;margin:8px 0 4px">تحية طيبة وبعد،</div>
     <div style="font-size:13px;color:var(--ink);line-height:1.8">نتشرف بتقديم عرض سعر منظومة توليد الكهرباء من خلال الطاقة الشمسية للتشغيل راس كهرباء /محرك غطاس ${fq.hp||q.hp} حصان</div>
@@ -1012,7 +1022,12 @@ function openQuoteDetail(q, c){
     <div style="background:#fff;border-radius:14px;max-width:880px;width:100%;padding:18px 20px;font-family:'Cairo',sans-serif;direction:rtl;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
         <div>
-          <div style="font-size:18px;font-weight:800;">📄 تفاصيل عرض السعر #${q.id}</div>
+          <div style="font-size:18px;font-weight:800;">📄 تفاصيل عرض السعر</div>
+          <div style="margin-top:3px;font-size:12px;color:#555;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+            ${q.snapshot && q.snapshot.refCode ? `<span dir="ltr" style="font-weight:800;color:#123;">${escapeHtml(q.snapshot.refCode)}</span>` : ''}
+            ${fq ? `<span dir="ltr" style="font-weight:700;color:#123;">${escapeHtml(qpQLCode(q, fq, c.phone))}</span>` : ''}
+            <span style="background:#EEF2F5;border-radius:6px;padding:1px 8px;" title="رقم داخلي في النظام">رقم النظام #${q.id}</span>
+          </div>
           <div style="font-size:12.5px;color:#555;margin-top:3px;">${escapeHtml(c.name||'')} · ${escapeHtml(c.phone||'')} · ${qpDateGB(q.created_at)} · ${escapeHtml(q.rep_display_name||'')}</div>
           ${fq ? `<div style="font-size:12.5px;color:#555;margin-top:2px;">${fq.hp||q.hp} حصان · ${escapeHtml(fq.panelLabel||'')} × ${fq.totalPanels} لوح (${(Number(fq.calcKW)||0).toFixed(1)} KW) · انفرتر ${escapeHtml(String(fq.invBrandName||''))} ${fq.invKW} KW</div>` : ''}
         </div>
