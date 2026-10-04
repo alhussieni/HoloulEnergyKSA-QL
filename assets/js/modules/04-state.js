@@ -45,42 +45,100 @@ function currentQuote(){
 }
 
 const fmt = n => Math.round(n).toLocaleString('en-US');
+/* نطاق العمل في كود العرض: SUP توريد فقط · SI توريد وتركيب · INS تركيب فقط (نفس منطق جدول الدفعات) */
+function qlScopeCode(){
+  const t = state.toggles || {};
+  const inst = !!(t.civilworks || t.elecworks);
+  if(!inst) return 'SUP';
+  return t.supply ? 'SI' : 'INS';
+}
 function buildQLCode(q){
   const d = new Date();
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const dateStr = String(d.getDate()).padStart(2,'0')+months[d.getMonth()]+d.getFullYear();
   const panel = cachedPanelOptions.find(p=>p.idx===state.panelIdx) || {brand:'',power:''};
-  return `QL-${dateStr}-P-${state.hp} HP-${q.invBrandName||'VEICHI'} ${q.invKW} KW-${panel.brand}${panel.power}-${state.structureType}-`;
+  const digits = (state.clientPhone||'').replace(/\D/g,'');
+  const p4 = digits.length>=4 ? '-'+digits.slice(-4) : '';
+  return `QL-${dateStr}-P-${state.hp} HP-${q.invBrandName||'VEICHI'} ${q.invKW} KW-${panel.brand}${panel.power}-${state.structureType}-${qlScopeCode()}${p4}`;
+}
+/* الرمز المرجعي (QL-YYYYMM-NNNN) + الكود الوصفي المحفوظين على السيرفر وقت الحفظ */
+let savedQuoteInfo = null; // {key, ref, ql}
+/* رمز المراجعة: أي تعديل على عرض محفوظ لنفس العميل بيتحفظ كمراجعة (R1, R2...) بنفس الرمز المرجعي الأساسي */
+let revisionParent = null; // {ref, phone, hp, explicit}
+/* بصمة مدخلات العرض (بدون بيانات العميل) — بتتقارن مع العرض المحمّل علشان نعرف لو اتغيّر فعلاً */
+function inputSig(o){
+  return JSON.stringify([o.hp, o.panelIdx, o.structureType || 'FIXED', o.toggles || {}, o.specialDiscountAmt || 0, o.discountOverrideIdx == null ? null : o.discountOverrideIdx]);
+}
+function phoneTail(v){ return String(v||'').replace(/\D/g,'').slice(-9); }
+function currentQuoteKey(q){
+  return JSON.stringify([state.hp, state.panelIdx, state.structureType, state.toggles, state.specialDiscountAmt, state.discountOverrideIdx, state.client, state.clientPhone, Math.round(q.finalTotal)]);
+}
+function qlDisplay(q){
+  if(savedQuoteInfo && savedQuoteInfo.key === currentQuoteKey(q)){
+    return (savedQuoteInfo.ref ? savedQuoteInfo.ref + ' · ' : '') + (savedQuoteInfo.ql || buildQLCode(q));
+  }
+  return buildQLCode(q);
+}
+function refreshQlLines(q){
+  document.querySelectorAll('.ql-line').forEach(el => { el.textContent = qlDisplay(q); });
+}
+function qlFileBase(q){
+  const info = (savedQuoteInfo && savedQuoteInfo.key === currentQuoteKey(q)) ? savedQuoteInfo : null;
+  const code = (info && info.ql) || buildQLCode(q);
+  return (info && info.ref ? info.ref + '_' : '') + code;
 }
 const fmt1 = n => n.toLocaleString('en-US', {maximumFractionDigits:1});
 const fmt2 = n => n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
 /* ---- lead capture: central log (any rep, any device) + optional Google Sheet export ---- */
 const LEADS_KEY = 'holoul_leads_v1'; // local convenience cache only, not the source of truth anymore
-function saveLead(q){
+async function saveLead(q){
+  // عرض اتحمّل للتعديل وطُبع/اتبعت من غير أي تغيير → ما نعملش مراجعة جديدة، نرجّع نفس الرمز المرجعي
+  if(revisionParent && revisionParent.explicit && revisionParent.sig && revisionParent.phone === phoneTail(state.clientPhone)
+     && revisionParent.sig === inputSig(state) && (revisionParent.total == null || revisionParent.total === Math.round(q.finalTotal))){
+    savedQuoteInfo = { key: currentQuoteKey(q), ref: revisionParent.ref, ql: revisionParent.ql || null };
+    refreshQlLines(q);
+    return savedQuoteInfo;
+  }
   const snapshot = {
     hp: state.hp, panelIdx: state.panelIdx,
     structureType: state.structureType, toggles: {...state.toggles}, specialDiscountAmt: state.specialDiscountAmt,
     discountOverrideIdx: state.discountOverrideIdx
   };
+  if(revisionParent && revisionParent.phone === phoneTail(state.clientPhone) && (revisionParent.explicit || revisionParent.hp === state.hp)){
+    snapshot.revisionOf = revisionParent.ref;
+  }
   const sheetLead = {name:state.client, phone:state.clientPhone, hp:state.hp, total:Math.round(q.finalTotal), date:new Date().toISOString()};
   const leads = JSON.parse(localStorage.getItem(LEADS_KEY)||'[]');
   leads.unshift({...sheetLead, snapshot});
   localStorage.setItem(LEADS_KEY, JSON.stringify(leads.slice(0,500)));
   logLead(sheetLead);
-  if(repUsername && repTokenMem){
-    callEngine('save-quote', {
-      token: repTokenMem,
-      clientName: state.client, clientPhone: state.clientPhone,
-      hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot
-    }).catch(()=>{});
-  } else if(guestMode){
-    callEngine('save-quote', {
-      guest: true,
-      clientName: state.client, clientPhone: state.clientPhone,
-      hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot
-    }).catch(()=>{});
+  // نفس العرض بالظبط (نفس البيانات) ما بيتحفظش مرتين — بنرجّع الرمز المرجعي اللي اتحفظ
+  const key = currentQuoteKey(q);
+  if(savedQuoteInfo && savedQuoteInfo.key === key) return savedQuoteInfo;
+  let res = null;
+  try{
+    if(repUsername && repTokenMem){
+      res = await callEngine('save-quote', {
+        token: repTokenMem,
+        clientName: state.client, clientPhone: state.clientPhone,
+        hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot
+      });
+    } else if(guestMode){
+      res = await callEngine('save-quote', {
+        guest: true,
+        clientName: state.client, clientPhone: state.clientPhone,
+        hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot
+      });
+    }
+  }catch(e){ res = null; }
+  if(res && res.ok){
+    savedQuoteInfo = { key, ref: res.refCode || null, ql: res.qlCode || null };
+    if(res.refCode) revisionParent = { ref: res.refCode, phone: phoneTail(state.clientPhone), hp: state.hp, explicit: false };
+    refreshQlLines(q);
+    return savedQuoteInfo;
   }
+  return null;
 }
 
 let prevLeadLookupSeq = 0;
@@ -136,6 +194,7 @@ function debouncedUpdatePrevLeadBox(){
 function loadPrevLead(lead){
   const s = lead.snapshot;
   if(!s){ alert('هذا العرض القديم لا يحتوي على بيانات كافية لإعادة استخدامه تلقائيًا.'); return; }
+  revisionParent = s.refCode ? { ref: s.refCode, phone: phoneTail(state.clientPhone), hp: s.hp, explicit: true, sig: inputSig(s), ql: s.qlCode || null, total: (lead.final_total != null ? Math.round(Number(lead.final_total)) : null) } : null;
   state.hp = s.hp;
   state.panelIdx = s.panelIdx;
   state.structureType = s.structureType || 'FIXED';
@@ -144,6 +203,38 @@ function loadPrevLead(lead){
   if(discountUnlocked) state.discountOverrideIdx = s.discountOverrideIdx ?? null;
   refresh();
 }
+/* تحميل عرض مُمرَّر من الـ CRM (زر "تعديل (مراجعة جديدة)") — خيار إضافي، مسار الحاسبة العادي ما اتغيرش */
+const CRM_EDIT_HANDOFF_KEY = 'holoul_crm_edit_handoff_v1';
+function applyCrmEditHandoff(){
+  let h = null;
+  try{
+    h = JSON.parse(localStorage.getItem(CRM_EDIT_HANDOFF_KEY)||'null');
+    localStorage.removeItem(CRM_EDIT_HANDOFF_KEY); // استخدام مرة واحدة
+  }catch(e){ h = null; }
+  if(!h || !h.snapshot || !h.ts || Date.now() - h.ts > 2*60*1000) return false;
+  const s = h.snapshot;
+  if(s.hp == null || s.panelIdx == null || !s.toggles) return false;
+  state.client = h.name || '';
+  state.clientPhone = h.phone || '';
+  state.hp = s.hp;
+  state.panelIdx = s.panelIdx;
+  state.structureType = s.structureType || 'FIXED';
+  state.toggles = {...s.toggles};
+  state.specialDiscountAmt = s.specialDiscountAmt || 0;
+  if(typeof discountUnlocked !== 'undefined' && discountUnlocked) state.discountOverrideIdx = s.discountOverrideIdx ?? null;
+  revisionParent = h.refCode ? { ref: h.refCode, phone: phoneTail(state.clientPhone), hp: s.hp, explicit: true, sig: inputSig(s), ql: h.qlCode || null, total: (h.total != null ? Math.round(Number(h.total)) : null) } : null;
+  try{
+    history.replaceState(null, '', location.pathname); // نشيل ?editquote=1 من الرابط
+    const b = document.createElement('div');
+    b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#0b6b3a;color:#fff;padding:9px 14px;text-align:center;font:600 13.5px Cairo,sans-serif;direction:rtl;cursor:pointer;';
+    b.textContent = '✏️ تم تحميل عرض ' + (h.refCode || '') + ' للعميل ' + (h.name || h.phone || '') + ' للتعديل — أي طباعة أو حفظ بعد التعديل هيتسجل كمراجعة جديدة (اضغط لإخفاء)';
+    b.onclick = ()=>b.remove();
+    document.addEventListener('DOMContentLoaded', ()=>document.body.appendChild(b));
+    if(document.body) document.body.appendChild(b);
+    setTimeout(()=>b.remove(), 12000);
+  }catch(e){}
+  return true;
+}
 function validateClient(){
   if(!state.client.trim() || !state.clientPhone.trim()){
     alert('من فضلك أدخل اسم العميل ورقم الهاتف أولًا');
@@ -151,12 +242,13 @@ function validateClient(){
   }
   return true;
 }
-function handlePrint(){
+async function handlePrint(){
   if(!validateClient()) return;
   const q = currentQuote();
-  saveLead(q);
+  // ننتظر الحفظ (بحد أقصى 3 ثواني) علشان الرمز المرجعي يظهر على العرض المطبوع
+  await Promise.race([saveLead(q), new Promise(r=>setTimeout(()=>r(null), 3000))]);
   const originalTitle = document.title;
-  document.title = buildQLCode(q).replace(/[\/\\?%*:|"<>]/g,'-');
+  document.title = qlFileBase(q).replace(/[\/\\?%*:|"<>]/g,'-');
   window.print();
   setTimeout(()=>{ document.title = originalTitle; }, 1000);
 }
@@ -316,10 +408,10 @@ async function downloadQuotePdf(filename){
 async function sendQuoteToClientWhatsapp(){
   if(!validateClient()) return;
   const q = currentQuote();
-  saveLead(q);
+  await Promise.race([saveLead(q), new Promise(r=>setTimeout(()=>r(null), 3000))]);
   const phone = normalizePhone(state.clientPhone);
   if(phone.length<11){ alert('رقم هاتف العميل غير صحيح — تأكد إنه بالصيغة الصحيحة (05xxxxxxxx)'); return; }
-  const filename = buildQLCode(q).replace(/[^A-Za-z0-9\-]/g,'') + '.pdf';
+  const filename = qlFileBase(q).replace(/[^A-Za-z0-9\-_]/g,'') + '.pdf';
   const ok = await downloadQuotePdf(filename);
   const msg = ok
     ? `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\nالعميل: ${state.client}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(q.finalTotal)} ﷼\n\nللتواصل: 966561274344+`

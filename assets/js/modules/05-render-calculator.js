@@ -158,7 +158,7 @@ function renderIrrigationCalc(){
       </div>
 
       <div class="card">
-        <div class="num" style="font-size:11px;color:var(--muted);margin-bottom:8px">${buildQLCode(q)}</div>
+        <div class="num ql-line" style="font-size:11px;color:var(--muted);margin-bottom:8px">${qlDisplay(q)}</div>
         <h3 style="margin-bottom:2px">العرض المالي</h3>
         <div style="font-size:13px;margin:8px 0 4px">تحية طيبة وبعد،</div>
         <div style="font-size:13px;color:var(--ink);line-height:1.8">

@@ -1392,6 +1392,8 @@ function scheduleRefreshOngrid(delay = 220){
   refreshOngridTimer = setTimeout(()=>{ refreshOngridTimer = null; refreshOngrid(); }, delay);
 }
 
+// خيار إضافي: لو الحاسبة اتفتحت من زر "تعديل (مراجعة جديدة)" في الـ CRM، حمّل العرض قبل أول حساب
+try{ applyCrmEditHandoff(); }catch(e){}
 refresh();
 
 // If the admin previously checked "remember me", silently restore that
