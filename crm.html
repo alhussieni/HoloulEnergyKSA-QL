@@ -978,7 +978,36 @@ function printCustomerQuote(q, c){
   w.document.open(); w.document.write(buildCustomerQuoteHtml(q, c)); w.document.close();
   w.addEventListener('load', ()=>{ setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 700); });
 }
-function openQuoteDetail(q, c){
+/* ===== تعديل العرض من الـ CRM (خيار إضافي — التعديل من الحاسبة زي ما هو) =====
+   بنمرّر بيانات العرض للحاسبة عبر localStorage (مفتاح مؤقت بينتهي بعد دقيقتين)،
+   والحاسبة بتحمّله وتعتبر أي حفظ/طباعة بعده مراجعة جديدة لنفس العرض. */
+const CRM_EDIT_HANDOFF_KEY = 'holoul_crm_edit_handoff_v1';
+function qpEditable(q){
+  const s = q && q.snapshot;
+  return !!(s && s.hp != null && s.panelIdx != null && s.toggles && typeof s.toggles === 'object');
+}
+function editQuoteInCalculator(q, c){
+  const s = q.snapshot;
+  const payload = {
+    ts: Date.now(),
+    name: c.name || '',
+    phone: c.phone || '',
+    refCode: s.refCode || q.ref_code || null,
+    qlCode: s.qlCode || null,
+    total: q.final_total != null ? Number(q.final_total) : null,
+    snapshot: {
+      hp: s.hp, panelIdx: s.panelIdx, structureType: s.structureType || 'FIXED',
+      toggles: s.toggles, specialDiscountAmt: s.specialDiscountAmt || 0,
+      discountOverrideIdx: s.discountOverrideIdx == null ? null : s.discountOverrideIdx
+    }
+  };
+  try{ localStorage.setItem(CRM_EDIT_HANDOFF_KEY, JSON.stringify(payload)); }
+  catch(e){ toast('⚠️ تعذّر تجهيز العرض للتعديل (التخزين المحلي غير متاح)'); return; }
+  const w = window.open('index.html?editquote=1', '_blank');
+  if(!w) toast('⚠️ المتصفح منع فتح نافذة جديدة — اسمح بالنوافذ المنبثقة وجرّب تاني');
+}
+
+function openQuoteDetail(q, c, all){
   const fq = qpFrozen(q);
   const frozenItems = q.snapshot && Array.isArray(q.snapshot.frozenItems) ? q.snapshot.frozenItems : null;
   const old = document.getElementById('quoteDetailOverlay'); if(old) old.remove();
@@ -1033,17 +1062,31 @@ function openQuoteDetail(q, c){
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn small" id="qdPrintBtn" ${fq?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>🖨️ طباعة بشكل العميل</button>
+          <button type="button" class="btn small" id="qdEditBtn" title="يفتح الحاسبة بالعرض ده محمّل، وأي طباعة بعد التعديل بتتحفظ كمراجعة جديدة (R1, R2...)" ${qpEditable(q)?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>✏️ تعديل (مراجعة جديدة)</button>
           <button type="button" class="btn ghost small" id="qdCloseBtn">✖ إغلاق</button>
         </div>
       </div>
+      ${(()=>{
+        const ref = q.snapshot && q.snapshot.refCode; if(!ref || !Array.isArray(all)) return '';
+        const baseOf = r => String(r||'').replace(/-R\d+$/,'');
+        const fam = all.filter(x => x.snapshot && baseOf(x.snapshot.refCode) === baseOf(ref)).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+        if(fam.length < 2) return '';
+        return `<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12.5px;"><span style="color:#555;">المراجعات:</span>${fam.map(x=>{
+          const n = (x.snapshot && x.snapshot.revisionNo) || 0; const cur = x.id === q.id;
+          return `<button type="button" class="qdRev" data-qid="${x.id}" style="border:1px solid ${cur?'#123':'#ccd'};background:${cur?'#123':'#fff'};color:${cur?'#fff':'#123'};border-radius:7px;padding:2px 10px;cursor:pointer;font-family:inherit;">${n?('R'+n):'الأصل'} · ${qpFmt(x.final_total)} ﷼ · ${qpDateGB(x.created_at)}</button>`;
+        }).join('')}</div>`;
+      })()}
       ${body}
       ${fq && Math.abs(Number(fq.finalTotal) - Number(q.final_total||0)) >= 1 ? `<div style="font-size:11.5px;color:#777;margin-top:10px;">ملاحظة: الإجمالي المحسوب بالتفصيل (${qpFmt(fq.finalTotal)}) وإجمالي العرض كما ظهر للعميل (${qpFmt(q.final_total)}) فرقهم تقريب شاشة.</div>` : ''}
     </div>`;
   document.body.appendChild(ov);
   ov.addEventListener('click', (e)=>{ if(e.target === ov) ov.remove(); });
   ov.querySelector('#qdCloseBtn').addEventListener('click', ()=>ov.remove());
+  ov.querySelectorAll('.qdRev').forEach(b=>b.addEventListener('click', ()=>{ const x = (all||[]).find(y=>String(y.id)===b.dataset.qid); if(x) openQuoteDetail(x, c, all); }));
   const pb = ov.querySelector('#qdPrintBtn');
   if(fq) pb.addEventListener('click', ()=>printCustomerQuote(q, c));
+  const eb = ov.querySelector('#qdEditBtn');
+  if(qpEditable(q)) eb.addEventListener('click', ()=>editQuoteInCalculator(q, c));
 }
 
 function renderCustomerModal(c, quotes, interactions, contacts, sites, opportunities, assets){
@@ -1311,7 +1354,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     row.addEventListener('click', ()=>openOpportunityEditor(row.dataset.oppId));
   });
   m.querySelectorAll('.viewQuoteBtn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{ const qq = quotes.find(x=>String(x.id)===btn.dataset.quoteId); if(qq) openQuoteDetail(qq, c); });
+    btn.addEventListener('click', ()=>{ const qq = quotes.find(x=>String(x.id)===btn.dataset.quoteId); if(qq) openQuoteDetail(qq, c, quotes); });
   });
   m.querySelectorAll('.useQuoteBtn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
