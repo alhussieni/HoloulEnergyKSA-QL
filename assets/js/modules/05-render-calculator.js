@@ -107,11 +107,11 @@ function renderIrrigationCalc(){
     <div id="quotePrintArea" class="quote-shell ${quoteLoading?'quote-loading':''}">
       <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
         <div style="display:flex;align-items:center;gap:10px">
-          <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
+          <img src="${LOGO_SRC}" alt="${escAttr(companyBrand())}" style="width:46px;height:46px;object-fit:contain">
           <div>
-            <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">الرقم الوطني الموحد: 7037810988 · السجل التجاري: 1010970687 · الرقم الضريبي: 311386341200003</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
+            <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">${esc(companyShort())}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">${[COMPANY.crNumber?'الرقم الوطني الموحد: '+esc(COMPANY.crNumber):'', COMPANY.commercialReg?'السجل التجاري: '+esc(COMPANY.commercialReg):'', COMPANY.vatNumber?'الرقم الضريبي: '+esc(COMPANY.vatNumber):''].filter(Boolean).join(' · ')}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(companyBrand())}${COMPANY.phone?' · '+esc(COMPANY.phone):''}</div>
           </div>
         </div>
         <div>
@@ -231,9 +231,7 @@ function renderIrrigationCalc(){
         </div>
         <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
           <b style="color:var(--ink)">للتواصل</b><br>
-          info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
-          Website - LinkedIn - Youtube - FB - Tiktok : HoloulEnergy<br>
-          <span class="num">966561274344+</span>
+          ${companyContactHtml()}
         </div>
 
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" class="no-print">
@@ -264,11 +262,11 @@ function renderPriceAdjustLine(combinedAmt){
 function renderQuoteHeaderBanner(){
   return `<div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
     <div style="display:flex;align-items:center;gap:10px">
-      <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
+      <img src="${LOGO_SRC}" alt="${escAttr(companyBrand())}" style="width:46px;height:46px;object-fit:contain">
       <div>
-        <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px">الرقم الوطني الموحد: 7037810988 · السجل التجاري: 1010970687 · الرقم الضريبي: 311386341200003</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
+        <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">${esc(companyShort())}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${[COMPANY.crNumber?'الرقم الوطني الموحد: '+esc(COMPANY.crNumber):'', COMPANY.commercialReg?'السجل التجاري: '+esc(COMPANY.commercialReg):'', COMPANY.vatNumber?'الرقم الضريبي: '+esc(COMPANY.vatNumber):''].filter(Boolean).join(' · ')}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(companyBrand())}${COMPANY.phone?' · '+esc(COMPANY.phone):''}</div>
       </div>
     </div>
     <div>
@@ -363,8 +361,7 @@ function renderQuoteBomAndTotal(q, introText, qtyEdit){
       الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${new Date().toLocaleDateString('en-GB')}).
     </div>
     <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
-      <b style="color:var(--ink)">للتواصل</b><br>info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
-      <span class="num">966561274344+</span>
+      <b style="color:var(--ink)">للتواصل</b><br>${companyContactHtml()}
     </div>
     <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" class="no-print">
       <button class="btn" onclick="handlePrint()">🖨️ طباعة / حفظ PDF</button>
@@ -377,7 +374,7 @@ function renderQuoteBomAndTotal(q, introText, qtyEdit){
 function sendGenericQuoteWhatsapp(finalTotal){
   if(!state.clientPhone){ alert('من فضلك اكتب رقم هاتف العميل أولاً'); return; }
   const phone = state.clientPhone.replace(/\D/g,'').replace(/^0/,'966');
-  const msg = `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nعرض سعر منظومة طاقة شمسية\nالعميل: ${state.client}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
+  const msg = `${companyShort()} — ${companyBrand()}\n\nعرض سعر منظومة طاقة شمسية\nالعميل: ${state.client}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
   window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank');
 }
 
