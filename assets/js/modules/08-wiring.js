@@ -229,8 +229,8 @@ function wire(){
       const id = +b.dataset.readyquote;
       const s = (cachedReadySystems||[]).find(x=>x.id===id);
       if(!s) return;
-      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنظومة التالية:\n${s.name} — ${fmt(s.priceSar)} ﷼\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
-      window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
+      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنظومة التالية:\n${s.name} — ${fmt(s.priceSar)} ﷼\n\n${companyBrand()} — ${companyShort()}`;
+      window.open('https://wa.me/'+companyWaNumber()+'?text='+encodeURIComponent(msg), '_blank');
     });
     return;
   }
@@ -244,8 +244,8 @@ function wire(){
     const waBtn = document.getElementById('iqWhatsappBtn');
     if(waBtn) waBtn.onclick = ()=>{
       if(!iqQuote) return;
-      const msg = `مرحبًا، أرغب في عرض سعر لمحطة تشغيل موتور/غاطس ري بالطاقة الشمسية:\nقدرة الموتور/الغاطس: ${iqHp} حصان\nنوع العرض: توريد خامات فقط\nالسعر التقديري: ${fmt(iqQuote.supplyOnlyTotal)} ﷼ (شامل الضريبة)\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
-      window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
+      const msg = `مرحبًا، أرغب في عرض سعر لمحطة تشغيل موتور/غاطس ري بالطاقة الشمسية:\nقدرة الموتور/الغاطس: ${iqHp} حصان\nنوع العرض: توريد خامات فقط\nالسعر التقديري: ${fmt(iqQuote.supplyOnlyTotal)} ﷼ (شامل الضريبة)\n\n${companyBrand()} — ${companyShort()}`;
+      window.open('https://wa.me/'+companyWaNumber()+'?text='+encodeURIComponent(msg), '_blank');
     };
     return;
   }
@@ -351,8 +351,8 @@ function wire(){
       const cat = buildCatalogWithPanels(cachedProductCatalog || [])[ci];
       const row = cat && cat.rows[ri];
       if(!row) return;
-      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنتج التالي:\n${row[0]} (${cat.category})\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
-      window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
+      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنتج التالي:\n${row[0]} (${cat.category})\n\n${companyBrand()} — ${companyShort()}`;
+      window.open('https://wa.me/'+companyWaNumber()+'?text='+encodeURIComponent(msg), '_blank');
     });
     document.querySelectorAll('[data-carttoggle]').forEach(cb=>cb.onchange=()=>{
       const [ci,ri] = cb.dataset.carttoggle.split(':').map(Number);
@@ -404,8 +404,8 @@ function wire(){
     if(cartRequestQuoteBtn) cartRequestQuoteBtn.onclick = ()=>{
       const { subtotal, vat, total } = cartTotals();
       const lines = productCart.map((c,i)=>`${i+1}. ${c.name} (${c.category}) — الكمية: ${c.qty} × ${c.price} ﷼ = ${(c.price*c.qty).toLocaleString('en-US')} ﷼`).join('\n');
-      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنتجات التالية:\n\n${lines}\n\nالإجمالي بدون ضريبة: ${subtotal.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼\nضريبة القيمة المضافة (15%): ${vat.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼\nالإجمالي شامل الضريبة: ${total.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼\n\nHoloulEnergy — حلول الطاقة المتجددة والمقاولات`;
-      window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
+      const msg = `مرحبًا، أرغب في طلب عرض سعر للمنتجات التالية:\n\n${lines}\n\nالإجمالي بدون ضريبة: ${subtotal.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼\nضريبة القيمة المضافة (15%): ${vat.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼\nالإجمالي شامل الضريبة: ${total.toLocaleString('en-US',{maximumFractionDigits:2})} ﷼\n\n${companyBrand()} — ${companyShort()}`;
+      window.open('https://wa.me/'+companyWaNumber()+'?text='+encodeURIComponent(msg), '_blank');
     };
     const globalSearchInput = document.getElementById('productGlobalSearch');
     if(globalSearchInput){
@@ -512,13 +512,14 @@ function wire(){
     });
   }
   if(currentView==='admin'){
-    const admSectionTitles = {overview:'نظرة عامة',discounts:'الخصومات',pricing:'الأسعار والهوامش',calcs:'حاسبات الأنظمة',products:'المنتجات والكتالوج',portfolio:'البورتفوليو',leads:'قاعدة العملاء',reps:'إدارة المناديب',security:'الحماية والنظام'};
+    const admSectionTitles = {overview:'نظرة عامة',discounts:'الخصومات',pricing:'الأسعار والهوامش',calcs:'حاسبات الأنظمة',products:'المنتجات والكتالوج',portfolio:'البورتفوليو',leads:'قاعدة العملاء',reps:'إدارة المناديب',company:'بيانات المؤسسة',security:'الحماية والنظام'};
     function goToAdminSection(id){
       if(id === 'leads'){ window.location.href = 'crm.html'; return; }
       currentAdminSection = id;
       document.querySelectorAll('.admin-nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.admsec===id));
       document.querySelectorAll('.admsec').forEach(s=>s.classList.toggle('active', s.dataset.admsec===id));
       const t = document.getElementById('admTopbarTitle'); if(t) t.textContent = admSectionTitles[id] || id;
+      if(id === 'company') loadCompanyAdmin();
       const main = document.querySelector('.admin-main'); if(main) main.scrollIntoView({behavior:'smooth', block:'start'});
     }
     document.querySelectorAll('.admin-nav-btn').forEach(b=>{ b.onclick = ()=>goToAdminSection(b.dataset.admsec); });
@@ -534,6 +535,7 @@ function wire(){
         }
       };
     });
+    wireCompanySection();
     const admLogoutSide = document.getElementById('adm_logout_side');
     if(admLogoutSide) admLogoutSide.onclick = ()=>document.getElementById('adm_logout').click();
     const admSaveTop = document.getElementById('admSaveTop');

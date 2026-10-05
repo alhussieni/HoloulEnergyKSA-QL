@@ -248,7 +248,7 @@ function renderPortfolio(){
           <div class="note">نقدر نبدأ بدراسة أولية للقدرة المطلوبة، تكلفة التشغيل الحالية، وفترة الاسترداد المتوقعة.</div>
         </div>
         <div class="compact-actions">
-          <a class="btn" href="https://wa.me/966561274344" target="_blank" rel="noopener">تواصل واتساب</a>
+          <a class="btn" href="https://wa.me/${companyWaNumber()}" target="_blank" rel="noopener">تواصل واتساب</a>
           <button class="btn ghost" type="button" onclick="document.querySelector('[data-view=&quot;calc&quot;]').click()">افتح الحاسبة</button>
         </div>
       </div>
@@ -573,8 +573,8 @@ async function sendCartQuoteToClientWhatsapp(){
   const filename = ('عرض-سعر-منتجات-'+cartClientName).replace(/[^A-Za-z0-9\u0600-\u06FF\-]/g,'') + '.pdf';
   const ok = await downloadQuotePdf(filename);
   const msg = ok
-    ? `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\nالعميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: 966561274344+`
-    : `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nعرض سعر منتجات\nالعميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: 966561274344+`;
+    ? `${companyShort()} — ${companyBrand()}\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\nالعميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: ${COMPANY.phone||''}`
+    : `${companyShort()} — ${companyBrand()}\n\nعرض سعر منتجات\nالعميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: ${COMPANY.phone||''}`;
   setTimeout(()=>window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank'), ok?600:0);
 }
 
@@ -588,11 +588,11 @@ function renderCartQuoteDocument(){
     <div id="quotePrintArea" class="quote-shell">
       <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
         <div style="display:flex;align-items:center;gap:10px">
-          <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
+          <img src="${LOGO_SRC}" alt="${escAttr(companyBrand())}" style="width:46px;height:46px;object-fit:contain">
           <div>
-            <div style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">الرقم الوطني الموحد: 7037810988 · السجل التجاري: 1010970687 · الرقم الضريبي: 311386341200003</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
+            <div style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">${esc(companyShort())}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">${[COMPANY.crNumber?'الرقم الوطني الموحد: '+esc(COMPANY.crNumber):'', COMPANY.commercialReg?'السجل التجاري: '+esc(COMPANY.commercialReg):'', COMPANY.vatNumber?'الرقم الضريبي: '+esc(COMPANY.vatNumber):''].filter(Boolean).join(' · ')}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(companyBrand())}${COMPANY.phone?' · '+esc(COMPANY.phone):''}</div>
           </div>
         </div>
         <div>
@@ -655,9 +655,7 @@ function renderCartQuoteDocument(){
         </div>
         <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
           <b style="color:var(--ink)">للتواصل</b><br>
-          info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
-          Website - LinkedIn - Youtube - FB - Tiktok : HoloulEnergy<br>
-          <span class="num">966561274344+</span>
+          ${companyContactHtml()}
         </div>
 
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" class="no-print">
@@ -1230,14 +1228,207 @@ const BOM_GENERIC_ITEM_KEYS = [
   ['netmetering', 'رسوم صافي القياس'],
 ];
 
+
+/* =======================================================================
+   بيانات المؤسسة (white-label) — قسم في لوحة التحكم
+   الحفظ عبر invoice-api (admin-save-company-profile / admin-upload-logo)؛ المصدر الوحيد جدول company_profile.
+   ======================================================================= */
+let companyAdmin = { loaded:false, loading:false, trialMode:true, form:null, status:'', statusKind:'', busy:false };
+function companyToForm(c){
+  const a = c.address || {};
+  return {
+    name:c.name||'', shortName:c.shortName||'', nameEn:c.nameEn||'', vatNumber:c.vatNumber||'', crNumber:c.crNumber||'',
+    commercialReg:c.commercialReg||'', nationalAddress:c.nationalAddress||'',
+    buildingNo:a.buildingNo||'', street:a.street||'', district:a.district||'', city:a.city||'', postalCode:a.postalCode||'',
+    additionalNo:a.additionalNo||'', country:a.country||'',
+    phone:c.phone||'', whatsapp:c.whatsapp||'', email:c.email||'', website:c.website||'', invoicePrefix:c.invoicePrefix||'', logoUrl:c.logoUrl||''
+  };
+}
+async function invoiceApiAdmin(action, payload){
+  const res = await fetch(INVOICE_API_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY },
+    body: JSON.stringify(Object.assign({ action, adminToken: adminTokenMem }, payload||{}))
+  });
+  let d; try{ d = await res.json(); }catch(e){ throw new Error('استجابة غير صالحة من الخادم'); }
+  if(d.error) throw new Error(d.error);
+  return d;
+}
+async function loadCompanyAdmin(force){
+  if(companyAdmin.loading || (companyAdmin.loaded && !force)) return;
+  companyAdmin.loading = true; companyAdmin.status = '';
+  try{
+    const d = await invoiceApiAdmin('admin-get-company-profile');
+    companyAdmin.form = companyToForm(d.company || COMPANY);
+    companyAdmin.trialMode = !!d.trialMode;
+    companyAdmin.loaded = true;
+    if(d.company) setCompany(d.company);
+  }catch(e){
+    companyAdmin.status = 'تعذّر تحميل بيانات المؤسسة: ' + e.message; companyAdmin.statusKind = 'bad';
+    companyAdmin.form = companyAdmin.form || companyToForm(COMPANY);
+  }
+  companyAdmin.loading = false;
+  if(currentView === 'admin') render();
+}
+function readCompanyFormFromDom(){
+  const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const f = companyAdmin.form || companyToForm(COMPANY);
+  Object.assign(f, {
+    name:g('co_name'), shortName:g('co_short'), nameEn:g('co_en'), vatNumber:g('co_vat'), crNumber:g('co_cr'),
+    commercialReg:g('co_reg'), nationalAddress:g('co_nat'),
+    buildingNo:g('co_bno'), street:g('co_street'), district:g('co_district'), city:g('co_city'), postalCode:g('co_postal'),
+    additionalNo:g('co_addno'), country:g('co_country'),
+    phone:g('co_phone'), whatsapp:g('co_wa'), email:g('co_email'), website:g('co_web')
+  });
+  const pre = document.getElementById('co_prefix'); if(pre && !pre.disabled) f.invoicePrefix = pre.value.trim();
+  companyAdmin.form = f;
+  return f;
+}
+function companyPayloadFromForm(f){
+  return {
+    name:f.name, shortName:f.shortName, nameEn:f.nameEn, vatNumber:f.vatNumber, crNumber:f.crNumber, commercialReg:f.commercialReg,
+    nationalAddress:f.nationalAddress, phone:f.phone, whatsapp:f.whatsapp, email:f.email, website:f.website, invoicePrefix:f.invoicePrefix,
+    address:{ buildingNo:f.buildingNo, street:f.street, district:f.district, city:f.city, postalCode:f.postalCode, additionalNo:f.additionalNo, country:f.country }
+  };
+}
+function fileToLogoDataUrl(file){
+  return new Promise((resolve, reject)=>{
+    if(!/^image\/(png|jpeg|webp)$/.test(file.type)) return reject(new Error('الصورة لازم تكون PNG أو JPG أو WEBP'));
+    const fr = new FileReader();
+    fr.onerror = ()=>reject(new Error('تعذّر قراءة الملف'));
+    fr.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>reject(new Error('تعذّر قراءة الصورة'));
+      img.onload = ()=>{
+        const max = 600, sc = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * sc)), h = Math.max(1, Math.round(img.height * sc));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL(file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png', 0.92)); // PNG بيحافظ على الشفافية
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+function renderCompanySection(){
+  const f = companyAdmin.form || companyToForm(COMPANY);
+  const inp = (id, label, val, extra) => `<div><label for="${id}">${label}</label><input type="text" id="${id}" value="${escAttr(val)}" ${extra||''}></div>`;
+  const grid = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px';
+  const st = companyAdmin.status ? `<div class="note" style="margin-top:10px;color:${companyAdmin.statusKind==='bad'?'#B0432C':'#146C4C'}">${esc(companyAdmin.status)}</div>` : '';
+  const logo = f.logoUrl || 'assets/logo.png';
+  return `
+  <div class="card no-print">
+    <h3 style="margin-top:0">🏢 هوية المؤسسة</h3>
+    <div class="note" style="margin-bottom:12px">البيانات دي بتظهر في عروض الأسعار والفواتير وشهادات الضمان ورسائل الواتساب، وبتتحمّل تلقائيًا في الحاسبة والـCRM. <b>الاسم والرقم الضريبي والعنوان لازم يطابقوا تسجيل المنشأة في هيئة الزكاة (ZATCA)</b>، لأنهم بيدخلوا في الـQR. الفواتير اللي اتصدرت قبل كده بتحتفظ ببيانات وقت إصدارها.</div>
+    ${companyAdmin.loading ? '<div class="note">جاري تحميل البيانات…</div>' : ''}
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <img id="co_logo_img" src="${escAttr(logo)}" alt="logo" style="width:96px;height:96px;object-fit:contain;border:1px solid var(--line);border-radius:12px;padding:6px;background:#fff">
+      <div>
+        <input type="file" id="co_logo_file" accept="image/png,image/jpeg,image/webp" style="display:none">
+        <button class="btn small" id="co_logo_btn" type="button" ${companyAdmin.busy?'disabled':''}>⬆️ رفع لوجو جديد</button>
+        <button class="btn ghost small" id="co_logo_reset" type="button" ${companyAdmin.busy||!f.logoUrl?'disabled':''}>↩ الرجوع للوجو الافتراضي</button>
+        <div class="note" style="margin-top:6px">PNG أو JPG أو WEBP (حتى 2 ميجا). يفضّل خلفية شفافة ومربع تقريبًا. بيتصغّر تلقائيًا قبل الرفع.</div>
+      </div>
+    </div>
+    <h4 style="margin:6px 0">الاسم</h4>
+    <div style="${grid}">
+      ${inp('co_name','الاسم الرسمي (يطابق السجل وهيئة الزكاة) *',f.name)}
+      ${inp('co_short','الاسم المختصر (للعناوين والترويسة)',f.shortName)}
+      ${inp('co_en','الاسم الإنجليزي / العلامة التجارية',f.nameEn)}
+    </div>
+    <h4 style="margin:14px 0 6px">البيانات الضريبية والتجارية</h4>
+    <div style="${grid}">
+      ${inp('co_vat','الرقم الضريبي (15 رقم، يبدأ وينتهي بـ 3)',f.vatNumber,'inputmode="numeric" dir="ltr"')}
+      ${inp('co_cr','الرقم الوطني الموحد',f.crNumber,'inputmode="numeric" dir="ltr"')}
+      ${inp('co_reg','رقم السجل التجاري',f.commercialReg,'inputmode="numeric" dir="ltr"')}
+    </div>
+    <h4 style="margin:14px 0 6px">العنوان الوطني</h4>
+    <div style="${grid}">
+      ${inp('co_nat','كود العنوان المختصر (مثال RDMC8001)',f.nationalAddress,'dir="ltr"')}
+      ${inp('co_bno','رقم المبنى',f.buildingNo,'inputmode="numeric" dir="ltr"')}
+      ${inp('co_street','الشارع',f.street)}
+      ${inp('co_district','الحي',f.district)}
+      ${inp('co_city','المدينة',f.city)}
+      ${inp('co_postal','الرمز البريدي',f.postalCode,'inputmode="numeric" dir="ltr"')}
+      ${inp('co_addno','الرقم الإضافي',f.additionalNo,'inputmode="numeric" dir="ltr"')}
+      ${inp('co_country','الدولة',f.country)}
+    </div>
+    <h4 style="margin:14px 0 6px">التواصل</h4>
+    <div style="${grid}">
+      ${inp('co_phone','رقم الهاتف (يظهر على العروض)',f.phone,'dir="ltr"')}
+      ${inp('co_wa','رقم واتساب (بصيغة 9665XXXXXXXX)',f.whatsapp,'inputmode="numeric" dir="ltr"')}
+      ${inp('co_email','البريد الإلكتروني',f.email,'dir="ltr"')}
+      ${inp('co_web','الموقع الإلكتروني (يبدأ بـ https://)',f.website,'dir="ltr"')}
+    </div>
+    <h4 style="margin:14px 0 6px">ترقيم الفواتير</h4>
+    <div style="${grid}">
+      ${inp('co_prefix','بادئة الترقيم (حروف إنجليزية/أرقام، 2–10)',f.invoicePrefix,(companyAdmin.trialMode?'':'disabled ')+'dir="ltr" maxlength="10"')}
+    </div>
+    <div class="note" style="margin-top:6px">${companyAdmin.trialMode
+      ? 'شكل الرقم: <b dir="ltr">'+esc((f.invoicePrefix||'XXXX').toUpperCase())+'-INV-YYYYMM-0001</b>. تقدر تغيّر البادئة طول فترة التجربة بس — بعد GO LIVE بتتقفل علشان تسلسل الفواتير يفضل سليم.'
+      : 'البادئة مقفولة بعد GO LIVE علشان تسلسل الفواتير يفضل سليم.'}</div>
+    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn" id="co_save" type="button" ${companyAdmin.busy?'disabled':''}>💾 حفظ بيانات المؤسسة</button>
+      <button class="btn ghost" id="co_reload" type="button" ${companyAdmin.busy?'disabled':''}>↻ إعادة تحميل</button>
+    </div>
+    ${st}
+  </div>`;
+}
+function wireCompanySection(){
+  if(!document.getElementById('co_save')) return;
+  if(!companyAdmin.loaded && !companyAdmin.loading) loadCompanyAdmin();
+  document.querySelectorAll('.admsec[data-admsec="company"] input[type="text"]').forEach(el=>{
+    el.addEventListener('input', ()=>readCompanyFormFromDom());
+  });
+  const setStatus = (msg, kind)=>{ companyAdmin.status = msg; companyAdmin.statusKind = kind; };
+  document.getElementById('co_reload').onclick = ()=>{ companyAdmin.loaded = false; loadCompanyAdmin(true); };
+  document.getElementById('co_save').onclick = async ()=>{
+    const f = readCompanyFormFromDom();
+    if(!f.name){ setStatus('الاسم الرسمي مطلوب','bad'); return render(); }
+    companyAdmin.busy = true; setStatus('جاري الحفظ…','ok'); render();
+    try{
+      const d = await invoiceApiAdmin('admin-save-company-profile', companyPayloadFromForm(f));
+      setCompany(d.company); companyAdmin.form = companyToForm(d.company); companyAdmin.trialMode = !!d.trialMode;
+      setStatus('✅ اتحفظت بيانات المؤسسة. هتظهر في العروض والفواتير الجديدة، وفي الـCRM بعد تحديث الصفحة.','ok');
+    }catch(e){ setStatus('❌ ' + e.message,'bad'); }
+    companyAdmin.busy = false; render();
+  };
+  const fileEl = document.getElementById('co_logo_file');
+  document.getElementById('co_logo_btn').onclick = ()=>fileEl.click();
+  fileEl.onchange = async ()=>{
+    const file = fileEl.files && fileEl.files[0]; if(!file) return;
+    readCompanyFormFromDom();
+    companyAdmin.busy = true; setStatus('جاري رفع اللوجو…','ok'); render();
+    try{
+      const dataUrl = await fileToLogoDataUrl(file);
+      const d = await invoiceApiAdmin('admin-upload-logo', { imageBase64: dataUrl });
+      companyAdmin.form.logoUrl = d.url; setCompany(Object.assign({}, COMPANY, { logoUrl: d.url }));
+      setStatus('✅ اتحدّث اللوجو.','ok');
+    }catch(e){ setStatus('❌ ' + e.message,'bad'); }
+    companyAdmin.busy = false; render();
+  };
+  document.getElementById('co_logo_reset').onclick = async ()=>{
+    if(!confirm('الرجوع للوجو الافتراضي؟')) return;
+    const f = readCompanyFormFromDom();
+    companyAdmin.busy = true; render();
+    try{
+      const d = await invoiceApiAdmin('admin-save-company-profile', Object.assign(companyPayloadFromForm(f), { logoUrl: '' }));
+      setCompany(d.company); companyAdmin.form = companyToForm(d.company);
+      setStatus('اتحذف اللوجو المخصّص.','ok');
+    }catch(e){ setStatus('❌ ' + e.message,'bad'); }
+    companyAdmin.busy = false; render();
+  };
+}
+
 function renderAdmin(){
-  const admSectionTitles = {'overview':'نظرة عامة','discounts':'الخصومات','pricing':'الأسعار والهوامش','calcs':'حاسبات الأنظمة','products':'المنتجات والكتالوج','portfolio':'البورتفوليو','leads':'قاعدة العملاء','reps':'إدارة المناديب','security':'الحماية والنظام'};
+  const admSectionTitles = {'overview':'نظرة عامة','discounts':'الخصومات','pricing':'الأسعار والهوامش','calcs':'حاسبات الأنظمة','products':'المنتجات والكتالوج','portfolio':'البورتفوليو','leads':'قاعدة العملاء','reps':'إدارة المناديب','company':'بيانات المؤسسة','security':'الحماية والنظام'};
   return `
   <div class="admin-shell">
   <aside class="admin-sidebar no-print">
     <div class="admin-sidebar-head">
       <div class="admin-sidebar-title">لوحة التحكم</div>
-      <div class="admin-sidebar-sub">HoloulEnergy</div>
+      <div class="admin-sidebar-sub">${esc(companyBrand())}</div>
     </div>
     <nav class="admin-nav">
       <button class="admin-nav-btn ${currentAdminSection==='overview'?'active':''}" data-admsec="overview" type="button"><span class="ic">📊</span><span class="lbl">نظرة عامة</span></button>
@@ -1247,6 +1438,7 @@ function renderAdmin(){
       <button class="admin-nav-btn ${currentAdminSection==='portfolio'?'active':''}" data-admsec="portfolio" type="button"><span class="ic">🖼️</span><span class="lbl">البورتفوليو</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='leads'?'active':''}" data-admsec="leads" type="button"><span class="ic">📋</span><span class="lbl">قاعدة العملاء</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='reps'?'active':''}" data-admsec="reps" type="button"><span class="ic">👥</span><span class="lbl">إدارة المناديب</span></button>
+      <button class="admin-nav-btn ${currentAdminSection==='company'?'active':''}" data-admsec="company" type="button"><span class="ic">🏢</span><span class="lbl">بيانات المؤسسة</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='security'?'active':''}" data-admsec="security" type="button"><span class="ic">🔒</span><span class="lbl">الحماية والنظام</span></button>
     </nav>
     <button class="btn ghost small full" id="adm_logout_side" style="margin-top:14px">🚪 تسجيل الخروج</button>
@@ -1871,6 +2063,10 @@ ${(function(){
     <button class="btn ghost small" id="saveRepsBtn" style="margin-top:8px">💾 حفظ تعديلات المناديب</button>
     <div class="note" style="margin-top:8px">كل مندوب يسجّل دخوله بحسابه الخاص من شاشة الحاسبة الرئيسية. تعطيل "مفعّل" يمنعه من الدخول فورًا بدون حذف بياناته. الأعمدة الأربعة الأخيرة صلاحيات اختيارية لتعديل أقسام محددة من لوحة التحكم — بدون أي منها المندوب يقدر يعمل عروض أسعار فقط، زي أي مندوب عادي.</div>
   </div>
+</section>
+
+<section class="admsec ${currentAdminSection==='company'?'active':''}" data-admsec="company">
+${renderCompanySection()}
 </section>
 
 <section class="admsec ${currentAdminSection==='security'?'active':''}" data-admsec="security">
