@@ -198,7 +198,9 @@ function buildOffgridInput(){
   return {
     panelIdx: o.panelIdx,
     method: o.method,
-    dailyKwh: +o.dailyKwh || 0,
+    dayKwh: o.method === 'consumption' ? (+(o.dayKwh ?? (+o.dailyKwh||0)/2) || 0) : undefined,
+    nightKwh: o.method === 'consumption' ? (+(o.nightKwh ?? (+o.dailyKwh||0)/2) || 0) : undefined,
+    dailyKwh: (+(o.dayKwh ?? (+o.dailyKwh||0)/2) || 0) + (+(o.nightKwh ?? (+o.dailyKwh||0)/2) || 0),
     autonomyDays: +o.autonomyDays || 0,
     appliances: o.appliances,
     inverterModel: o.inverterModel || null,

@@ -18,7 +18,9 @@ const state = {
   offgrid: {
     panelIdx: 0,
     method: 'consumption', // 'consumption' | 'appliances'
-    dailyKwh: 10,
+    dayKwh: 5,
+    nightKwh: 5,
+    dailyKwh: 10, // = dayKwh + nightKwh (kept for saved-quote compatibility)
     autonomyDays: 0,
     appliances: [ {name:'ثلاجة', watts:175, dayHours:6, nightHours:18, qty:1, surgeMultiplier:7} ],
     inverterBrand: '', // filter for the inverter model dropdown — '' = all brands
@@ -257,7 +259,7 @@ function sendLeadWhatsapp(){
   const q = currentQuote();
   saveLead(q);
   const msg = `طلب عرض سعر جديد\nالعميل: ${state.client}\nالهاتف: ${state.clientPhone}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي: ${fmt(q.finalTotal)} ﷼`;
-  window.open('https://wa.me/'+companyWaNumber()+'?text='+encodeURIComponent(msg), '_blank');
+  window.open('https://wa.me/966561274344?text='+encodeURIComponent(msg), '_blank');
 }
 
 function normalizePhone(phone){
@@ -414,8 +416,8 @@ async function sendQuoteToClientWhatsapp(){
   const filename = qlFileBase(q).replace(/[^A-Za-z0-9\-_]/g,'') + '.pdf';
   const ok = await downloadQuotePdf(filename);
   const msg = ok
-    ? `${companyShort()} — ${companyBrand()}\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\nالعميل: ${state.client}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(q.finalTotal)} ﷼\n\nللتواصل: 966561274344+`
-    : `${companyShort()} — ${companyBrand()}\n\nعرض سعر منظومة طاقة شمسية\nالعميل: ${state.client}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(q.finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
+    ? `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\nالعميل: ${state.client}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(q.finalTotal)} ﷼\n\nللتواصل: 966561274344+`
+    : `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nعرض سعر منظومة طاقة شمسية\nالعميل: ${state.client}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(q.finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
   setTimeout(()=>window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank'), ok?600:0);
 }
 

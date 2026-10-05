@@ -107,11 +107,11 @@ function renderIrrigationCalc(){
     <div id="quotePrintArea" class="quote-shell ${quoteLoading?'quote-loading':''}">
       <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
         <div style="display:flex;align-items:center;gap:10px">
-          <img src="${LOGO_SRC}" alt="${escAttr(companyBrand())}" style="width:46px;height:46px;object-fit:contain">
+          <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
           <div>
-            <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">${esc(companyShort())}</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:2px">${[COMPANY.crNumber?'الرقم الوطني الموحد: '+esc(COMPANY.crNumber):'', COMPANY.commercialReg?'السجل التجاري: '+esc(COMPANY.commercialReg):'', COMPANY.vatNumber?'الرقم الضريبي: '+esc(COMPANY.vatNumber):''].filter(Boolean).join(' · ')}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(companyBrand())}${COMPANY.phone?' · '+esc(COMPANY.phone):''}</div>
+            <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">الرقم الوطني الموحد: 7037810988 · السجل التجاري: 1010970687 · الرقم الضريبي: 311386341200003</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
           </div>
         </div>
         <div>
@@ -231,7 +231,9 @@ function renderIrrigationCalc(){
         </div>
         <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
           <b style="color:var(--ink)">للتواصل</b><br>
-          ${companyContactHtml()}
+          info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
+          Website - LinkedIn - Youtube - FB - Tiktok : HoloulEnergy<br>
+          <span class="num">966561274344+</span>
         </div>
 
         <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" class="no-print">
@@ -262,11 +264,11 @@ function renderPriceAdjustLine(combinedAmt){
 function renderQuoteHeaderBanner(){
   return `<div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
     <div style="display:flex;align-items:center;gap:10px">
-      <img src="${LOGO_SRC}" alt="${escAttr(companyBrand())}" style="width:46px;height:46px;object-fit:contain">
+      <img src="${LOGO_SRC}" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
       <div>
-        <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">${esc(companyShort())}</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px">${[COMPANY.crNumber?'الرقم الوطني الموحد: '+esc(COMPANY.crNumber):'', COMPANY.commercialReg?'السجل التجاري: '+esc(COMPANY.commercialReg):'', COMPANY.vatNumber?'الرقم الضريبي: '+esc(COMPANY.vatNumber):''].filter(Boolean).join(' · ')}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(companyBrand())}${COMPANY.phone?' · '+esc(COMPANY.phone):''}</div>
+        <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">الرقم الوطني الموحد: 7037810988 · السجل التجاري: 1010970687 · الرقم الضريبي: 311386341200003</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
       </div>
     </div>
     <div>
@@ -361,7 +363,8 @@ function renderQuoteBomAndTotal(q, introText, qtyEdit){
       الارتباط بهذا السعر لمدة ثلاثة أيام فقط من تاريخ العرض (${new Date().toLocaleDateString('en-GB')}).
     </div>
     <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
-      <b style="color:var(--ink)">للتواصل</b><br>${companyContactHtml()}
+      <b style="color:var(--ink)">للتواصل</b><br>info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
+      <span class="num">966561274344+</span>
     </div>
     <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" class="no-print">
       <button class="btn" onclick="handlePrint()">🖨️ طباعة / حفظ PDF</button>
@@ -374,7 +377,7 @@ function renderQuoteBomAndTotal(q, introText, qtyEdit){
 function sendGenericQuoteWhatsapp(finalTotal){
   if(!state.clientPhone){ alert('من فضلك اكتب رقم هاتف العميل أولاً'); return; }
   const phone = state.clientPhone.replace(/\D/g,'').replace(/^0/,'966');
-  const msg = `${companyShort()} — ${companyBrand()}\n\nعرض سعر منظومة طاقة شمسية\nالعميل: ${state.client}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
+  const msg = `حلول الطاقة المتجددة والمقاولات — HoloulEnergy\n\nعرض سعر منظومة طاقة شمسية\nالعميل: ${state.client}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
   window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank');
 }
 
@@ -428,9 +431,12 @@ function computeOffgridDaySim(q, o){
     nightConsumptionKwh = o.appliances.reduce((s,a)=> s + ((+a.watts||0)*(+a.nightHours||0)*(+a.qty||1))/1000, 0);
   }
   const usingRealSplit = dayConsumptionKwh !== null && (dayConsumptionKwh + nightConsumptionKwh) > 0;
-  if(!usingRealSplit){ dayConsumptionKwh = q.dailyKwh/2; nightConsumptionKwh = q.dailyKwh/2; }
-  const dayKw = usingRealSplit ? dayConsumptionKwh / windowH : (q.dailyKwh/24);
-  const nightKw = usingRealSplit ? nightConsumptionKwh / (24-windowH) : (q.dailyKwh/24);
+  if(!usingRealSplit){
+    dayConsumptionKwh = (q.dayKwh != null) ? q.dayKwh : q.dailyKwh/2;
+    nightConsumptionKwh = (q.nightKwh != null) ? q.nightKwh : q.dailyKwh/2;
+  }
+  const dayKw = dayConsumptionKwh / windowH;
+  const nightKw = nightConsumptionKwh / (24-windowH);
 
   const N = 48;
   const hours = [], prodKw = [];
@@ -615,8 +621,13 @@ function renderOffgridCalc(){
         <button type="button" data-ogmethod="appliances" class="${o.method==='appliances'?'active':''}" style="padding:10px">احسب من قائمة الأجهزة</button>
       </div>
       ${o.method==='consumption' ? `
-      <label style="margin-top:10px">الاستهلاك اليومي (كيلوواط/ساعة)</label>
-      <input type="number" id="og_dailykwh" value="${o.dailyKwh}" min="0.1" step="0.1">
+      <label style="margin-top:10px">الاستهلاك النهاري (كيلوواط/ساعة)</label>
+      <input type="number" id="og_daykwh" value="${o.dayKwh ?? (o.dailyKwh||10)/2}" min="0" step="0.1">
+      <div class="note">الأحمال اللي بتشتغل وقت إنتاج الألواح (من بعد الشروق بساعة لحد قبل الغروب بساعة تقريبًا).</div>
+      <label style="margin-top:10px">الاستهلاك الليلي (كيلوواط/ساعة)</label>
+      <input type="number" id="og_nightkwh" value="${o.nightKwh ?? (o.dailyKwh||10)/2}" min="0" step="0.1">
+      <div class="note">الأحمال اللي بتشتغل على البطارية بعد الغروب لحد الشروق.</div>
+      <div class="note" id="og_split_total">الإجمالي اليومي: <b>${fmt1((+(o.dayKwh ?? (o.dailyKwh||10)/2)||0)+(+(o.nightKwh ?? (o.dailyKwh||10)/2)||0))}</b> كيلوواط/ساعة</div>
       ` : `
       <label style="margin-top:10px">قائمة الأجهزة</label>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
