@@ -374,7 +374,7 @@ body.printing-cert #certPrintArea{display:block!important;}
   <div class="loginCard">
     <div class="mark">☀️</div>
     <h1>متابعة العملاء (CRM)</h1>
-    <p>HoloulEnergy · سجّل دخولك بنفس بيانات لوحة التحكم</p>
+    <p><span id="loginBrandLine">HoloulEnergy</span> · سجّل دخولك بنفس بيانات لوحة التحكم</p>
     <div class="roleTabs">
       <div class="roleTab active" data-role="rep">دخول كمندوب</div>
       <div class="roleTab" data-role="admin">دخول كأدمن</div>
@@ -398,7 +398,7 @@ body.printing-cert #certPrintArea{display:block!important;}
     <div class="brandrow">
       <div class="brand">
         <div class="mark">☀️</div>
-        <div><div class="name">متابعة العملاء</div><div class="sub">HoloulEnergy CRM</div></div>
+        <div><div class="name">متابعة العملاء</div><div class="sub"><span id="crmBrandSub">HoloulEnergy</span> CRM</div></div>
       </div>
       <nav class="tabs" id="tabsNav">
         <button class="active" data-tab="dashboard">لوحة المتابعة</button>
@@ -588,7 +588,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_4qWmgl6fWMpoU6F_o__ykg_Z0Xy_aJY';
 const ENGINE_FN = SUPABASE_URL + '/functions/v1/compute-quote'; // login only
 const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything else
 const INVOICE_FN = SUPABASE_URL + '/functions/v1/invoice-api';  // e-invoices (QR, credit notes, numbering)
-const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live','crm-list-customer-quotations']);
+const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live','crm-list-customer-quotations','seller-info']);
 
 let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[],
   customerTypes:[], classifications:[], regions:[], energySources:[], contactMethods:[], decisionPowerLevels:[],
@@ -648,6 +648,7 @@ async function crmApi(action, payload={}){
   let data;
   try{ data = await res.json(); } catch(e){ throw new Error("رد غير متوقع من السيرفر"); }
   if(data.error){ throw new Error(data.error); }
+  if(data.seller && INVOICE_ACTIONS.has(action)) applySeller(data.seller); // مصدر واحد: بيانات البائع من السيرفر
   return data;
 }
 
@@ -696,6 +697,7 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
 });
 
 async function enterApp(){
+  syncSellerFromServer(); // يحمّل بيانات البائع من السيرفر (مصدر واحد)
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('repNameChip').textContent = SESSION.displayName;
@@ -929,11 +931,11 @@ function buildCustomerQuoteHtml(q, c){
 <div id="quotePrintArea" class="quote-shell">
   <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
     <div style="display:flex;align-items:center;gap:10px">
-      <img src="${origin}assets/logo.png" alt="HoloulEnergy" style="width:46px;height:46px;object-fit:contain">
+      <img src="${/^https?:/.test(sellerLogoSrc(SELLER)) ? sellerLogoSrc(SELLER) : origin + sellerLogoSrc(SELLER)}" alt="${escapeHtml(SELLER.nameEn||SELLER.name)}" style="width:46px;height:46px;object-fit:contain">
       <div>
-        <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">حلول الطاقة المتجددة والمقاولات</div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px">الرقم الوطني الموحد: 7037810988 · السجل التجاري: 1010970687 · الرقم الضريبي: 311386341200003</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:1px">HoloulEnergy · 966561274344+</div>
+        <div id="bannerCompanyName" style="font-family:'Cairo',sans-serif;font-weight:800;font-size:16px">${escapeHtml(SELLER.shortName||SELLER.name)}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${[SELLER.cr?'الرقم الوطني الموحد: '+escapeHtml(SELLER.cr):'', SELLER.crNo?'السجل التجاري: '+escapeHtml(SELLER.crNo):'', SELLER.vat?'الرقم الضريبي: '+escapeHtml(SELLER.vat):''].filter(Boolean).join(' · ')}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:1px">${escapeHtml(SELLER.nameEn||'')}${SELLER.phone?' · '+escapeHtml(SELLER.phone):''}</div>
       </div>
     </div>
     <div>
@@ -965,8 +967,7 @@ function buildCustomerQuoteHtml(q, c){
     </div>
     <div class="support-note" style="margin-top:8px;background:#EAF7F1;border:1px solid #BFE6D6;border-radius:9px;padding:9px 12px;font-size:11.5px;color:#146C4C">نلتزم بتوفير الدعم الفني وقطع الغيار للمنظومة حتى 10 سنوات من تاريخ التشغيل.</div>
     <div class="contact-note" style="margin-top:12px;text-align:center;font-size:11px;color:var(--muted);line-height:1.9">
-      <b style="color:var(--ink)">للتواصل</b><br>info@HoloulEnergy.com · Sales@HoloulEnergy.com<br>
-      Website - LinkedIn - Youtube - FB - Tiktok : HoloulEnergy<br><span class="num">966561274344+</span>
+      <b style="color:var(--ink)">للتواصل</b><br>${[SELLER.email, SELLER.website].filter(Boolean).map(escapeHtml).join('<br>')}${(SELLER.email||SELLER.website)?'<br>':''}<span class="num">${escapeHtml(SELLER.phone||'')}</span>
     </div>
   </div>
 </div></body></html>`;
@@ -2109,7 +2110,7 @@ function printWarrantyCertificate(asset, customer){
             ${SELLER.nameEn} · الرقم الوطني الموحد: ${SELLER.cr} · السجل التجاري: ${SELLER.crNo} · الرقم الضريبي: ${SELLER.vat}<br>${SELLER.phone}
           </div>
         </div>
-        <div class="logoBlock"><img src="assets/logo.png" alt="logo" onerror="this.style.display='none'"></div>
+        <div class="logoBlock"><img src="${sellerLogoSrc(SELLER)}" alt="logo" onerror="this.style.display='none'"></div>
       </div>
       <div class="titleBlock">
         <div class="tAr">شهادة ضمان</div>
@@ -2162,7 +2163,7 @@ function printWarrantyCertificate(asset, customer){
       </div>
 
       <div class="footRow2">
-        <div>للتواصل: info@HoloulEnergy.com · Sales@HoloulEnergy.com</div>
+        <div>للتواصل: ${[SELLER.email, SELLER.phone].filter(Boolean).join(' · ')}</div>
       </div>
     </div>
   `;
@@ -2213,7 +2214,7 @@ async function printGroupWarrantyCertificate(assetsList, customer){
             ${SELLER.nameEn} · الرقم الوطني الموحد: ${SELLER.cr} · السجل التجاري: ${SELLER.crNo} · الرقم الضريبي: ${SELLER.vat}<br>${SELLER.phone}
           </div>
         </div>
-        <div class="logoBlock"><img src="assets/logo.png" alt="logo" onerror="this.style.display='none'"></div>
+        <div class="logoBlock"><img src="${sellerLogoSrc(SELLER)}" alt="logo" onerror="this.style.display='none'"></div>
       </div>
       <div class="titleBlock">
         <div class="tAr">شهادة ضمان — باكدج</div>
@@ -2249,7 +2250,7 @@ async function printGroupWarrantyCertificate(assetsList, customer){
       </div>
 
       <div class="footRow2">
-        <div>للتواصل: info@HoloulEnergy.com · Sales@HoloulEnergy.com</div>
+        <div>للتواصل: ${[SELLER.email, SELLER.phone].filter(Boolean).join(' · ')}</div>
       </div>
     </div>
   `;
@@ -3135,9 +3136,43 @@ function closeInvoiceModal(){ invoiceOverlay.classList.remove('show'); }
 document.getElementById('newInvoiceBtn').addEventListener('click', ()=> openInvoiceModal());
 
 const PAY_METHOD_LABELS = {cash:'نقدي', card:'شبكة / بطاقة', transfer:'تحويل بنكي', other:'أخرى'};
+/* بيانات البائع — مصدرها الوحيد هو invoice-api (SELLER_INFO) على السيرفر.
+   القيم هنا مجرد نسخة احتياطية تظهر لو السيرفر مش متاح؛ بتتحدّث تلقائيًا من السيرفر بعد تسجيل الدخول
+   وفي كل رد من الفواتير (applySeller). متعدّلهاش هنا — عدّل في invoice-api بس. */
 const SELLER = { name: 'مؤسسة حلول الطاقة المتجددة والمقاولات', nameEn: 'HoloulEnergy', cr: '7037810988', crNo: '1010970687', vat: '311386341200003', nationalAddress: 'RDMC8001', phone: '966561274344+',
   // Address per National Address proof no. 1077132936 (empty parts are not printed).
   address: { buildingNo:'8001', street:'أحمد الكازروني', district:'حي المهدية', city:'الرياض', postalCode:'13752', additionalNo:'2343', country:'المملكة العربية السعودية' } };
+function sellerFromServer(s, base){
+  const out = Object.assign({}, base || {});
+  if(!s || typeof s !== 'object') return out;
+  const map = { name:'name', shortName:'shortName', nameEn:'nameEn', phone:'phone', whatsapp:'whatsapp', email:'email', website:'website',
+                logoUrl:'logoUrl', crNumber:'cr', commercialReg:'crNo', vatNumber:'vat', nationalAddress:'nationalAddress' };
+  Object.keys(map).forEach(k=>{ if(s[k] != null && s[k] !== '') out[map[k]] = s[k]; });
+  if(s.address && typeof s.address === 'object') out.address = Object.assign({}, (base && base.address) || {}, s.address);
+  return out;
+}
+function applySeller(s){
+  if(!s || typeof s !== 'object' || !s.name) return;
+  Object.assign(SELLER, sellerFromServer(s, SELLER));
+  try{
+    const brand = SELLER.nameEn || SELLER.shortName || SELLER.name;
+    document.title = 'متابعة العملاء (CRM) | ' + brand;
+    const l = document.getElementById('loginBrandLine'); if(l) l.textContent = brand;
+    const c = document.getElementById('crmBrandSub'); if(c) c.textContent = brand;
+  }catch(e){}
+}
+function sellerLogoSrc(sl){ return (sl && sl.logoUrl) || 'assets/logo.png'; }
+async function loadCompanyPublicCrm(){ // بدون تسجيل دخول: علشان شاشة الدخول تظهر باسم المؤسسة
+  try{
+    const res = await fetch(INVOICE_FN, { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY }, body: JSON.stringify({ action:'company-public' }) });
+    const d = await res.json();
+    if(d && d.ok && d.company) applySeller(d.company);
+  }catch(e){}
+}
+loadCompanyPublicCrm();
+async function syncSellerFromServer(){
+  try{ await crmApi('seller-info'); }catch(e){ /* نكمّل بالنسخة الاحتياطية */ }
+}
 
 let CATALOG_PRODUCTS = null, CATALOG_PACKAGES = null;
 let invSelectedCustomer = null; // {id, name, phone, city, vat_number, commercial_registration} — must be an existing, registered customer
@@ -3981,7 +4016,8 @@ function buildInvoiceSheetHtml(inv){
   const {date:dateStr, time:timeStr} = invIssueParts(inv);
   const rate = Number(inv.vat_percent)/100;
   const orig = isCredit ? (window.__invList||[]).find(x=>String(x.id)===String(inv.related_invoice_id)) : null;
-  const a = SELLER.address || {};
+  const SL = (inv.seller_snapshot && inv.seller_snapshot.name) ? sellerFromServer(inv.seller_snapshot, SELLER) : SELLER; // بيانات البائع وقت إصدار الفاتورة
+  const a = SL.address || {};
   const sellerAddr = [a.buildingNo, a.street, a.district, a.city, a.postalCode, a.additionalNo ? ('الرقم الإضافي '+a.additionalNo) : '', a.country].filter(Boolean).join('، ');
 
   const itemsRowsHtml = items.map((it, idx)=>{
@@ -4023,18 +4059,18 @@ function buildInvoiceSheetHtml(inv){
       <div class="topBar"></div>
       <div class="head2">
         <div class="coBlock">
-          <div class="coName">${SELLER.name}</div>
+          <div class="coName">${SL.name}</div>
           <div class="coMeta">
-            <div><span>العنوان الوطني:</span> ${SELLER.nationalAddress}</div>
+            <div><span>العنوان الوطني:</span> ${SL.nationalAddress}</div>
             ${sellerAddr?`<div><span>العنوان:</span> ${sellerAddr}</div>`:''}
-            <div><span>الرقم الوطني الموحد:</span> ${SELLER.cr}</div>
-            <div><span>السجل التجاري:</span> ${SELLER.crNo}</div>
-            <div><span>الرقم الضريبي (VAT):</span> ${SELLER.vat}</div>
-            <div>SALES@HoloulEnergy.com</div>
+            <div><span>الرقم الوطني الموحد:</span> ${SL.cr}</div>
+            <div><span>السجل التجاري:</span> ${SL.crNo}</div>
+            <div><span>الرقم الضريبي (VAT):</span> ${SL.vat}</div>
+            ${SL.email?`<div>${SL.email}</div>`:''}
           </div>
         </div>
         <div class="logoBlock">
-          <img src="assets/logo.png" alt="logo" onerror="this.style.display='none'">
+          <img src="${sellerLogoSrc(SL)}" alt="logo" onerror="this.style.display='none'">
         </div>
       </div>
       <!-- QR moved up next to the invoice's own identifying details, so it's

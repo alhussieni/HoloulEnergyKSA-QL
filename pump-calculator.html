@@ -1166,12 +1166,36 @@ function sendToWhatsapp() {
 قطر الماسورة: ${D_near}" (${D_mm.toFixed(0)} مم)
 الموديل المقترح (كتالوج Grundfos SP): ${gfLine}`;
 
-  window.open('https://wa.me/966561274344?text=' + encodeURIComponent(note), '_blank');
+  window.open('https://wa.me/' + (window.__companyWa || '966561274344') + '?text=' + encodeURIComponent(note), '_blank');
 }
 
 setFlowUnitHint();
 updateCrops();
 calc();
+</script>
+<script>
+/* هوية المؤسسة (white-label): بتتحمّل من السيرفر (جدول company_profile) وتحدّث الترويسة والفوتر وأزرار الاتصال */
+(function(){
+  var URL_ = 'https://xhgwvszdatqlvlgqiikj.supabase.co/functions/v1/invoice-api';
+  var KEY_ = 'sb_publishable_4qWmgl6fWMpoU6F_o__ykg_Z0Xy_aJY';
+  fetch(URL_, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+KEY_,'apikey':KEY_}, body: JSON.stringify({action:'company-public'}) })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var c = d && d.ok && d.company; if(!c || !c.name) return;
+      var short = c.shortName || c.name, brand = c.nameEn || short, digits = String(c.phone||'').replace(/\D/g,''), wa = String(c.whatsapp||'').replace(/\D/g,'');
+      window.__companyWa = wa || window.__companyWa;
+      var q = function(s){ return document.querySelector(s); };
+      var img = q('.brand .mark img'); if(img){ img.src = c.logoUrl || 'assets/logo.png'; img.alt = brand; }
+      var nm = q('.brand .name'); if(nm) nm.textContent = short;
+      document.title = 'حاسبة نظام الضخ الزراعي | ' + short + ' - ' + brand;
+      document.querySelectorAll('a[href^="tel:"]').forEach(function(a){ if(digits) a.href = 'tel:+' + digits; });
+      document.querySelectorAll('a[href*="wa.me"]').forEach(function(a){ if(wa) a.href = 'https://wa.me/' + wa; });
+      var f = q('footer.site-footer');
+      if(f){ f.textContent = ''; var st = document.createElement('strong'); st.textContent = brand; f.appendChild(st);
+        f.appendChild(document.createTextNode(' — ' + short + (c.phone ? ' · ' : '')));
+        if(c.phone){ var a = document.createElement('a'); a.href = 'tel:+' + digits; a.textContent = c.phone; f.appendChild(a); } }
+    }).catch(function(){});
+})();
 </script>
 </body>
 </html>
