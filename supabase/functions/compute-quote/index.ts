@@ -118,6 +118,11 @@ function computeQuote(D: any, inp: any) {
   }
 
   const reactorModel = pickLadder(D.reactorLadder, Iimp);
+  // Reactor/cables/MC4 now price the same way panels/inverters/batteries
+  // already do: resolveCatalogPricing(category, brand, listPrice) reads the
+  // catalog reference price + whatever supplierDiscountPct/sellDiscountPct
+  // is registered for that (category, brand) in الخصومات. reactorMarkupPct
+  // stays only as the fallback markup if no discount row is registered yet.
   const reactorRow = findExactCatalogRow(D, "الريأكتور", `VEICHI Reactor ${reactorModel}A`);
   const reactorPricing = resolveCatalogPricing(D, reactorRow.category, reactorRow.brand, reactorRow.listPrice, D.reactorMarkupPct || 0);
   const reactorPrice = reactorRow.listPrice;
@@ -452,6 +457,51 @@ function getInverterMaxPvKw(D: any, model: string): number | null {
   const specText: string = (detail && detail.specs && (detail.specs["أقصى قدرة ألواح مسموحة"] || detail.specs["أقصى قدرة ألواح موصى بها"])) || "";
   return parsePowerKw(specText);
 }
+function parseVoltageRange(specText: string): { min: number; max: number } | null {
+  const m = String(specText).match(/([\d.]+)\s*[–\-~]\s*([\d.]+)\s*V/i);
+  if (!m) return null;
+  const min = parseFloat(m[1]), max = parseFloat(m[2]);
+  if (!isFinite(min) || !isFinite(max) || max <= min) return null;
+  return { min, max };
+}
+function getInverterMpptRange(D: any, model: string): { min: number; max: number } | null {
+  const cat = findCatalogCategory(D, "انفرتر");
+  const idx = cat.rows.findIndex((r: any) => r[0] === model);
+  const detail = idx >= 0 ? (cat.productDetails && cat.productDetails[String(idx)]) : null;
+  const specText: string = (detail && detail.specs && (detail.specs["مدى جهد MPPT"] || detail.specs["مدى جهد التشغيل"])) || "";
+  return parseVoltageRange(specText);
+}
+// Designs the panel-string wiring (panels in series per string × strings in
+// parallel) so the string's operating voltage (panelsPerString × Vimp) sits
+// inside the inverter's MPPT window, and its open-circuit voltage
+// (panelsPerString × Voc) never exceeds the MPPT window's upper bound.
+// minPanelsTotal is the array size already sized for daily energy needs —
+// this only decides how those panels are wired, rounding the count UP to a
+// whole number of same-size strings (never down, to avoid under-sizing).
+function pickPanelStringConfig(panel: any, mppt: { min: number; max: number } | null, minPanelsTotal: number) {
+  if (!mppt) {
+    return {
+      panelsPerString: 1, arrays: minPanelsTotal,
+      stringVimp: panel.vimp, stringVoc: panel.voc, mpptMin: null, mpptMax: null,
+      warning: `⚠️ لا توجد بيانات "مدى جهد MPPT" لهذا الموديل داخل الكتالوج — لم يتم التحقق من توافق فولت سلسلة الألواح تلقائيًا، يرجى مراجعة توصيل الألواح يدويًا قبل التنفيذ.`,
+    };
+  }
+  const maxPerStringByVoc = Math.max(1, Math.floor(mppt.max / panel.voc));
+  const minPerStringByVimp = Math.max(1, Math.ceil(mppt.min / panel.vimp));
+  let panelsPerString: number, warning: string | null = null;
+  if (minPerStringByVimp > maxPerStringByVoc) {
+    panelsPerString = maxPerStringByVoc;
+    warning = `⚠️ لا يوجد عدد ألواح بالتوالي يحقق فولت تشغيل داخل نطاق MPPT (${mppt.min}–${mppt.max}V) لهذا الانفرتر مع لوح ${panel.brand} ${panel.power}W في نفس الوقت — تم استخدام ${panelsPerString} لوح بالتوالي كحد أقصى آمن (Voc)، لكن فولت التشغيل الفعلي (Vimp) قد يقل عن أدنى حد للـ MPPT، يلزم مراجعة يدوية أو تغيير موديل الانفرتر/اللوح.`;
+  } else {
+    panelsPerString = maxPerStringByVoc;
+  }
+  const arrays = Math.max(1, Math.ceil(minPanelsTotal / panelsPerString));
+  return {
+    panelsPerString, arrays,
+    stringVimp: panelsPerString * panel.vimp, stringVoc: panelsPerString * panel.voc,
+    mpptMin: mppt.min, mpptMax: mppt.max, warning,
+  };
+}
 const INDUCTIVE_APPLIANCE_HINTS = ["تكييف", "مكيف", "ثلاجة", "فريزر", "مضخة", "موتور", "كمبريسور", "غسالة", "مروحة", "دينامو", "كمبروسر"];
 function isLikelyInductiveAppliance(name: string): boolean {
   const n = String(name || "");
@@ -507,17 +557,17 @@ function pickCatalogBattery(D: any, nameplateKwhNeeded: number, requestedStandar
   let parallelCount: number;
   if (requestedModel) {
     unit = allRows.find((r: any) => r.model === requestedModel);
-    if (!unit) throw new Error(`الموديل "${requestedModel}" غير موجود داخل كتالوج "بطاريات ليثيوم"`);
+    if (!unit) throw new Error(`الموديل "${requestedModel}" غير موجود داخل "بطاريات ليثيوم"`);
     parallelCount = Math.max(1, Math.ceil(nameplateKwhNeeded / unit.kwh));
   } else {
     const targetStdVoltage = requestedStandardVoltage && [12, 24, 48].includes(+requestedStandardVoltage)
       ? +requestedStandardVoltage
       : Math.max(...allRows.map((r: any) => r.stdVoltage));
     let candidates = allRows.filter((r: any) => r.stdVoltage === targetStdVoltage);
-    if (!candidates.length) throw new Error(`لا يوجد أي موديل بطارية بفولت ${targetStdVoltage}V (استاندرد) داخل الكتالوج`);
+    if (!candidates.length) throw new Error(`لا يوجد أي موديل بطارية بفولت ${targetStdVoltage}V (استاندارد) داخل الكتالوج`);
     if (requestedBrand) {
       const brandCandidates = candidates.filter((r: any) => r.brand === requestedBrand);
-      if (!brandCandidates.length) throw new Error(`لا يوجد أي موديل بطارية بماركة "${requestedBrand}" وفولت ${targetStdVoltage}V (استاندرد) داخل الكتالوج`);
+      if (!brandCandidates.length) throw new Error(`لا يوجد أي موديل بطارية بماركة "${requestedBrand}" وفولت ${targetStdVoltage}V (استاندارد) داخل الكتالوج`);
       candidates = brandCandidates;
     }
     let best: { unit: any; count: number; totalSell: number } | null = null;
@@ -539,6 +589,8 @@ function pickCatalogBattery(D: any, nameplateKwhNeeded: number, requestedStandar
   };
 }
 
+// Manual quantity override for a BOM line (off-grid quote). Returns the
+// calculated quantity unless the rep typed a valid positive number.
 function applyQtyOverride(auto: number, override: any): number {
   const n = Number(override);
   if (override === null || override === undefined || override === "" || !isFinite(n) || n <= 0) return auto;
@@ -587,7 +639,7 @@ function buildGenericItems(pushImpl: any, opts: {
 function finalizeQuote(items: any[], discountFactor: number, D: any, manualDiscountAmt: number) {
   let sellTotal = 0, discountTotal = 0;
   for (const it of items) {
-    if (it.on === false) { it.discount = 0; it.net = 0; continue; }
+    if (!it.on) { it.discount = 0; it.net = 0; continue; }
     const margin = it.sell - it.costBasis;
     const discount = it.key === "panel" ? 0 : margin * discountFactor;
     it.discount = discount;
@@ -609,21 +661,35 @@ function computeOffgridQuote(D: any, inp: any) {
   const panel = inp.panel;
   const ov = inp.qtyOverrides || {};
 
-  const dailyKwh = inp.method === "appliances"
-    ? (inp.appliances || []).reduce((s: number, a: any) => {
-        const hrs = (+a.dayHours || 0) + (+a.nightHours || 0);
-        return s + ((+a.watts || 0) * hrs * (+a.qty || 1)) / 1000;
-      }, 0)
-    : (+inp.dailyKwh || 0);
+  // Load profile = DAY energy (consumed while the panels are producing, fed
+  // straight from the array) + NIGHT energy (served from the battery, which
+  // the array must also recharge). dailyKwh is always day + night (24h total).
+  //  - appliances mode: split from each appliance's dayHours / nightHours.
+  //  - consumption mode with inp.dayKwh / inp.nightKwh: used as typed.
+  //  - consumption mode with only inp.dailyKwh (legacy / saved quotes): the
+  //    total is split using og.nightLoadRatioFallback (default 50/50).
+  const apps: any[] = inp.appliances || [];
+  let dayKwh: number, nightKwh: number;
+  if (inp.method === "appliances") {
+    dayKwh = apps.reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.dayHours || 0) * (+a.qty || 1)) / 1000, 0);
+    nightKwh = apps.reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.nightHours || 0) * (+a.qty || 1)) / 1000, 0);
+  } else {
+    const hasSplit = [inp.dayKwh, inp.nightKwh].some((v: any) => v !== undefined && v !== null && v !== "");
+    if (hasSplit) {
+      dayKwh = Math.max(0, +inp.dayKwh || 0);
+      nightKwh = Math.max(0, +inp.nightKwh || 0);
+    } else {
+      const total = Math.max(0, +inp.dailyKwh || 0);
+      nightKwh = total * (og.nightLoadRatioFallback ?? 0.5);
+      dayKwh = total - nightKwh;
+    }
+  }
+  const dailyKwh = dayKwh + nightKwh;
   if (dailyKwh <= 0) throw new Error("الاستهلاك اليومي يجب أن يكون أكبر من صفر");
 
   const peakKw = inp.method === "appliances"
-    ? (inp.appliances || []).reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.qty || 1)) / 1000, 0)
+    ? apps.reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.qty || 1)) / 1000, 0)
     : dailyKwh / (og.peakLoadDivisor || 6);
-
-  const nightKwh = inp.method === "appliances"
-    ? (inp.appliances || []).reduce((s: number, a: any) => s + ((+a.watts || 0) * (+a.nightHours || 0) * (+a.qty || 1)) / 1000, 0)
-    : dailyKwh * (og.nightLoadRatioFallback ?? 0.5);
 
   const autonomyDaysRaw = inp.autonomyDays;
   const autonomyDays = Math.max(
@@ -640,14 +706,14 @@ function computeOffgridQuote(D: any, inp: any) {
 
   let surgeInfo: { totalRunningKw: number; largestSurgeApplianceName: string | null; largestSurgeExtraKw: number; requiredSurgeKw: number } | null = null;
   let requiredSurgeKw = peakKw;
-  if (inp.method === "appliances" && (inp.appliances || []).length) {
-    const apps = (inp.appliances || []).map((a: any) => {
+  if (inp.method === "appliances" && apps.length) {
+    const surgeApps = apps.map((a: any) => {
       const runningKw = ((+a.watts || 0) * (+a.qty || 1)) / 1000;
       const mult = applianceSurgeMultiplier(a, og);
       return { name: a.name || null, runningKw, extraSurgeKw: runningKw * Math.max(0, mult - 1) };
     });
-    const totalRunningKw = apps.reduce((s: number, a: any) => s + a.runningKw, 0);
-    const largest = apps.reduce((max: any, a: any) => (a.extraSurgeKw > max.extraSurgeKw ? a : max), { extraSurgeKw: 0, name: null });
+    const totalRunningKw = surgeApps.reduce((s: number, a: any) => s + a.runningKw, 0);
+    const largest = surgeApps.reduce((max: any, a: any) => (a.extraSurgeKw > max.extraSurgeKw ? a : max), { extraSurgeKw: 0, name: null });
     requiredSurgeKw = totalRunningKw + largest.extraSurgeKw;
     surgeInfo = { totalRunningKw, largestSurgeApplianceName: largest.name, largestSurgeExtraKw: largest.extraSurgeKw, requiredSurgeKw };
   }
@@ -660,9 +726,14 @@ function computeOffgridQuote(D: any, inp: any) {
     inv.totalKw = inv.kw * inv.count;
     inverterSurgeWarning = `⚠️ تيار البدء المطلوب (يعادل تقريبًا ${requiredSurgeKw.toFixed(2)} كيلوواط ذروة${surgeInfo?.largestSurgeApplianceName ? `، أكبره من "${surgeInfo.largestSurgeApplianceName}"` : ""}) يتجاوز قدرة الذروة لانفرتر ${inv.model} الواحد (${(inv.kw * inverterSurgeRatio).toFixed(2)} كيلوواط تقريبًا) — تم رفع عدد الوحدات من ${oldCount} إلى ${inv.count} لضمان تشغيل الحمل عند بدء التشغيل.`;
   }
+  // Manual inverter-count override (applied AFTER the automatic surge sizing,
+  // so the rep's number is what actually gets priced and drawn).
   const autoInverterCount = inv.count;
   inv.count = applyQtyOverride(inv.count, ov.inverter);
   inv.totalKw = inv.kw * inv.count;
+  if (inv.count !== autoInverterCount && requiredSurgeKw > inv.kw * inverterSurgeRatio * inv.count) {
+    inverterSurgeWarning = `⚠️ عدد الانفرترات المُعدَّل يدويًا (${inv.count}) أقل من المطلوب لتحمّل تيار البدء (~${requiredSurgeKw.toFixed(2)} كيلوواط ذروة) — الحد الأدنى الموصى به ${autoInverterCount} وحدة.`;
+  }
 
   const requestedBatteryVoltage = [12, 24, 48].includes(+inp.batteryVoltage) ? (+inp.batteryVoltage as 12 | 24 | 48) : null;
   let standardVoltage: 12 | 24 | 48;
@@ -681,6 +752,8 @@ function computeOffgridQuote(D: any, inp: any) {
     throw new Error(`موديل البطارية "${inp.batteryModel}" فولته ${battery.unit.stdVoltage}V، وانفرتر ${inv.model} يدعم فقط ${invVoltageClasses.join('/')}V — اختر موديل بطارية بفولت متوافق، أو غيّر موديل الانفرتر.`);
   }
   const batteryPricing = resolveCatalogPricing(D, battery.category, battery.unit.brand, battery.unit.listPrice, og.batteryMarkupPct);
+  // Manual battery-count override: pricing, capacity and the day-chart all
+  // derive from battery.count / battery.totalKwh below.
   const autoBatteryCount = battery.count;
   battery.count = applyQtyOverride(battery.count, ov.battery);
   battery.parallelCount = battery.count;
@@ -689,10 +762,29 @@ function computeOffgridQuote(D: any, inp: any) {
   const chargeLossFactor = og.chargeLossFactor || 1.04;
   const recoveryDays = og.recoveryDays || 3;
   const batteryBufferKwh = Math.max(0, battery.totalKwh * og.batteryDoD - nightKwh);
-  const requiredArrayKw = (dailyKwh + nightKwh * chargeLossFactor + batteryBufferKwh / recoveryDays) / (og.sunHours * og.systemEfficiency);
-  const autoTotalPanels = Math.max(1, Math.ceil((requiredArrayKw * 1000) / panel.power));
-  let totalPanels = applyQtyOverride(autoTotalPanels, ov.panel);
-  let calcKW = (totalPanels * panel.power) / 1000;
+  // Array energy = DAY load (served directly) + NIGHT load (stored, with charge
+  // losses) + extra battery capacity recovered over recoveryDays. The night
+  // load is counted ONCE (previously the 24h total + night was used, which
+  // counted the night load twice and oversized the array).
+  const requiredArrayKw = (dayKwh + nightKwh * chargeLossFactor + batteryBufferKwh / recoveryDays) / (og.sunHours * og.systemEfficiency);
+  const minTotalPanels = Math.max(1, Math.ceil((requiredArrayKw * 1000) / panel.power));
+
+  const mpptRange = getInverterMpptRange(D, inv.model);
+  const stringConfig = pickPanelStringConfig(panel, mpptRange, minTotalPanels);
+  const autoTotalPanels = stringConfig.panelsPerString * stringConfig.arrays; // rounded up to whole strings
+  // Manual panel-count override. The exact number the rep typed is what gets
+  // priced and drawn; strings are rounded up to cover it, and a note is added
+  // if it doesn't divide evenly into full strings.
+  const totalPanels = applyQtyOverride(autoTotalPanels, ov.panel);
+  const arrays = totalPanels === autoTotalPanels
+    ? stringConfig.arrays
+    : Math.max(1, Math.ceil(totalPanels / stringConfig.panelsPerString));
+  let stringConfigWarning: string | null = stringConfig.warning;
+  if (totalPanels !== autoTotalPanels && totalPanels % stringConfig.panelsPerString !== 0) {
+    stringConfigWarning = (stringConfigWarning ? stringConfigWarning + " " : "") +
+      `⚠️ عدد الألواح المُعدَّل (${totalPanels}) لا يقبل القسمة على ${stringConfig.panelsPerString} لوح/سلسلة — السلسلة الأخيرة ناقصة، يلزم مراجعة توزيع السلاسل يدويًا.`;
+  }
+  const calcKW = (totalPanels * panel.power) / 1000;
   const structureQty = applyQtyOverride(totalPanels, ov.structure);
 
   const invMaxPvKw = getInverterMaxPvKw(D, inv.model);
@@ -708,7 +800,7 @@ function computeOffgridQuote(D: any, inp: any) {
           return rMaxPv == null || calcKW <= rMaxPv * PV_OVERSIZE_TOLERANCE;
         });
       const maxPanelWatts = Math.floor(invMaxPvKw * PV_OVERSIZE_TOLERANCE * inv.count * 1000);
-      pvArrayOversizeWarning = `⚠️ حجم الألواح المحسوب (${calcKW.toFixed(2)} كيلوواط) يتجاوز أقصى قدرة ألواح مسموح توصيلها على انفرتر ${inv.model} حتى مع هامش تجاوز معتاد (${invMaxPvKw} كيلوواط × ${inv.count} وحدة × ${PV_OVERSIZE_TOLERANCE} = ${toleratedPvKw.toFixed(2)} كيلوواط كحد أقصى) — لا يمكن حل ذلك بإضافة انفرتر ثانٍ لنفس الألواح (توصيل غير سليم كهربائيًا)، فالمطلوب إما استخدام لوح بقدرة ${maxPanelWatts} واط أو أقل، أو رفع قدرة الانفرتر إلى ${biggerModel ? `${biggerModel.kw} كيلوواط (${biggerModel.model})` : "موديل أعلى غير متوفر حاليًا في الكتالوج"}.`;
+      pvArrayOversizeWarning = `⚠️ حجم الألواح المحسوب (${calcKW.toFixed(2)} كيلوواط) يتجاوز أقصى قدرة ألواح مسموح توصيلها على انفرتر ${inv.model} حتى مع هامش تجاوز معتاد (${invMaxPvKw} كيلوواط × ${inv.count} وحدة × ${PV_OVERSIZE_TOLERANCE} = ${toleratedPvKw.toFixed(2)} كيلوواط كحد أقصى) — لا يمكن حل ذلك بإضافة انفرتر ثانٍ لنفس الألواح (توصيل غير سليم كهربائيًا)، فالمطلوب إما استخدام لوح بقدرة ${maxPanelWatts} وات أو أقل، أو رفع قدرة الانفرتر إلى ${biggerModel ? `${biggerModel.kw} كيلوواط (${biggerModel.model})` : "موديل أعلى غير متوفر حاليًا في الكتالوج"}.`;
     }
   }
 
@@ -733,14 +825,14 @@ function computeOffgridQuote(D: any, inp: any) {
     }
   }
 
+  const ogToggles = inp.toggles || {};
+  const ogOn = (key: string) => ogToggles[key] !== false; // default true unless explicitly false
   const items: any[] = [];
-  const t = inp.toggles || {};
-  const isItemOn = (key: string) => t[key] !== false;
   const push = (key: string, label: string, sell: number, costBasis: number, meta: any = {}) => {
-    const on = isItemOn(key);
+    const isOn = ogOn(key);
     items.push({
-      key, label, on, sell: on ? sell : 0, costBasis,
-      type: meta.type || "-", qty: on ? (meta.qty || "-") : "لا يوجد", warranty: on ? (meta.warranty || "-") : "لا يوجد",
+      key, label, on: isOn, sell: isOn ? sell : 0, costBasis,
+      type: meta.type || "-", qty: isOn ? (meta.qty || "-") : "لا يوجد", warranty: isOn ? (meta.warranty || "-") : "لا يوجد",
     });
   };
 
@@ -756,13 +848,20 @@ function computeOffgridQuote(D: any, inp: any) {
   });
 
   const totals = finalizeQuote(items, inp.discountFactor, D, inp.specialDiscountAmt);
+  const invSurgeKw = inv.kw * inverterSurgeRatio * inv.count;
+  const qtyOverridden =
+    totalPanels !== autoTotalPanels || inv.count !== autoInverterCount ||
+    battery.count !== autoBatteryCount || structureQty !== totalPanels;
   return {
-    dailyKwh, nightKwh, peakKw, actualKw: calcKW, totalPanels,
-    invKw: inv.kw, invModel: inv.model, invCount: inv.count, invTotalKw: inv.totalKw,
+    dailyKwh, dayKwh, nightKwh, peakKw, actualKw: calcKW, totalPanels,
+    invKw: inv.kw, invModel: inv.model, invCount: inv.count, invTotalKw: inv.totalKw, invSurgeKw,
     invVoltageClasses, batteryVoltageWarning,
     requiredSurgeKw, surgeInfo, inverterSurgeWarning,
     invMaxPvKw, pvArrayOversizeWarning,
     invMaxChargeA, batteryChargingWarning, suggestedExtraCharger,
+    panelsPerString: stringConfig.panelsPerString, arrays,
+    stringVimp: stringConfig.stringVimp, stringVoc: stringConfig.stringVoc,
+    mpptMin: stringConfig.mpptMin, mpptMax: stringConfig.mpptMax, stringConfigWarning,
     nameplateBatteryKwh: battery.totalKwh, autonomyDays,
     batterySeriesCount: battery.seriesCount, batteryParallelCount: battery.parallelCount,
     batteryUnitVoltage: battery.unit.voltage, batteryPackVoltage: battery.packVoltage,
@@ -771,12 +870,9 @@ function computeOffgridQuote(D: any, inp: any) {
     chargeLossFactor, recoveryDays, batteryBufferKwh,
     sunHours: og.sunHours, systemEfficiency: og.systemEfficiency,
     autoQty: { panel: autoTotalPanels, inverter: autoInverterCount, battery: autoBatteryCount, structure: totalPanels },
-    qtyOverrideNotice: (
-      (ov.panel != null && applyQtyOverride(autoTotalPanels, ov.panel) !== autoTotalPanels) ||
-      (ov.inverter != null && applyQtyOverride(autoInverterCount, ov.inverter) !== autoInverterCount) ||
-      (ov.battery != null && applyQtyOverride(autoBatteryCount, ov.battery) !== autoBatteryCount) ||
-      (ov.structure != null && structureQty !== totalPanels)
-    ) ? "تم تعديل كمية بند واحد أو أكثر يدويًا عن الكمية المحسوبة تلقائيًا — الأسعار والتحذيرات الفنية أعلاه محسوبة على أساس الكميات المعدَّلة، فيرجى التأكد من أنها تغطي احتياج الموقع فعليًا بناءً على تقييمك الفني." : null,
+    qtyOverrideNotice: qtyOverridden
+      ? "تم تعديل كمية بند واحد أو أكثر يدويًا عن الكمية المحسوبة تلقائيًا — الأسعار والتحذيرات الفنية أعلاه محسوبة على أساس الكميات المعدَّلة، فيرجى التأكد من أنها تغطي احتياج الموقع فعليًا بناءً على تقييمك الفني."
+      : null,
     items, ...totals, sarPerKW: totals.finalTotal / calcKW,
   };
 }
@@ -903,6 +999,29 @@ Deno.serve(async (req: Request) => {
     .from("pricing_config").select("data").eq("id", 1).single();
   if (cfgErr || !cfgRow) return json({ error: "pricing config not found" }, 500);
   const D = cfgRow.data;
+
+  // Internal, server-to-server ONLY (never reachable from a browser): lets
+  // invoice-api turn a customer's raw calculator quote back into real,
+  // priced line items for an invoice, by re-running the SAME pricing
+  // engine on the exact inputs (hp/panel/toggles) that were saved with it
+  // — the quotes table never stored an itemized breakdown, only the total.
+  // Guarded by SESSION_SECRET (a server-only env var, never sent to any
+  // client) instead of an admin/rep token, since there is no logged-in
+  // person on this side of the call.
+  if (body.action === "internal-recompute-quote-items") {
+    if (body.internalSecret !== Deno.env.get("SESSION_SECRET")) return json({ error: "forbidden" }, 403);
+    let inp: any;
+    const snapshotForCompute = { ...body.snapshot, discountTierIdx: body.snapshot?.discountOverrideIdx ?? undefined };
+    try { inp = resolveInput(D, snapshotForCompute); } catch (e) { return json({ error: (e as Error).message }, 400); }
+    try {
+      const q = computeQuote(D, inp);
+      return json({
+        ok: true,
+        finalTotal: q.finalTotal,
+        items: q.items.filter((it: any) => it.on).map((it: any) => ({ label: it.label, sell: it.sell, qty: it.qty })),
+      });
+    } catch (e) { return json({ error: (e as Error).message }, 400); }
+  }
 
   async function getAdminSecretRow(): Promise<{ password_hash: string; session_version: number } | null> {
     const { data, error } = await supabase.from("admin_secret").select("password_hash, session_version").eq("id", 1).single();
@@ -1137,18 +1256,51 @@ Deno.serve(async (req: Request) => {
     }
     const phone = phoneKey(body.clientPhone);
     const customerId = await upsertCustomer(body.clientName || "", phone, repUsername);
-    const { error } = await supabase.from("quotes").insert({
+
+    // Freeze the priced quote AT SAVE TIME. The pump calculator only sends its
+    // inputs (hp / panel / toggles) — if prices change later, re-running the
+    // engine would give different numbers than the customer was quoted.
+    //  - frozenItems : label / sell / qty per line (used by invoice-api)
+    //  - frozenQuote : the full customer-facing view (type, qty, warranty per
+    //    line + the totals) so the CRM can show the quote in detail and re-print
+    //    it exactly as the customer received it.
+    // Contains selling prices only — never cost / margin. Never blocks saving.
+    // The reference code (QL-YYYYMM-NNNN) and the descriptive QL code are
+    // stamped by the DB trigger quotes_stamp_codes on INSERT.
+    let snapshotToSave: any = body.snapshot || null;
+    try {
+      const s0: any = body.snapshot;
+      if (s0 && s0.hp != null && s0.panelIdx != null && s0.type !== "product-cart") {
+        const inpF = resolveInput(D, { ...s0, discountTierIdx: s0.discountOverrideIdx ?? undefined });
+        const qF = computeQuote(D, inpF);
+        snapshotToSave = {
+          ...s0,
+          frozenItems: qF.items.filter((it: any) => it.on).map((it: any) => ({ label: it.label, sell: it.sell, qty: it.qty })),
+          frozenTotal: qF.finalTotal,
+          frozenAt: new Date().toISOString(),
+          frozenQuote: {
+            items: qF.items.map((it: any) => ({ key: it.key, label: it.label, on: it.on, sell: it.sell, type: it.type, qty: it.qty, warranty: it.warranty })),
+            sellTotal: qF.sellTotal, discountTotal: qF.discountTotal, manualDiscountAmt: qF.manualDiscountAmt,
+            netAfterManual: qF.netAfterManual, vat: qF.vat, finalTotal: qF.finalTotal,
+            panelLabel: `${inpF.panel.brand} ${inpF.panel.power}W`, invKW: qF.invKW, invBrandName: qF.invBrandName,
+            totalPanels: qF.totalPanels, calcKW: qF.calcKW, hp: inpF.hp,
+          },
+        };
+      }
+    } catch (_e) { /* keep the original snapshot */ }
+
+    const { data: saved, error } = await supabase.from("quotes").insert({
       rep_username: repUsername,
       rep_display_name: repDisplayName,
       client_name: body.clientName || "",
       client_phone: phone,
       hp: body.hp || null,
       final_total: body.finalTotal || null,
-      snapshot: body.snapshot || null,
+      snapshot: snapshotToSave,
       customer_id: customerId,
-    });
+    }).select("ref_code, ql_code").single();
     if (error) return json({ error: error.message }, 500);
-    return json({ ok: true });
+    return json({ ok: true, refCode: saved?.ref_code || null, qlCode: saved?.ql_code || null });
   }
 
   if (body.action === "admin-list-customers") {
@@ -1320,6 +1472,7 @@ Deno.serve(async (req: Request) => {
         .filter((p: any) => p.visible && p.hasPrice)
         .map((p: any) => ({ idx: p.idx, brand: p.brand, power: p.power })),
       applianceDefaults: D.offgrid.applianceDefaults || [],
+      appliancePresets: D.offgrid.appliancePresets || [],
       defaultPanelKey: D.defaultPanelKey || null,
       batteryVoltageOptions: getBatteryVoltageOptions(D),
       inverterModelOptions: getInverterModelOptions(D),
