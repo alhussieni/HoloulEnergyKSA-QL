@@ -410,6 +410,7 @@ body.printing-cert #certPrintArea{display:block!important;}
         <button data-tab="maintenance">الصيانة</button>
         <button data-tab="invoices">🧾 الفواتير</button>
         <button data-tab="settings" id="settingsTabBtn" class="hidden">الإعدادات</button>
+        <button data-tab="segments" id="segmentsTabBtn" class="hidden">📊 الشرائح</button>
         <button data-tab="audit" id="auditTabBtn" class="hidden">سجل التغييرات</button>
       </nav>
       <div class="userChip">
@@ -528,6 +529,16 @@ body.printing-cert #certPrintArea{display:block!important;}
         <div id="settingsGroups"><div class="loadingNote">بيحمّل الإعدادات...</div></div>
         <div class="saveBar"><div></div><div class="right"><button class="btn teal" id="saveSettingsBtn">حفظ كل التعديلات</button></div></div>
       </div>
+    </section>
+
+    <section id="view-segments" class="view">
+      <div class="card">
+        <h3><span class="lbl">تقرير الشرائح (حسب القدرة بالحصان)</span></h3>
+        <div id="segThresholds" class="emptyNote"></div>
+        <div id="segKpis" class="kpiGrid"></div>
+      </div>
+      <div class="card" style="padding:0;overflow:auto;"><div id="segTableWrap"><div class="loadingNote">بيحمّل التقرير...</div></div></div>
+      <div class="emptyNote" style="margin-top:8px;">ملحوظة: العميل اللي عنده عروض في أكتر من شريحة بيتحسب في كل شريحة منها، فمجموع العملاء قد يزيد عن العدد الفعلي.</div>
     </section>
 
     <section id="view-audit" class="view">
@@ -704,6 +715,7 @@ async function enterApp(){
   if(SESSION.role === 'admin'){
     document.getElementById('settingsTabBtn').classList.remove('hidden');
     document.getElementById('auditTabBtn').classList.remove('hidden');
+    document.getElementById('segmentsTabBtn').classList.remove('hidden');
   }
   try{
     const s = await crmApi('admin-crm-settings');
@@ -768,7 +780,46 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='invoices') loadInvoices();
   if(tab==='settings') loadSettingsScreen();
   if(tab==='audit') loadAuditLog();
+  if(tab==='segments') loadSegments();
 });
+
+/* ============ SEGMENTS REPORT ============ */
+const SEG_LABELS = {
+  small:'🟢 صغيرة', medium:'🟡 متوسطة', large:'🟠 كبيرة', mega:'🔴 ميجا', unclassified:'⚪ غير مصنفة'
+};
+async function loadSegments(){
+  const wrap = document.getElementById('segTableWrap');
+  wrap.innerHTML = '<div class="loadingNote">بيحمّل التقرير...</div>';
+  try{
+    const d = await crmApi('admin-crm-segment-report');
+    const rows = d.rows || [];
+    const th = d.thresholds;
+    document.getElementById('segThresholds').textContent = th
+      ? `الحدود: صغيرة حتى ${th.small_max} حصان · متوسطة حتى ${th.medium_max} · كبيرة حتى ${th.large_max} · ميجا أكبر من ${th.large_max}`
+      : '';
+    const totalQuotes = rows.reduce((a,r)=>a+Number(r.quotes_count||0),0);
+    const totalValue  = rows.reduce((a,r)=>a+Number(r.total_quoted_value||0),0);
+    const top = rows.slice().sort((a,b)=>Number(b.total_quoted_value||0)-Number(a.total_quoted_value||0))[0];
+    document.getElementById('segKpis').innerHTML = `
+      <div class="stat sun"><div class="v">${fmtMoney(totalQuotes)}</div><div class="l">إجمالي العروض</div></div>
+      <div class="stat"><div class="v">${fmtMoney(totalValue)}</div><div class="l">إجمالي قيمة العروض (﷼)</div></div>
+      <div class="stat"><div class="v">${top ? (SEG_LABELS[top.segment]||top.segment) : '-'}</div><div class="l">أكبر شريحة قيمةً</div></div>`;
+    if(!rows.length){ wrap.innerHTML = '<div class="loadingNote">مفيش بيانات لسه</div>'; return; }
+    wrap.innerHTML = `<table class="admtable"><thead><tr>
+      <th>الشريحة</th><th>عروض</th><th>عملاء</th><th>متوسط العرض (﷼)</th><th>إجمالي (﷼)</th>
+      <th>سعر الحصان (﷼)</th><th>اتنفذوا</th><th>اتفقدوا</th><th>بيتفاوضوا</th><th>نسبة الإغلاق</th>
+      </tr></thead><tbody>
+      ${rows.map(r=>`<tr>
+        <td><b>${SEG_LABELS[r.segment]||escapeHtml(r.segment)}</b></td>
+        <td>${fmtMoney(r.quotes_count)}</td><td>${fmtMoney(r.customers_count)}</td>
+        <td>${fmtMoney(r.avg_quote_value)}</td><td>${fmtMoney(r.total_quoted_value)}</td>
+        <td>${r.avg_price_per_hp==null?'-':fmtMoney(r.avg_price_per_hp)}</td>
+        <td>${fmtMoney(r.won_customers)}</td><td>${fmtMoney(r.lost_customers)}</td><td>${fmtMoney(r.negotiating_customers)}</td>
+        <td>${r.win_rate_pct==null?'-':Number(r.win_rate_pct).toFixed(1)+'%'}</td>
+      </tr>`).join('')}
+      </tbody></table>`;
+  }catch(err){ wrap.innerHTML = ''; toast('تعذر تحميل تقرير الشرائح: '+err.message); }
+}
 
 /* ============ DASHBOARD ============ */
 async function loadDashboard(){
