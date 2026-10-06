@@ -1,0 +1,15 @@
+/* Unified typography: every piece of text uses Cairo, digits are lining (0-9). */
+*, *::before, *::after,
+input, select, textarea, button, option, optgroup, label, table, th, td,
+svg, svg text, ::placeholder, input::placeholder, textarea::placeholder {
+  font-family: 'Cairo', sans-serif !important;
+}
+html, body {
+  font-variant-numeric: lining-nums;
+  font-feature-settings: "lnum" 1;
+}
+.num, input[type=number], input[inputmode=decimal], td, th {
+  font-variant-numeric: lining-nums tabular-nums;
+}
+/* Numeric fields: keep digits left-to-right so 9724 never reads reversed in RTL pages */
+input[inputmode=decimal], input[type=number] { direction: ltr; text-align: right; }

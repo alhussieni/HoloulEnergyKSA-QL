@@ -366,6 +366,7 @@ body.printing-cert #certPrintArea{display:block!important;}
 .invSheet2 .legal2{font-size:10px;color:var(--muted);}
 .invSheet2 #invQrCanvas{border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff;}
 </style>
+<link rel="stylesheet" href="assets/css/unified-font.css">
 </head>
 <body>
 
@@ -639,7 +640,7 @@ let SESSION = null; // { role, token, displayName }
 let loginRole = 'rep';
 
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2400); }
-function fmtMoney(v){ if(v==null) return "-"; return Number(v).toLocaleString('ar-EG',{maximumFractionDigits:0}); }
+function fmtMoney(v){ if(v==null) return "-"; return Number(v).toLocaleString('en-US',{maximumFractionDigits:0}); }
 function fmtDate(v){ if(!v) return "-"; return v.slice(0,10); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function escapeHtml(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
@@ -977,7 +978,7 @@ function buildCustomerQuoteHtml(q, c){
     </div>` : '';
   return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>عرض سعر - ${escapeHtml(c.name||c.phone||'')} - ${dateGB}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="${origin}assets/css/styles.css">
+<link rel="stylesheet" href="${origin}assets/css/styles.css"><link rel="stylesheet" href="${origin}assets/css/unified-font.css">
 <style>body{background:#fff;padding:14px;max-width:900px;margin:0 auto;} @page{size:A4;margin:10mm;}</style></head><body>
 <div id="quotePrintArea" class="quote-shell">
   <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
@@ -1916,8 +1917,8 @@ async function loadWarranty(){
     kpiWrap.innerHTML = `
       <div class="stat"><div class="v">${statsRes.total}</div><div class="l">إجمالي المعدات المسجلة</div></div>
       <div class="stat"><div class="v">${statsRes.active}</div><div class="l">ضمان ساري</div></div>
-      <div class="stat sun"><div class="v">${statsRes.expiring30}</div><div class="l">هينتهي خلال ٣٠ يوم</div></div>
-      <div class="stat sun"><div class="v">${statsRes.expiring60}</div><div class="l">هينتهي خلال ٦٠ يوم</div></div>
+      <div class="stat sun"><div class="v">${statsRes.expiring30}</div><div class="l">هينتهي خلال 30 يوم</div></div>
+      <div class="stat sun"><div class="v">${statsRes.expiring60}</div><div class="l">هينتهي خلال 60 يوم</div></div>
       <div class="stat bad"><div class="v">${statsRes.expired}</div><div class="l">ضمان منتهي</div></div>
     `;
     const assets = listRes.assets;
@@ -1972,7 +1973,7 @@ async function openAssetEditor(assetId, customerId){
       <div><label>رقم السريال</label><input type="text" id="asf_serial" value="${escapeHtml(asset.serial_number||'')}" placeholder="لو أكتر من قطعة بنفس السريال اكتبهم مفصولين بفاصلة"></div>
       <div><label>القدرة / السعة</label><input type="text" id="asf_capacity" value="${escapeHtml(asset.capacity||'')}" placeholder="مثال: 550W أو 125HP"></div>
       <div><label>الكمية</label><input type="number" min="1" id="asf_quantity" value="${asset.quantity??1}"></div>
-      <div><label>مكان التركيب</label><input type="text" id="asf_location" value="${escapeHtml(asset.location_note||'')}" placeholder="مثال: بئر رقم ٢"></div>
+      <div><label>مكان التركيب</label><input type="text" id="asf_location" value="${escapeHtml(asset.location_note||'')}" placeholder="مثال: بئر رقم 2"></div>
       <div><label>تاريخ التركيب</label><input type="date" id="asf_install_date" value="${asset.installation_date||''}"></div>
       <div></div>
       <div><label>بداية الضمان</label><input type="date" id="asf_warranty_start" value="${asset.warranty_start_date||''}"></div>
@@ -3074,7 +3075,7 @@ async function loadAuditLog(){
       <th>التاريخ</th><th>المستخدم</th><th>الحدث</th><th>العنصر</th><th>التفاصيل</th>
       </tr></thead><tbody>
       ${d.entries.map(e=>`<tr>
-          <td class="mono" style="font-size:11.5px;">${fmtDate(e.created_at)} ${new Date(e.created_at).toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'})}</td>
+          <td class="mono" style="font-size:11.5px;">${fmtDate(e.created_at)} ${new Date(e.created_at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</td>
           <td>${escapeHtml(e.actor)} ${e.actor_role==='admin'?'(أدمن)':''}</td>
           <td>${AUDIT_ACTION_LABELS[e.action_type]||e.action_type}</td>
           <td>${AUDIT_ENTITY_LABELS[e.entity_type]||e.entity_type}${e.entity_label?' · '+escapeHtml(e.entity_label):''}</td>
@@ -3589,7 +3590,7 @@ function openInvoiceModal(prefill){
       // picking one adds ONE summary line to the invoice at that same total.
       const calcOptions = calcList.map(q=>({
         id: 'c:'+q.id, kind:'calc', ref:q,
-        title: `🧮 تقدير حاسبة — ${new Date(q.created_at).toLocaleDateString('ar-SA')}`,
+        title: `🧮 تقدير حاسبة — ${new Date(q.created_at).toLocaleDateString('en-GB')}`,
         subtitle: `${q.hp||'-'} حصان · ${fmtMoney(q.final_total)} ﷼ شامل الضريبة`,
       }));
       openGenericPicker('📄 اختار عرض السعر', [...formalOptions, ...calcOptions], (pickedId)=>{
@@ -3599,7 +3600,7 @@ function openInvoiceModal(prefill){
           invSelectedQuotation = null;
           invSelectedCalcQuote = picked.ref;
           currentQuotationItemsTotal = Math.round((Number(picked.ref.final_total)||0) / 1.15 * 100) / 100;
-          const dateLabel = new Date(picked.ref.created_at).toLocaleDateString('ar-SA');
+          const dateLabel = new Date(picked.ref.created_at).toLocaleDateString('en-GB');
           document.getElementById('invQuotationLinkNote').innerHTML = `🔗 مربوطة بتقدير حاسبة (${dateLabel}) — هيتضاف كبند واحد بنفس السعر اللي اتقال للعميل
             <button type="button" class="btn ghost small" id="invUnlinkQuotationBtn" style="padding:3px 8px;margin-inline-start:8px;">إلغاء الربط</button>`;
           document.getElementById('invQuotationItemsPreview').innerHTML = `
@@ -4339,5 +4340,6 @@ function previewInvoice(inv){
 
 
 </script>
+<script src="assets/js/locale-fix.js"></script>
 </body>
 </html>

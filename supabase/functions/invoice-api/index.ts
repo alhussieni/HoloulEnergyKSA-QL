@@ -387,7 +387,7 @@ Deno.serve(async (req: Request) => {
         sourceCalcQuoteId = cq.id;
         const CALC_QUOTE_VAT_RATE = 0.15; // matches the rate this whole system prices at
         const preVat = round2(total / (1 + CALC_QUOTE_VAT_RATE));
-        const dateLabel = new Date(cq.created_at).toLocaleDateString("ar-SA", { day: "2-digit", month: "2-digit", year: "numeric" });
+        const dateLabel = new Date(cq.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
         quotationItems.push({
           type: "quotation", code: null,
           name: `نظام طاقة شمسية (${cq.hp || "-"} حصان) — حسب عرض سعر الحاسبة بتاريخ ${dateLabel}`.slice(0, 300),
