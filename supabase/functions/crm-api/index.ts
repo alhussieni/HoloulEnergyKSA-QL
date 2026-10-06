@@ -505,6 +505,16 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    if (action === "admin-crm-segment-report") {
+      if (!auth.isAdmin) return json({ error: "تقرير الشرائح متاح للأدمن بس" }, 403);
+      const { data: rows, error: re } = await supabase.from("v_segment_report").select("*");
+      if (re) throw re;
+      const { data: cfg, error: ce } = await supabase.from("segment_config")
+        .select("small_max, medium_max, large_max").eq("id", 1).maybeSingle();
+      if (ce) throw ce;
+      return json({ ok: true, rows: rows || [], thresholds: cfg || null });
+    }
+
     if (action === "admin-crm-settings") {
       const { data, error } = await supabase.from("crm_settings").select("data").eq("id", 1).maybeSingle();
       if (error) throw error;
