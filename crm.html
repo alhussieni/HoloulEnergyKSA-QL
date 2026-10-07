@@ -147,6 +147,50 @@ table.admtable tbody tr:hover td{background:var(--sand);}
 .kcol{width:auto;flex:none;background:var(--sand);border:1px solid var(--line);border-radius:10px;padding:10px;}
 .kcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(250px,100%),1fr));gap:8px;min-height:48px;align-content:start;}
 .kcards .kcard{margin-bottom:0;}
+.pipeAlerts{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12.5px;}
+.pipeAlerts .chip{border:1px solid var(--line);background:var(--sand);border-radius:20px;padding:3px 11px;font-weight:700;cursor:pointer;}
+.pipeAlerts .chip.bad{background:#fdeceb;border-color:#f3b9b0;color:var(--bad);}
+.pipeAlerts .chip.warn{background:#fff6dd;border-color:#f1d68a;color:#8a6200;}
+.pipeAlerts .chip.static{cursor:default;}
+.pipeAlerts .sep{color:var(--muted);}
+.pipeAlerts .topList{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;margin-top:2px;}
+.pipeAlerts .topList a{font-size:11.5px;color:var(--night-2);background:var(--sand);border-radius:8px;padding:3px 9px;cursor:pointer;text-decoration:none;border:1px solid var(--line);}
+.viewToggle{display:inline-flex;border:1px solid var(--teal);border-radius:9px;overflow:hidden;}
+.viewToggle button{border:0;background:#fff;color:var(--teal-dark);padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;}
+.viewToggle button.on{background:var(--teal);color:#fff;}
+.kcard .chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin-bottom:4px;}
+.kcard .dayChip{font-size:10.5px;color:var(--muted);}
+.kcard .dayChip.stale{color:var(--bad);font-weight:800;}
+.kcard .pbar{height:4px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:6px;}
+.kcard .pbar i{display:block;height:100%;background:var(--teal);}
+.kcard.stale{border-color:#f3b9b0;}
+.ptable{width:100%;border-collapse:collapse;font-size:12.5px;background:#fff;}
+.ptable th{background:var(--sand);text-align:right;padding:9px 10px;font-size:12px;white-space:nowrap;border-bottom:1px solid var(--line);}
+.ptable th.sortable{cursor:pointer;user-select:none;}
+.ptable td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle;}
+.ptable tr:hover td{background:#fafcfb;}
+.ptable td.nm{font-weight:700;cursor:pointer;color:var(--night);}
+.ptable td.od{color:var(--bad);font-weight:700;}
+.ptable td .pbar{height:5px;width:60px;border-radius:4px;background:var(--line);overflow:hidden;display:inline-block;vertical-align:middle;margin-inline-end:6px;}
+.ptable td .pbar i{display:block;height:100%;background:var(--teal);}
+.ptable select{max-width:150px;padding:4px 6px;font-size:12px;}
+.ptableWrap{border:1px solid var(--line);border-radius:10px;overflow:auto;}
+.pager{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:10px;font-size:12.5px;}
+.bulkBar{position:sticky;bottom:10px;z-index:20;background:var(--night);color:#fff;border-radius:12px;padding:10px 14px;margin-top:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;box-shadow:var(--shadow);}
+.bulkBar select,.bulkBar input{max-width:170px;padding:5px 8px;font-size:12px;}
+.bulkBar .btn{padding:6px 12px;font-size:12px;}
+
+.pipeFilters label.chk{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer;}
+.pipeFilters label.chk input{width:auto;margin:0;}
+.pipeFilters .pipeCount{font-size:12px;color:var(--muted);margin-inline-start:auto;}
+.kcol .khead{cursor:pointer;user-select:none;}
+.kcol .khead .ksum{font-size:11px;color:var(--muted);font-weight:600;margin-inline-start:10px;}
+.kcol .khead .kcaret{display:inline-block;margin-inline-start:6px;transition:transform .15s;color:var(--muted);}
+.kcol.collapsed .khead{padding-bottom:4px;}
+.kcol.collapsed .khead .kcaret{transform:rotate(-90deg);}
+.kcol.collapsed .kcards,.kcol.collapsed .kmoreRow{display:none;}
+.kmoreRow{display:flex;gap:8px;justify-content:center;margin-top:10px;}
+.kcard .segBadge{display:inline-block;font-size:10.5px;font-weight:700;background:var(--sand);border:1px solid var(--line);border-radius:20px;padding:1px 7px;margin-inline-end:4px;}
 .kcol .khead{display:flex;align-items:center;justify-content:space-between;padding:4px 4px 10px;font-size:12.5px;font-weight:800;}
 .kcol .khead .dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-left:6px;}
 .kcol .kcount{background:#fff;border:1px solid var(--line);border-radius:20px;padding:1px 8px;font-size:11px;color:var(--muted);}
@@ -465,7 +509,31 @@ body.printing-cert #certPrintArea{display:block!important;}
           <div class="custPickList hidden" id="oppCustList"></div>
         </div>
       </div>
-      <div class="kanbanWrap"><div class="kanban" id="kanbanBoard"><div class="loadingNote">بيحمّل الصفقات...</div></div></div>
+      <div class="pipeAlerts" id="pipeAlerts"></div>
+      <div class="filterBar pipeFilters" id="pipeFilters">
+        <input type="text" id="pipeSearch" placeholder="بحث باسم الصفقة أو العميل أو المزرعة...">
+        <select id="pipeRep"><option value="">كل المندوبين</option></select>
+        <select id="pipeSegment">
+          <option value="">كل الشرائح</option>
+          <option value="small">🟢 صغيرة</option>
+          <option value="medium">🟡 متوسطة</option>
+          <option value="large">🟠 كبيرة</option>
+          <option value="mega">🔴 ميجا</option>
+        </select>
+        <select id="pipeType"><option value="">كل الأنواع</option></select>
+        <label class="chk"><input type="checkbox" id="pipeOverdue"> المتأخر فقط</label>
+        <label class="chk"><input type="checkbox" id="pipeStale"> الراكد فقط</label>
+        <label class="chk" id="pipeMineWrap"><input type="checkbox" id="pipeMine"> صفقاتي</label>
+        <button class="btn ghost small" id="pipeReset" type="button">مسح الفلاتر</button>
+        <div class="viewToggle"><button type="button" id="pipeViewBoard">▦ لوحة</button><button type="button" id="pipeViewTable">☰ جدول</button></div>
+        <span class="pipeCount" id="pipeCount"></span>
+      </div>
+      <div class="kanbanWrap" id="pipeBoardWrap"><div class="kanban" id="kanbanBoard"><div class="loadingNote">بيحمّل الصفقات...</div></div></div>
+      <div id="pipeTableWrap" class="hidden">
+        <div class="ptableWrap"><div id="pipeTable"></div></div>
+        <div class="pager" id="pipePager"></div>
+        <div class="bulkBar hidden" id="pipeBulkBar"></div>
+      </div>
     </section>
 
     <section id="view-sites" class="view">
@@ -602,6 +670,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_4qWmgl6fWMpoU6F_o__ykg_Z0Xy_aJY';
 const ENGINE_FN = SUPABASE_URL + '/functions/v1/compute-quote'; // login only
 const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything else
 const INVOICE_FN = SUPABASE_URL + '/functions/v1/invoice-api';  // e-invoices (QR, credit notes, numbering)
+const PIPELINE_FN = SUPABASE_URL + '/functions/v1/crm-pipeline'; // pipeline board/table/alerts/bulk (server-side)
 const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live','crm-list-customer-quotations','seller-info']);
 
 let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[],
@@ -663,6 +732,19 @@ async function crmApi(action, payload={}){
   try{ data = await res.json(); } catch(e){ throw new Error("رد غير متوقع من السيرفر"); }
   if(data.error){ throw new Error(data.error); }
   if(data.seller && INVOICE_ACTIONS.has(action)) applySeller(data.seller); // مصدر واحد: بيانات البائع من السيرفر
+  return data;
+}
+
+async function pipeApi(action, payload={}){
+  const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
+  const res = await fetch(PIPELINE_FN, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
+    body: JSON.stringify(Object.assign({action}, authField, payload))
+  });
+  let data;
+  try{ data = await res.json(); } catch(e){ throw new Error("رد غير متوقع من السيرفر"); }
+  if(data.error){ throw new Error(data.error); }
   return data;
 }
 
@@ -1559,27 +1641,71 @@ async function openSiteEditor(siteId, customerId){
   });
 }
 
-/* ============ PIPELINE (Kanban) ============ */
-let kanbanCache = [];
+/* ============ PIPELINE (server-side board + table) ============ */
+const PIPE_PAGE = 12;    // cards per stage before "show more"
+const TABLE_PAGE = 25;   // rows per table page
+const PIPE_PREFS_KEY = 'holoul_pipe_prefs_v1';
 
-async function loadPipeline(){
-  const board = document.getElementById('kanbanBoard');
-  board.innerHTML = '<div class="loadingNote">بيحمّل الصفقات...</div>';
-  try{
-    const [oppsRes, statsRes] = await Promise.all([
-      crmApi('admin-crm-list-opportunities', {}),
-      crmApi('admin-crm-pipeline-stats', {}),
-    ]);
-    kanbanCache = oppsRes.opportunities;
-    renderPipelineStats(statsRes);
-    renderKanban(kanbanCache);
-  }catch(err){ board.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
+// Which stages matter for each size segment. When a segment filter is on,
+// stages outside its flow are hidden (unless they still hold deals).
+// null = all stages. Edit freely — stage values come from the CRM settings.
+const SEGMENT_STAGE_FLOWS = {
+  small:  ['new_lead','quotation_sent','negotiation','final_approval','follow_up_later','won','lost'],
+  medium: ['new_lead','qualified','initial_contact','quotation_sent','negotiation','final_approval','follow_up_later','won','lost'],
+  large:  null,
+  mega:   null,
+};
+
+let pipePrefs = { search:'', rep:'', segment:'', type:'', overdue:false, stale:false, mine:false,
+                  collapsed:{}, view:'board', sort:'stage_changed_at', dir:'desc' };
+try{
+  const saved = JSON.parse(localStorage.getItem(PIPE_PREFS_KEY) || 'null');
+  if(saved && typeof saved === 'object') pipePrefs = Object.assign(pipePrefs, saved, { collapsed: Object.assign({}, saved.collapsed) });
+}catch(e){}
+function savePipePrefs(){ try{ localStorage.setItem(PIPE_PREFS_KEY, JSON.stringify(pipePrefs)); }catch(e){} }
+function normName(s){ return String(s||'').replace(/\s+/g,' ').trim(); }
+function isCollapsed(stage){
+  if(stage in pipePrefs.collapsed) return !!pipePrefs.collapsed[stage];
+  return stage === 'won' || stage === 'lost'; // closed stages start collapsed
+}
+function isClosedStage(s){ return s === 'won' || s === 'lost'; }
+
+let pipeBoard = { stages:{}, cards:{}, totals:{}, allWeighted:0 };
+let pipeTableState = { rows:[], total:0, page:0 };
+let pipeStats = null;
+let pipeReps = [];
+let pipeSelected = new Set();
+let pipeReq = 0;
+
+function pipeFilters(){
+  const me = (SESSION && SESSION.role !== 'admin' && pipePrefs.mine) ? normName(SESSION.displayName) : '';
+  return { search: pipePrefs.search, rep: me || pipePrefs.rep, segment: pipePrefs.segment, type: pipePrefs.type,
+           overdue: !!pipePrefs.overdue, stale: !!pipePrefs.stale };
+}
+function filtersActive(){
+  return !!(pipePrefs.search||pipePrefs.rep||pipePrefs.segment||pipePrefs.type||pipePrefs.overdue||pipePrefs.stale||pipePrefs.mine);
 }
 
-function renderPipelineStats(s){
+async function loadPipeline(){
+  const isAdmin = SESSION && SESSION.role === 'admin';
+  syncPipeFilterControls();
+  applyPipeViewMode();
+  loadPipeAlerts();
+  crmApi('admin-crm-pipeline-stats', {}).then(s=>{ pipeStats = s; renderPipelineStats(); }).catch(()=>{});
+  if(isAdmin && !pipeReps.length){
+    pipeApi('pipeline-reps').then(d=>{ pipeReps = d.reps || []; syncPipeFilterControls(); }).catch(()=>{});
+  }
+  if(pipePrefs.view === 'table') await loadPipeTable(pipeTableState.page);
+  else await loadPipeBoard();
+}
+
+function renderPipelineStats(){
+  const s = pipeStats; if(!s) return;
+  const w = pipeBoard.allWeighted;
   document.getElementById('pipelineStatsBar').innerHTML = `
     <div class="stat sun"><div class="v">${s.totalOpportunities}</div><div class="l">إجمالي الصفقات</div></div>
     <div class="stat"><div class="v">${fmtMoney(s.pipelineValue)}</div><div class="l">قيمة الصفقات الجارية</div></div>
+    <div class="stat"><div class="v">${w==null?'-':fmtMoney(w)}</div><div class="l">القيمة المرجّحة (حسب الاحتمال)</div></div>
     <div class="stat"><div class="v">${fmtMoney(s.wonValue)}</div><div class="l">قيمة الصفقات المكسوبة</div></div>
     <div class="stat bad"><div class="v">${fmtMoney(s.lostValue)}</div><div class="l">قيمة الصفقات المفقودة</div></div>
     <div class="stat sun"><div class="v">${s.conversionRate.toFixed(1)}%</div><div class="l">معدل الكسب</div></div>
@@ -1587,26 +1713,138 @@ function renderPipelineStats(s){
   `;
 }
 
-function renderKanban(opps){
+/* ---- filter controls ---- */
+function syncPipeFilterControls(){
+  const isAdmin = SESSION && SESSION.role === 'admin';
+  const repSel = document.getElementById('pipeRep');
+  const names = [...new Set(pipeReps.concat(pipePrefs.rep ? [pipePrefs.rep] : []))].sort((a,b)=>a.localeCompare(b,'ar'));
+  repSel.innerHTML = '<option value="">كل المندوبين</option>' + names.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('');
+  repSel.value = pipePrefs.rep;
+  repSel.classList.toggle('hidden', !isAdmin);
+  const typeSel = document.getElementById('pipeType');
+  typeSel.innerHTML = '<option value="">كل الأنواع</option>' + (SETTINGS.projectTypes||[]).map(t=>`<option value="${escapeHtml(t.value)}">${escapeHtml(t.label)}</option>`).join('');
+  typeSel.value = pipePrefs.type;
+  if(typeSel.value !== pipePrefs.type) pipePrefs.type = '';
+  document.getElementById('pipeSearch').value = pipePrefs.search;
+  document.getElementById('pipeSegment').value = pipePrefs.segment;
+  document.getElementById('pipeOverdue').checked = !!pipePrefs.overdue;
+  document.getElementById('pipeStale').checked = !!pipePrefs.stale;
+  document.getElementById('pipeMine').checked = !!pipePrefs.mine;
+  document.getElementById('pipeMineWrap').classList.toggle('hidden', isAdmin);
+}
+function applyPipeViewMode(){
+  const t = pipePrefs.view === 'table';
+  document.getElementById('pipeBoardWrap').classList.toggle('hidden', t);
+  document.getElementById('pipeTableWrap').classList.toggle('hidden', !t);
+  document.getElementById('pipeViewBoard').classList.toggle('on', !t);
+  document.getElementById('pipeViewTable').classList.toggle('on', t);
+}
+function setPipeCount(shown, total){
+  document.getElementById('pipeCount').textContent = filtersActive()
+    ? `يعرض ${shown} من ${total} صفقة` : `${total} صفقة`;
+}
+
+/* ---- alerts ---- */
+async function loadPipeAlerts(){
+  const box = document.getElementById('pipeAlerts');
+  try{
+    const d = await pipeApi('pipeline-alerts');
+    const scopeTxt = d.scope === 'mine' ? 'صفقاتك' : 'كل الصفقات';
+    let html = `<b>🔔 المتابعات (${scopeTxt}):</b>`;
+    if(!d.overdue && !d.stale && !d.today){
+      html += ` <span class="chip static">✅ مفيش متأخر ولا راكد</span>`;
+    }else{
+      html += ` <span class="chip bad" data-alert="overdue">⏰ ${d.overdue} متأخرة</span>
+                <span class="chip warn" data-alert="stale">🧊 ${d.stale} راكدة (+14 يوم)</span>
+                <span class="chip static">📅 ${d.today} النهارده</span>`;
+    }
+    if(d.scope === 'all' && (d.by_rep||[]).some(r=>r.overdue||r.stale)){
+      html += ` <span class="sep">|</span> ` + d.by_rep.filter(r=>r.overdue||r.stale).slice(0,6).map(r=>
+        `<span class="chip" data-alert-rep="${escapeHtml(r.rep)}">${escapeHtml(r.rep)}: ${r.overdue} متأخرة · ${r.stale} راكدة</span>`).join(' ');
+    }
+    if((d.top_overdue||[]).length){
+      html += `<div class="topList">` + d.top_overdue.slice(0,5).map(o=>
+        `<a data-open-opp="${o.id}">${escapeHtml(o.name)}${o.next_follow_up_date?' · '+fmtDate(o.next_follow_up_date):''}</a>`).join('') + `</div>`;
+    }
+    box.innerHTML = html;
+    box.querySelectorAll('[data-alert]').forEach(c=>c.addEventListener('click', ()=>{
+      if(c.dataset.alert === 'overdue'){ pipePrefs.overdue = true; pipePrefs.stale = false; }
+      else { pipePrefs.stale = true; pipePrefs.overdue = false; }
+      reloadPipeline(true);
+    }));
+    box.querySelectorAll('[data-alert-rep]').forEach(c=>c.addEventListener('click', ()=>{
+      pipePrefs.rep = c.dataset.alertRep === '(بدون مندوب)' ? '' : c.dataset.alertRep; reloadPipeline(true);
+    }));
+    box.querySelectorAll('[data-open-opp]').forEach(a=>a.addEventListener('click', ()=>openOpportunityEditor(a.dataset.openOpp)));
+  }catch(err){ box.innerHTML = ''; }
+}
+
+/* ---- board ---- */
+async function loadPipeBoard(){
+  const token = ++pipeReq;
   const board = document.getElementById('kanbanBoard');
+  if(!Object.keys(pipeBoard.stages).length) board.innerHTML = '<div class="loadingNote">بيحمّل الصفقات...</div>';
+  try{
+    const expand = ['won','lost'].filter(s=>!isCollapsed(s));
+    const d = await pipeApi('pipeline-board', { filters: pipeFilters(), perStage: PIPE_PAGE, expand });
+    if(token !== pipeReq) return;
+    pipeBoard.stages = d.stages || {};
+    pipeBoard.totals = d.totals || {};
+    pipeBoard.allWeighted = d.all_open_weighted;
+    pipeBoard.allCount = d.all_count;
+    pipeBoard.cards = {};
+    (d.cards||[]).forEach(c=>{ (pipeBoard.cards[c.stage] = pipeBoard.cards[c.stage] || []).push(c); });
+    renderPipelineStats();
+    renderBoard();
+  }catch(err){ if(token===pipeReq) board.innerHTML = '<div class="loadingNote">تعذر التحميل: '+escapeHtml(err.message)+'</div>'; }
+}
+
+function visibleStages(){
   const stages = SETTINGS.opportunityStages.length ? SETTINGS.opportunityStages : [{value:'new_lead',label:'عميل جديد',color:'#5b8ef2'}];
-  const today = todayStr();
+  const flow = pipePrefs.segment ? SEGMENT_STAGE_FLOWS[pipePrefs.segment] : null;
+  if(!flow) return stages;
+  return stages.filter(st=> flow.includes(st.value) || ((pipeBoard.stages[st.value]||{}).count||0) > 0);
+}
+
+function cardHtml(o){
+  const closed = isClosedStage(o.stage);
+  const seg = o.segment ? `<span class="segBadge">${SEG_LABELS[o.segment]||o.segment}</span>` : '';
+  const days = !closed ? `<span class="dayChip ${o.is_stale?'stale':''}">${o.is_stale?'🧊 ':''}منذ ${o.days_in_stage} يوم</span>` : '';
+  const prob = Math.max(0, Math.min(100, Number(o.prob_eff)||0));
+  return `<div class="kcard ${o.is_stale?'stale':''}" draggable="true" data-opp-id="${o.id}">
+    <div class="cname">${escapeHtml(o.name)}</div>
+    <div class="csub">${escapeHtml(o.customer_name||o.customer_phone||'')}${o.site_name?' · '+escapeHtml(o.site_name):''}</div>
+    ${o.estimated_value?`<div class="cval">${fmtMoney(o.estimated_value)} ﷼</div>`:''}
+    <div class="chips">${seg}${days}</div>
+    ${o.project_type?`<div class="csub">${escapeHtml(labelOf(SETTINGS.projectTypes,o.project_type))}</div>`:''}
+    ${o.next_action?`<div class="cnext ${o.is_overdue?'od':''}">${escapeHtml(o.next_action)}${o.next_follow_up_date?' · '+fmtDate(o.next_follow_up_date):''}</div>`:''}
+    ${!closed?`<div class="pbar" title="احتمال الإغلاق ${prob}%"><i style="width:${prob}%"></i></div>`:''}
+  </div>`;
+}
+
+function renderBoard(){
+  const board = document.getElementById('kanbanBoard');
+  const stages = visibleStages();
+  setPipeCount(pipeBoard.totals.count||0, pipeBoard.allCount!=null ? pipeBoard.allCount : (pipeBoard.totals.count||0));
   board.innerHTML = stages.map(st=>{
-    const cards = opps.filter(o=>o.stage===st.value);
-    return `<div class="kcol" data-stage="${st.value}">
-      <div class="khead"><span><span class="dot" style="background:${st.color||'#93a89c'}"></span>${st.label}</span><span class="kcount">${cards.length}</span></div>
-      <div class="kcards" data-stage-drop="${st.value}">
-        ${cards.map(o=>{
-          const overdue = o.next_follow_up_date && o.next_follow_up_date < today;
-          return `<div class="kcard" draggable="true" data-opp-id="${o.id}">
-            <div class="cname">${o.name}</div>
-            <div class="csub">${o.customers?(o.customers.name||o.customers.phone):''}${o.sites?' · '+o.sites.name:''}</div>
-            ${o.estimated_value?`<div class="cval">${fmtMoney(o.estimated_value)} ﷼</div>`:''}
-            ${o.project_type?`<div class="csub">${labelOf(SETTINGS.projectTypes,o.project_type)}</div>`:''}
-            ${o.next_action?`<div class="cnext ${overdue?'od':''}">${escapeHtml(o.next_action)}${o.next_follow_up_date?' · '+fmtDate(o.next_follow_up_date):''}</div>`:''}
-          </div>`;
-        }).join('')}
+    const info = pipeBoard.stages[st.value] || {count:0,total:0,weighted:0};
+    const cards = pipeBoard.cards[st.value] || [];
+    const closed = isClosedStage(st.value);
+    const collapsed = isCollapsed(st.value);
+    const remaining = Math.max(0, info.count - cards.length);
+    const sumTxt = info.total
+      ? `${fmtMoney(info.total)} ﷼` + ((!closed && Math.round(info.weighted)!==Math.round(info.total)) ? ` · مرجّحة ${fmtMoney(Math.round(info.weighted))}` : '')
+      : '';
+    return `<div class="kcol ${collapsed?'collapsed':''}" data-stage="${st.value}">
+      <div class="khead" data-toggle-stage="${st.value}" title="اضغط للطي / الفتح">
+        <span><span class="dot" style="background:${st.color||'#93a89c'}"></span>${st.label}<span class="kcaret">▾</span><span class="ksum">${sumTxt}</span></span>
+        <span class="kcount">${info.count}</span>
       </div>
+      <div class="kcards" data-stage-drop="${st.value}">${cards.map(cardHtml).join('')}</div>
+      ${remaining>0 && !collapsed?`<div class="kmoreRow">
+        <button class="btn ghost small" type="button" data-more-stage="${st.value}" data-step="${PIPE_PAGE}">عرض ${Math.min(PIPE_PAGE,remaining)} إضافية</button>
+        ${remaining>PIPE_PAGE?`<button class="btn ghost small" type="button" data-more-stage="${st.value}" data-step="all">عرض الكل (${remaining} متبقي)</button>`:''}
+      </div>`:''}
     </div>`;
   }).join('');
 
@@ -1614,21 +1852,251 @@ function renderKanban(opps){
     card.addEventListener('click', ()=>openOpportunityEditor(card.dataset.oppId));
     card.addEventListener('dragstart', (e)=>{ e.dataTransfer.setData('text/plain', card.dataset.oppId); });
   });
+  board.querySelectorAll('[data-toggle-stage]').forEach(head=>{
+    head.addEventListener('click', async ()=>{
+      const s = head.dataset.toggleStage;
+      pipePrefs.collapsed[s] = !isCollapsed(s);
+      savePipePrefs();
+      // expanding a closed stage whose cards were never loaded → fetch them now
+      if(!isCollapsed(s) && !pipeBoard.cards[s] && (pipeBoard.stages[s]||{}).count){
+        try{ await loadStageCards(s, 0); }catch(err){ toast('تعذر التحميل: '+err.message); }
+      }
+      renderBoard();
+    });
+  });
+  board.querySelectorAll('[data-more-stage]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const s = btn.dataset.moreStage;
+      btn.disabled = true;
+      try{ await loadStageCards(s, (pipeBoard.cards[s]||[]).length, btn.dataset.step === 'all' ? 200 : PIPE_PAGE); }
+      catch(err){ toast('تعذر التحميل: '+err.message); }
+      renderBoard();
+    });
+  });
   board.querySelectorAll('.kcol').forEach(col=>{
     col.addEventListener('dragover', (e)=>{ e.preventDefault(); col.classList.add('dragover'); });
     col.addEventListener('dragleave', ()=>col.classList.remove('dragover'));
-    col.addEventListener('drop', async (e)=>{
+    col.addEventListener('drop', (e)=>{
       e.preventDefault(); col.classList.remove('dragover');
-      const oppId = e.dataTransfer.getData('text/plain');
-      const newStage = col.dataset.stage;
-      try{
-        await crmApi('admin-crm-update-opportunity', {opportunityId: oppId, fields: {stage: newStage}});
-        toast('اتحدثت المرحلة ✅');
-        loadPipeline();
-      }catch(err){ toast('خطأ: '+err.message); }
+      moveOpportunity(e.dataTransfer.getData('text/plain'), col.dataset.stage);
     });
   });
 }
+
+async function loadStageCards(stage, offset, limit){
+  const d = await pipeApi('pipeline-stage-page', { filters: pipeFilters(), stage, offset, limit: limit || PIPE_PAGE });
+  pipeBoard.cards[stage] = (offset ? (pipeBoard.cards[stage]||[]) : []).concat(d.cards || []);
+}
+
+/* ---- moving deals, with business rules ---- */
+function findOppStage(id){
+  id = Number(id);
+  for(const s in pipeBoard.cards){ const c = pipeBoard.cards[s].find(x=>x.id===id); if(c) return c.stage; }
+  const r = pipeTableState.rows.find(x=>x.id===id); return r ? r.stage : null;
+}
+
+// Modal that forces a loss reason (and optionally captures the competitor).
+function askLostReason(withCompetitor){
+  return new Promise(resolve=>{
+    const ov = document.createElement('div');
+    ov.className = 'overlay show'; ov.style.zIndex = 90;
+    ov.innerHTML = `<div class="modal" style="max-width:460px;">
+      <div class="mhead"><h2>سبب فقدان الصفقة</h2><button class="closeX" type="button" data-x>✕</button></div>
+      <label>سبب الخسارة *</label><select id="lr_reason">${optHtml(SETTINGS.opportunityLostReasons, '')}</select>
+      ${withCompetitor?`<div class="grid2" style="margin-top:10px;">
+        <div><label>اسم المنافس (اختياري)</label><input type="text" id="lr_comp"></div>
+        <div><label>سعر المنافس ﷼ (اختياري)</label><input type="number" id="lr_price"></div></div>`:''}
+      <div style="display:flex;gap:8px;margin-top:16px;"><button class="btn" type="button" data-ok>تأكيد</button><button class="btn ghost" type="button" data-x>إلغاء</button></div>
+    </div>`;
+    document.body.appendChild(ov);
+    const done = (v)=>{ ov.remove(); resolve(v); };
+    ov.querySelectorAll('[data-x]').forEach(b=>b.addEventListener('click', ()=>done(null)));
+    ov.querySelector('[data-ok]').addEventListener('click', ()=>{
+      const reason = ov.querySelector('#lr_reason').value;
+      if(!reason){ toast('اختار سبب الخسارة الأول'); return; }
+      done({ reason,
+        competitor: withCompetitor ? ov.querySelector('#lr_comp').value.trim() : '',
+        price: withCompetitor ? (ov.querySelector('#lr_price').value || null) : null });
+    });
+  });
+}
+
+async function moveOpportunity(oppId, newStage){
+  if(!oppId || !newStage) return;
+  if(findOppStage(oppId) === newStage) return reloadPipeline(false);
+  try{
+    const fields = { stage: newStage };
+    if(newStage === 'lost'){
+      const r = await askLostReason(true);
+      if(!r){ reloadPipeline(false); return; }
+      fields.lost_reason = r.reason;
+      if(r.competitor) fields.competitor_name = r.competitor;
+      if(r.price) fields.competitor_price = r.price;
+    }
+    await crmApi('admin-crm-update-opportunity', { opportunityId: oppId, fields });
+    toast('اتحدثت المرحلة ✅');
+    await reloadPipeline(false);
+    if(newStage === 'won' && confirm('🎉 الصفقة اتكسبت! تحوّلها لمشروع دلوقتي؟')) openOpportunityEditor(oppId);
+  }catch(err){ toast('خطأ: '+err.message); reloadPipeline(false); }
+}
+
+/* ---- table view ---- */
+const TABLE_COLS = [
+  {k:'name', l:'الصفقة', sort:true}, {k:'customer_name', l:'العميل', sort:true}, {k:'stage', l:'المرحلة'},
+  {k:'segment', l:'الشريحة', sort:true}, {k:'estimated_value', l:'القيمة ﷼', sort:true},
+  {k:'prob_eff', l:'الاحتمال', sort:true}, {k:'sales_person', l:'المندوب', sort:true},
+  {k:'next_follow_up_date', l:'المتابعة', sort:true}, {k:'days_in_stage', l:'أيام في المرحلة', sort:true},
+];
+
+async function loadPipeTable(page){
+  const token = ++pipeReq;
+  pipeTableState.page = Math.max(0, page||0);
+  const host = document.getElementById('pipeTable');
+  if(!pipeTableState.rows.length) host.innerHTML = '<div class="loadingNote">بيحمّل الصفقات...</div>';
+  try{
+    const [d, b] = await Promise.all([
+      pipeApi('pipeline-table', { filters: pipeFilters(), sort: pipePrefs.sort, dir: pipePrefs.dir,
+                                  offset: pipeTableState.page * TABLE_PAGE, limit: TABLE_PAGE }),
+      pipeApi('pipeline-board', { filters: {}, perStage: 1 }),   // cheap: weighted total + unfiltered count
+    ]);
+    if(token !== pipeReq) return;
+    pipeTableState.rows = d.rows || []; pipeTableState.total = d.total || 0;
+    pipeBoard.allWeighted = b.all_open_weighted; pipeBoard.allCount = b.all_count;
+    renderPipelineStats();
+    renderPipeTable();
+  }catch(err){ if(token===pipeReq) host.innerHTML = '<div class="loadingNote">تعذر التحميل: '+escapeHtml(err.message)+'</div>'; }
+}
+
+function renderPipeTable(){
+  const host = document.getElementById('pipeTable');
+  const rows = pipeTableState.rows;
+  setPipeCount(pipeTableState.total, pipeBoard.allCount!=null ? pipeBoard.allCount : pipeTableState.total);
+  const isAdmin = SESSION.role === 'admin';
+  const arrow = (k)=> pipePrefs.sort===k ? (pipePrefs.dir==='asc'?' ▲':' ▼') : '';
+  if(!rows.length){ host.innerHTML = '<div class="loadingNote">مفيش صفقات بالفلاتر دي</div>'; renderPager(); renderBulkBar(); return; }
+  const allOnPage = rows.every(r=>pipeSelected.has(r.id));
+  host.innerHTML = `<table class="ptable"><thead><tr>
+    <th><input type="checkbox" id="ptSelAll" ${allOnPage?'checked':''}></th>
+    ${TABLE_COLS.map(c=>`<th ${c.sort?`class="sortable" data-sort="${c.k}"`:''}>${c.l}${arrow(c.k)}</th>`).join('')}
+    </tr></thead><tbody>
+    ${rows.map(o=>{
+      const prob = Math.max(0, Math.min(100, Number(o.prob_eff)||0));
+      const closed = isClosedStage(o.stage);
+      return `<tr data-row="${o.id}">
+        <td><input type="checkbox" data-sel="${o.id}" ${pipeSelected.has(o.id)?'checked':''}></td>
+        <td class="nm" data-open="${o.id}">${escapeHtml(o.name)}</td>
+        <td>${escapeHtml(o.customer_name||o.customer_phone||'')}</td>
+        <td><select data-stage-of="${o.id}">${(SETTINGS.opportunityStages||[]).map(s=>`<option value="${s.value}" ${s.value===o.stage?'selected':''}>${escapeHtml(s.label)}</option>`).join('')}</select></td>
+        <td>${o.segment?(SEG_LABELS[o.segment]||o.segment):'-'}</td>
+        <td>${o.estimated_value?fmtMoney(o.estimated_value):'-'}</td>
+        <td><span class="pbar"><i style="width:${prob}%"></i></span>${prob}%</td>
+        <td>${escapeHtml(normName(o.sales_person)||'-')}</td>
+        <td class="${o.is_overdue?'od':''}">${o.next_follow_up_date?fmtDate(o.next_follow_up_date):'-'}</td>
+        <td class="${o.is_stale?'od':''}">${closed?'-':o.days_in_stage}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>`;
+
+  host.querySelectorAll('[data-sort]').forEach(th=>th.addEventListener('click', ()=>{
+    const k = th.dataset.sort;
+    if(pipePrefs.sort === k) pipePrefs.dir = pipePrefs.dir === 'asc' ? 'desc' : 'asc';
+    else { pipePrefs.sort = k; pipePrefs.dir = (k==='name'||k==='customer_name'||k==='sales_person'||k==='next_follow_up_date') ? 'asc' : 'desc'; }
+    savePipePrefs(); loadPipeTable(0);
+  }));
+  host.querySelectorAll('[data-open]').forEach(td=>td.addEventListener('click', ()=>openOpportunityEditor(td.dataset.open)));
+  host.querySelectorAll('[data-stage-of]').forEach(sel=>sel.addEventListener('change', ()=>moveOpportunity(sel.dataset.stageOf, sel.value)));
+  host.querySelectorAll('[data-sel]').forEach(cb=>cb.addEventListener('change', ()=>{
+    const id = Number(cb.dataset.sel);
+    if(cb.checked) pipeSelected.add(id); else pipeSelected.delete(id);
+    renderBulkBar(); document.getElementById('ptSelAll').checked = rows.every(r=>pipeSelected.has(r.id));
+  }));
+  document.getElementById('ptSelAll').addEventListener('change', (e)=>{
+    rows.forEach(r=>{ if(e.target.checked) pipeSelected.add(r.id); else pipeSelected.delete(r.id); });
+    host.querySelectorAll('[data-sel]').forEach(cb=>cb.checked = e.target.checked);
+    renderBulkBar();
+  });
+  renderPager(); renderBulkBar();
+}
+
+function renderPager(){
+  const pages = Math.max(1, Math.ceil(pipeTableState.total / TABLE_PAGE));
+  const p = pipeTableState.page;
+  document.getElementById('pipePager').innerHTML = pipeTableState.total <= TABLE_PAGE ? '' : `
+    <button class="btn ghost small" type="button" id="pgPrev" ${p<=0?'disabled':''}>السابق</button>
+    <span>صفحة ${p+1} من ${pages} (${pipeTableState.total} صفقة)</span>
+    <button class="btn ghost small" type="button" id="pgNext" ${p>=pages-1?'disabled':''}>التالي</button>`;
+  const prev = document.getElementById('pgPrev'), next = document.getElementById('pgNext');
+  if(prev) prev.addEventListener('click', ()=>loadPipeTable(p-1));
+  if(next) next.addEventListener('click', ()=>loadPipeTable(p+1));
+}
+
+/* ---- bulk actions ---- */
+function renderBulkBar(){
+  const bar = document.getElementById('pipeBulkBar');
+  const n = pipeSelected.size;
+  bar.classList.toggle('hidden', n === 0);
+  if(!n){ bar.innerHTML = ''; return; }
+  const isAdmin = SESSION.role === 'admin';
+  bar.innerHTML = `<b>${n} صفقة مختارة</b>
+    <select id="bk_stage"><option value="">نقل لمرحلة...</option>${(SETTINGS.opportunityStages||[]).map(s=>`<option value="${s.value}">${escapeHtml(s.label)}</option>`).join('')}</select>
+    ${isAdmin?`<select id="bk_rep"><option value="">تعيين مندوب...</option>${pipeReps.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join('')}</select>`:''}
+    <input type="date" id="bk_date" title="موعد المتابعة">
+    <button class="btn" type="button" id="bk_apply">تنفيذ</button>
+    <button class="btn ghost" type="button" id="bk_clear" style="color:#fff;border-color:#fff;">إلغاء التحديد</button>`;
+  bar.querySelector('#bk_clear').addEventListener('click', ()=>{ pipeSelected.clear(); renderPipeTable(); });
+  bar.querySelector('#bk_apply').addEventListener('click', async ()=>{
+    const fields = {};
+    const st = bar.querySelector('#bk_stage').value;
+    const rep = isAdmin ? bar.querySelector('#bk_rep').value : '';
+    const dt = bar.querySelector('#bk_date').value;
+    if(st) fields.stage = st;
+    if(rep) fields.sales_person = rep;
+    if(dt) fields.next_follow_up_date = dt;
+    if(!Object.keys(fields).length){ toast('اختار تغيير واحد على الأقل'); return; }
+    if(st === 'lost'){
+      const r = await askLostReason(false);
+      if(!r) return;
+      fields.lost_reason = r.reason;
+    }
+    if(!confirm(`تطبيق التغيير على ${n} صفقة؟`)) return;
+    try{
+      const d = await pipeApi('pipeline-bulk-update', { ids: [...pipeSelected], fields });
+      toast(`اتعدّلت ${d.updated} صفقة` + (d.skipped ? ` (اتخطّت ${d.skipped} مش مسموح لك)` : '') + ' ✅');
+      pipeSelected.clear();
+      await reloadPipeline(false);
+      loadPipeAlerts();
+    }catch(err){ toast('خطأ: '+err.message); }
+  });
+}
+
+/* ---- reload helper + filter bar wiring ---- */
+let pipeReloadTimer;
+async function reloadPipeline(resetPage){
+  if(resetPage){ pipeTableState.page = 0; pipeSelected.clear(); }
+  savePipePrefs();
+  syncPipeFilterControls();
+  if(pipePrefs.view === 'table') await loadPipeTable(pipeTableState.page);
+  else await loadPipeBoard();
+}
+(function(){
+  const rerender = ()=>reloadPipeline(true);
+  document.getElementById('pipeSearch').addEventListener('input', (e)=>{
+    pipePrefs.search = e.target.value; clearTimeout(pipeReloadTimer); pipeReloadTimer = setTimeout(()=>{ savePipePrefs(); loadCurrent(); }, 350);
+  });
+  function loadCurrent(){ pipeTableState.page = 0; pipeSelected.clear(); if(pipePrefs.view==='table') loadPipeTable(0); else loadPipeBoard(); }
+  document.getElementById('pipeRep').addEventListener('change', (e)=>{ pipePrefs.rep = e.target.value; rerender(); });
+  document.getElementById('pipeSegment').addEventListener('change', (e)=>{ pipePrefs.segment = e.target.value; rerender(); });
+  document.getElementById('pipeType').addEventListener('change', (e)=>{ pipePrefs.type = e.target.value; rerender(); });
+  document.getElementById('pipeOverdue').addEventListener('change', (e)=>{ pipePrefs.overdue = e.target.checked; rerender(); });
+  document.getElementById('pipeStale').addEventListener('change', (e)=>{ pipePrefs.stale = e.target.checked; rerender(); });
+  document.getElementById('pipeMine').addEventListener('change', (e)=>{ pipePrefs.mine = e.target.checked; rerender(); });
+  document.getElementById('pipeReset').addEventListener('click', ()=>{
+    Object.assign(pipePrefs, { search:'', rep:'', segment:'', type:'', overdue:false, stale:false, mine:false });
+    rerender();
+  });
+  document.getElementById('pipeViewBoard').addEventListener('click', ()=>{ pipePrefs.view='board'; savePipePrefs(); applyPipeViewMode(); loadPipeBoard(); });
+  document.getElementById('pipeViewTable').addEventListener('click', ()=>{ pipePrefs.view='table'; savePipePrefs(); applyPipeViewMode(); loadPipeTable(0); });
+})();
 
 /* new-opportunity customer search */
 let oppCustDebounce;
