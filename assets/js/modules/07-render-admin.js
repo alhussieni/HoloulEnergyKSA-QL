@@ -284,6 +284,35 @@ let cartQuoteView = false;
 let cartClientName = '';
 let cartClientPhone = '';
 const CART_VAT_RATE = 0.15;
+// ---- Rep-prepared cart quote: display mode + revisions (same R1/R2 scheme as the calculator) ----
+let cartDisplayMode = 'detailed';   // 'detailed' = unit + line prices | 'summary' = items only, totals before/after VAT
+let cartSavedInfo = null;           // {sig, ref} — last saved version of exactly this document
+let cartRevisionParent = null;      // {ref, phone, explicit, sig} — quote the next save is a revision of
+let cartPrevMatches = [];           // earlier cart quotes found for the typed phone
+let cartPrevSeq = 0;
+let cartPrevTimer = null;
+function cartRound2(n){ return Math.round((+n||0)*100)/100; }
+function cartQuoteSig(){
+  return JSON.stringify([cartDisplayMode, phoneTail(cartClientPhone), String(cartClientName||'').trim(),
+    productCart.map(c=>[c.name, c.category, +c.price||0, c.qty||1])]);
+}
+function cartResetQuoteMeta(){
+  cartSavedInfo = null; cartRevisionParent = null; cartPrevMatches = []; cartDisplayMode = 'detailed';
+}
+function cartRefText(){
+  const ok = cartSavedInfo && cartSavedInfo.ref && cartSavedInfo.sig === cartQuoteSig();
+  return ok ? 'رقم العرض: ' + cartSavedInfo.ref : '';
+}
+function cartRevHintText(){
+  const ok = cartSavedInfo && cartSavedInfo.ref && cartSavedInfo.sig === cartQuoteSig();
+  if(ok || !cartRevisionParent || !cartRevisionParent.ref) return '';
+  return '✏️ أي طباعة أو إرسال بعد هذا التعديل هيتسجل كمراجعة جديدة للعرض ' + cartRevisionParent.ref;
+}
+function refreshCartRefLines(){
+  const t = cartRefText(), h = cartRevHintText();
+  document.querySelectorAll('.cart-ref-line').forEach(el=>{ el.textContent = t; el.style.display = t ? '' : 'none'; });
+  document.querySelectorAll('.cart-rev-hint').forEach(el=>{ el.textContent = h; el.style.display = h ? '' : 'none'; });
+}
 function cartKey(catIdx, ri){ return `${catIdx}:${ri}`; }
 function cartHas(catIdx, ri){ return productCart.some(c=>c.catIdx===catIdx && c.ri===ri); }
 function cartToggle(cat, catIdx, ri){
@@ -537,45 +566,131 @@ function validateCartClient(){
   }
   return true;
 }
-function saveCartQuote(){
-  const { subtotal, vat, total } = cartTotals();
-  const snapshot = { type: 'product-cart', items: productCart.map(c=>({name:c.name, category:c.category, price:c.price, qty:c.qty})) };
-  const sheetLead = {name:cartClientName, phone:cartClientPhone, hp:null, total:Math.round(total), date:new Date().toISOString()};
-  logLead(sheetLead);
-  if(repUsername && repTokenMem){
-    callEngine('save-quote', {
-      token: repTokenMem,
-      clientName: cartClientName, clientPhone: cartClientPhone,
-      hp: null, finalTotal: Math.round(total), snapshot
-    }).catch(()=>{});
-  } else if(guestMode){
-    callEngine('save-quote', {
-      guest: true,
-      clientName: cartClientName, clientPhone: cartClientPhone,
-      hp: null, finalTotal: Math.round(total), snapshot
-    }).catch(()=>{});
+async function saveCartQuote(){
+  const asRep = !!(repUsername && repTokenMem);
+  if(!asRep && !guestMode) return null;
+  const sig = cartQuoteSig();
+  // نفس العرض بالظبط (نفس البنود/الشكل/العميل) ما بيتحفظش مرتين — نرجّع الرمز المرجعي اللي اتحفظ
+  if(cartSavedInfo && cartSavedInfo.sig === sig) return cartSavedInfo;
+  const phoneT = phoneTail(cartClientPhone);
+  const par = cartRevisionParent;
+  // عرض اتحمّل للتعديل وطُبع/اتبعت من غير أي تغيير → نفس الرمز المرجعي، من غير مراجعة جديدة
+  if(par && par.explicit && par.sig === sig && par.phone === phoneT){
+    cartSavedInfo = { sig, ref: par.ref };
+    refreshCartRefLines();
+    return cartSavedInfo;
   }
+  const { subtotal, vat, total } = cartTotals();
+  const snapshot = {
+    type: 'product-cart',
+    displayMode: cartDisplayMode,
+    vatRate: CART_VAT_RATE,
+    items: productCart.map(c=>({name:c.name, category:c.category, price:c.price, qty:c.qty})),
+    subtotal: cartRound2(subtotal), vat: cartRound2(vat), total: cartRound2(total)
+  };
+  if(par && par.ref && par.phone === phoneT) snapshot.revisionOf = par.ref;
+  logLead({name:cartClientName, phone:cartClientPhone, hp:null, total:Math.round(total), date:new Date().toISOString()});
+  let res = null;
+  try{
+    res = await callEngine('save-quote', asRep
+      ? { token: repTokenMem, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot }
+      : { guest: true, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot });
+  }catch(e){ res = null; }
+  if(res && res.ok){
+    cartSavedInfo = { sig, ref: res.refCode || null };
+    if(res.refCode) cartRevisionParent = { ref: res.refCode, phone: phoneT, explicit: false, sig };
+    refreshCartRefLines();
+    if(asRep) cartLookupPrev();
+    return cartSavedInfo;
+  }
+  return null;
 }
-function handleCartPrint(){
+async function handleCartPrint(){
   if(!validateCartClient()) return;
-  saveCartQuote();
+  await saveCartQuote();
   const originalTitle = document.title;
-  document.title = ('عرض-سعر-منتجات-'+cartClientName).replace(/[\/\\?%*:|"<>]/g,'-');
+  const ref = (cartSavedInfo && cartSavedInfo.ref) ? cartSavedInfo.ref + '_' : '';
+  document.title = ('عرض-سعر-منتجات-'+ref+cartClientName).replace(/[\/\\?%*:|"<>]/g,'-');
   window.print();
   setTimeout(()=>{ document.title = originalTitle; }, 1000);
 }
 async function sendCartQuoteToClientWhatsapp(){
   if(!validateCartClient()) return;
-  saveCartQuote();
   const phone = normalizePhone(cartClientPhone);
   if(phone.length<11){ alert('رقم هاتف العميل غير صحيح — تأكد إنه بالصيغة الصحيحة (05xxxxxxxx)'); return; }
+  await saveCartQuote();
   const { total } = cartTotals();
-  const filename = ('عرض-سعر-منتجات-'+cartClientName).replace(/[^A-Za-z0-9\u0600-\u06FF\-]/g,'') + '.pdf';
+  const ref = (cartSavedInfo && cartSavedInfo.ref) ? cartSavedInfo.ref : '';
+  const filename = ('عرض-سعر-منتجات-'+(ref?ref+'-':'')+cartClientName).replace(/[^A-Za-z0-9\u0600-\u06FF\-]/g,'') + '.pdf';
   const ok = await downloadQuotePdf(filename);
+  const refLine = ref ? `رقم العرض: ${ref}\n` : '';
   const msg = ok
-    ? `${companyShort()} — ${companyBrand()}\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\nالعميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: ${COMPANY.phone||''}`
-    : `${companyShort()} — ${companyBrand()}\n\nعرض سعر منتجات\nالعميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: ${COMPANY.phone||''}`;
+    ? `${companyShort()} — ${companyBrand()}\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\n${refLine}العميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: ${COMPANY.phone||''}`
+    : `${companyShort()} — ${companyBrand()}\n\nعرض سعر منتجات\n${refLine}العميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: ${COMPANY.phone||''}`;
   setTimeout(()=>window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank'), ok?600:0);
+}
+
+/* ---- عروض سلة سابقة لنفس العميل (مندوب فقط) → تعديل كمراجعة جديدة R1/R2 ---- */
+function cartFindCatalogPos(name, category){
+  try{
+    const cats = buildCatalogWithPanels(cachedProductCatalog || []);
+    for(let ci=0; ci<cats.length; ci++){
+      if(cats[ci].category !== category) continue;
+      const ri = cats[ci].rows.findIndex(r=>r[0]===name);
+      if(ri>=0) return { catIdx: ci, ri };
+    }
+  }catch(e){}
+  return null;
+}
+function renderCartPrevBox(){
+  if(!cartPrevMatches.length) return '';
+  return `<div style="margin-top:10px;background:#FFF8E8;border:1px solid #F0DDA6;border-radius:9px;padding:9px 11px;font-size:12px">
+    🕓 هذا الرقم مسجّل عليه ${cartPrevMatches.length} عرض سلة سابق:
+    ${cartPrevMatches.map((m,i)=>{
+      const s = m.snapshot || {};
+      const d = new Date(m.created_at);
+      return `<div style="border-top:1px solid #F0DDA6;padding-top:8px;margin-top:8px">
+        <b class="num">${esc(s.refCode||'—')}</b> — ${d.toLocaleDateString('en-GB')} — المندوب: <b>${esc(m.rep_display_name||'—')}</b><br>
+        <span style="color:var(--muted)">${(s.items||[]).length} صنف &nbsp;|&nbsp; ${s.displayMode==='summary'?'عرض إجمالي':'عرض تفصيلي'} &nbsp;|&nbsp; الإجمالي: ${m.final_total!=null?fmt(+m.final_total):'—'} ﷼</span><br>
+        <button class="btn small" type="button" data-cartloadprev="${i}" style="margin-top:6px">✏️ تعديل (مراجعة جديدة)</button>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+function bindCartPrevBox(){
+  document.querySelectorAll('[data-cartloadprev]').forEach(b=>{
+    b.onclick = ()=>cartLoadPrev(cartPrevMatches[+b.dataset.cartloadprev]);
+  });
+}
+async function cartLookupPrev(){
+  const digits = String(cartClientPhone||'').replace(/\D/g,'');
+  const setBox = ()=>{ const box = document.getElementById('cartPrevBox'); if(box){ box.innerHTML = renderCartPrevBox(); bindCartPrevBox(); } };
+  if(digits.length<5 || !(repUsername && repTokenMem)){ cartPrevMatches = []; setBox(); return; }
+  const mySeq = ++cartPrevSeq;
+  let data;
+  try{ data = await callEngine('find-client', { token: repTokenMem, phone: digits }); }catch(e){ return; }
+  if(mySeq !== cartPrevSeq) return; // a newer keystroke already superseded this lookup
+  cartPrevMatches = (data.matches||[]).filter(m=>m.snapshot && m.snapshot.type==='product-cart' && Array.isArray(m.snapshot.items));
+  setBox();
+}
+function cartDebouncedLookupPrev(){
+  clearTimeout(cartPrevTimer);
+  cartPrevTimer = setTimeout(cartLookupPrev, 450);
+}
+function cartLoadPrev(m){
+  if(!m || !m.snapshot) return;
+  if(productCart.length && !confirm('سيتم استبدال بنود السلة الحالية ببنود هذا العرض. متابعة؟')) return;
+  const s = m.snapshot;
+  // البنود من الـ snapshot المجمّد (أسعار وقت العرض) — مش من أسعار الكتالوج الحالية
+  productCart = s.items.map((it,i)=>{
+    const loc = cartFindCatalogPos(it.name, it.category);
+    return { catIdx: loc?loc.catIdx:-1, ri: loc?loc.ri:-(i+1), name: it.name, category: it.category, price: it.price, qty: Math.max(1, Math.round(+it.qty)||1) };
+  });
+  cartDisplayMode = s.displayMode === 'summary' ? 'summary' : 'detailed';
+  cartClientName = m.client_name || cartClientName;
+  cartSavedInfo = null;
+  cartRevisionParent = s.refCode ? { ref: s.refCode, phone: phoneTail(cartClientPhone), explicit: true, sig: cartQuoteSig() } : null;
+  render();
 }
 
 function renderCartQuoteDocument(){
@@ -603,7 +718,18 @@ function renderCartQuoteDocument(){
         <div style="text-align:left">
           <div style="font-size:11px;color:var(--muted);letter-spacing:.02em">تاريخ العرض</div>
           <div class="num" style="font-size:14px;font-weight:700;margin-top:1px">${new Date().toLocaleDateString('en-GB')}</div>
+          <div class="num cart-ref-line" style="font-size:12px;font-weight:700;margin-top:3px;${cartRefText()?'':'display:none'}">${esc(cartRefText())}</div>
         </div>
+      </div>
+
+      <div class="card no-print">
+        <h3 style="margin-bottom:8px">شكل عرض السعر</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn small ${cartDisplayMode==='detailed'?'':'ghost'}" id="cartModeDetailedBtn">🧾 تفصيلي (سعر كل بند)</button>
+          <button type="button" class="btn small ${cartDisplayMode==='summary'?'':'ghost'}" id="cartModeSummaryBtn">📋 إجمالي (البنود بدون أسعار)</button>
+        </div>
+        <div class="note" style="margin-top:6px;font-size:11px">${cartDisplayMode==='summary'?'يظهر في العرض: البنود والكميات فقط، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.':'يظهر في العرض: سعر الوحدة وإجمالي كل بند، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.'}</div>
+        <div class="note cart-rev-hint" style="margin-top:6px;font-size:11px;${cartRevHintText()?'':'display:none'}">${esc(cartRevHintText())}</div>
       </div>
 
       <div class="card no-print">
@@ -612,6 +738,7 @@ function renderCartQuoteDocument(){
           <div><label style="font-size:12px;color:var(--muted)">اسم العميل</label><input type="text" id="cartQuoteClientName" value="${cartClientName}" placeholder="اسم العميل"></div>
           <div><label style="font-size:12px;color:var(--muted)">رقم الجوال</label><input type="text" id="cartQuoteClientPhone" value="${cartClientPhone}" placeholder="05xxxxxxxx"></div>
         </div>
+        <div id="cartPrevBox">${renderCartPrevBox()}</div>
       </div>
 
       <div class="card">
@@ -626,18 +753,29 @@ function renderCartQuoteDocument(){
       <div class="card">
         <h3>تفصيل عرض السعر</h3>
         <table class="bom">
+          ${cartDisplayMode==='summary' ? `
+          <thead><tr><th>#</th><th>المنتج</th><th>الفئة</th><th>الكمية</th></tr></thead>
+          <tbody>
+            ${productCart.map((c,i)=>`
+              <tr>
+                <td>${i+1}</td>
+                <td class="bom-label">${esc(c.name)}</td>
+                <td style="font-size:11.5px;color:var(--muted)">${esc(c.category)}</td>
+                <td style="font-size:11.5px">${c.qty}</td>
+              </tr>`).join('')}
+          </tbody>` : `
           <thead><tr><th>#</th><th>المنتج</th><th>الفئة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
           <tbody>
             ${productCart.map((c,i)=>`
               <tr>
                 <td>${i+1}</td>
-                <td class="bom-label">${c.name}</td>
-                <td style="font-size:11.5px;color:var(--muted)">${c.category}</td>
+                <td class="bom-label">${esc(c.name)}</td>
+                <td style="font-size:11.5px;color:var(--muted)">${esc(c.category)}</td>
                 <td style="font-size:11.5px">${c.qty}</td>
                 <td style="font-size:11.5px" class="num">${(+c.price).toLocaleString('en-US')} ﷼</td>
                 <td style="font-size:11.5px;font-weight:700" class="num">${(c.price*c.qty).toLocaleString('en-US')} ﷼</td>
               </tr>`).join('')}
-          </tbody>
+          </tbody>`}
         </table>
         <div class="note" style="margin-top:10px">
           <div style="display:flex;justify-content:space-between;padding:3px 0"><span>الإجمالي بدون ضريبة</span><span class="num" style="color:var(--ink)">${fmt(subtotal)} ﷼</span></div>

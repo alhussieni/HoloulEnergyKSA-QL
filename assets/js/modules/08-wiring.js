@@ -386,7 +386,7 @@ function wire(){
       render();
     });
     const cartClearBtn = document.getElementById('cartClearBtn');
-    if(cartClearBtn) cartClearBtn.onclick = ()=>{ productCart = []; cartPanelOpen = false; render(); };
+    if(cartClearBtn) cartClearBtn.onclick = ()=>{ productCart = []; cartPanelOpen = false; cartResetQuoteMeta(); render(); };
     const cartPrepareQuoteBtn = document.getElementById('cartPrepareQuoteBtn');
     if(cartPrepareQuoteBtn) cartPrepareQuoteBtn.onclick = ()=>{
       if(!repAuthed){ alert('تجهيز عرض سعر رسمي متاح للمناديب المسجّلين دخولهم فقط.'); return; }
@@ -397,9 +397,17 @@ function wire(){
     const cartQuoteBackBtn = document.getElementById('cartQuoteBackBtn');
     if(cartQuoteBackBtn) cartQuoteBackBtn.onclick = ()=>{ cartQuoteView = false; render(); };
     const cartQuoteClientName = document.getElementById('cartQuoteClientName');
-    if(cartQuoteClientName) cartQuoteClientName.oninput = e=>{ cartClientName = e.target.value; };
+    if(cartQuoteClientName) cartQuoteClientName.oninput = e=>{ cartClientName = e.target.value; refreshCartRefLines(); };
     const cartQuoteClientPhone = document.getElementById('cartQuoteClientPhone');
-    if(cartQuoteClientPhone) cartQuoteClientPhone.oninput = e=>{ cartClientPhone = e.target.value; };
+    if(cartQuoteClientPhone) cartQuoteClientPhone.oninput = e=>{ cartClientPhone = e.target.value; refreshCartRefLines(); cartDebouncedLookupPrev(); };
+    const cartModeDetailedBtn = document.getElementById('cartModeDetailedBtn');
+    if(cartModeDetailedBtn) cartModeDetailedBtn.onclick = ()=>{ cartDisplayMode = 'detailed'; render(); };
+    const cartModeSummaryBtn = document.getElementById('cartModeSummaryBtn');
+    if(cartModeSummaryBtn) cartModeSummaryBtn.onclick = ()=>{ cartDisplayMode = 'summary'; render(); };
+    if(document.getElementById('cartPrevBox')){
+      bindCartPrevBox();
+      if(!cartPrevMatches.length && String(cartClientPhone||'').replace(/\D/g,'').length>=5) cartLookupPrev();
+    }
     const cartRequestQuoteBtn = document.getElementById('cartRequestQuoteBtn');
     if(cartRequestQuoteBtn) cartRequestQuoteBtn.onclick = ()=>{
       const { subtotal, vat, total } = cartTotals();

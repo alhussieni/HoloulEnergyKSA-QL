@@ -158,7 +158,7 @@ async function updatePrevLeadBox(){
     data = await callEngine('find-client', { token: repTokenMem, phone });
   }catch(e){ return; }
   if(mySeq !== prevLeadLookupSeq) return; // a newer keystroke already superseded this lookup
-  const matches = (data.matches||[]).filter(m=>m.snapshot);
+  const matches = (data.matches||[]).filter(m=>m.snapshot && m.snapshot.type!=='product-cart'); // عروض السلة ليها قائمتها الخاصة داخل صفحة عرض السلة
   lastPrevMatches = matches;
   if(!matches.length){ box.style.display='none'; box.innerHTML=''; return; }
   const latest = matches[0];
