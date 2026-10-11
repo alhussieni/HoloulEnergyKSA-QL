@@ -1989,14 +1989,12 @@ ${(function(){
 
   <div class="admsubsec ${currentAdminSubSection.calcs==='offgrid'?'active':''}" data-admsub="offgrid">
   <div class="card">
-    <h3>حاسبة الأوف-جريد <span class="tag">أسعار حقيقية من الكتالوج + هامش قابل للتعديل</span></h3>
+    <h3>حاسبة الأوف-جريد <span class="tag">الأسعار من الكتالوج + قسم الخصومات</span></h3>
     <div class="assump">
       <div><label>ساعات الشمس القصوى اليومية</label><input type="number" id="a_og_sun" step="0.1" value="${adminConfig.offgrid.sunHours}"></div>
       <div><label>كفاءة المنظومة الإجمالية</label><input type="number" id="a_og_eff" step="0.01" value="${adminConfig.offgrid.systemEfficiency}"></div>
       <div><label>عمق تفريغ البطارية القابل للاستخدام (DoD)</label><input type="number" id="a_og_dod" step="0.01" value="${adminConfig.offgrid.batteryDoD}"></div>
       <div><label>أيام الاستقلالية الافتراضية</label><input type="number" id="a_og_autonomy" step="1" value="${adminConfig.offgrid.defaultAutonomyDays}"></div>
-      <div><label>هامش/خصم البطاريات % <span style="color:var(--muted)">(فوق سعر الكتالوج)</span></label><input type="number" id="a_og_batmarkup" step="1" value="${adminConfig.offgrid.batteryMarkupPct}"></div>
-      <div><label>هامش/خصم الانفرتر % <span style="color:var(--muted)">(فوق سعر الكتالوج)</span></label><input type="number" id="a_og_invmarkup" step="1" value="${adminConfig.offgrid.inverterMarkupPct}"></div>
       <div><label>الشاسيه (﷼/لوح) - تكلفة</label><input type="number" id="a_og_strcost" value="${adminConfig.offgrid.structurePerPanelCost}"></div>
       <div><label>الشاسيه (﷼/لوح) - بيع</label><input type="number" id="a_og_strsell" value="${adminConfig.offgrid.structurePerPanelSell}"></div>
       <div><label>الكابلات ولوحة الحماية (﷼) - تكلفة</label><input type="number" id="a_og_cabcost" value="${adminConfig.offgrid.cablingFixedCost}"></div>

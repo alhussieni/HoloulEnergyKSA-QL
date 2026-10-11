@@ -756,7 +756,7 @@ function wire(){
       const numOG = id => { const el=document.getElementById(id); return el ? +el.value : undefined; };
       const setOG = (key,id) => { const v=numOG(id); if(v!==undefined && !isNaN(v)) adminConfig.offgrid[key]=v; };
       setOG('sunHours','a_og_sun'); setOG('systemEfficiency','a_og_eff'); setOG('batteryDoD','a_og_dod');
-      setOG('defaultAutonomyDays','a_og_autonomy'); setOG('batteryMarkupPct','a_og_batmarkup'); setOG('inverterMarkupPct','a_og_invmarkup');
+      setOG('defaultAutonomyDays','a_og_autonomy');
       setOG('structurePerPanelCost','a_og_strcost'); setOG('structurePerPanelSell','a_og_strsell');
       setOG('cablingFixedCost','a_og_cabcost'); setOG('cablingFixedSell','a_og_cabsell');
       setOG('installPerKwCost','a_og_instcost'); setOG('installPerKwSell','a_og_instsell');
