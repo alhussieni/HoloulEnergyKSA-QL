@@ -1,6 +1,71 @@
 --- orig/07-render-admin.js	2026-10-11 10:53:03.540611839 +0000
-+++ 07-render-admin.js	2026-10-11 11:29:18.409205374 +0000
-@@ -988,7 +988,7 @@
++++ 07-render-admin.js	2026-10-11 11:37:37.000293150 +0000
+@@ -859,9 +859,32 @@
+   const exLines = cartExtraLines();
+   const exQty = l => l.mode === 'fixed' ? '—' : (cartRound2(l.qty).toLocaleString('en-US'));
+   return `
+-  <div class="catalog-main" style="max-width:820px;margin:0 auto">
+-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px" class="no-print">
+-      <button class="btn ghost small" id="cartQuoteBackBtn" type="button">→ رجوع للسلة</button>
++  <div class="grid2">
++    <div class="input-rail no-print">
++      <div style="margin-bottom:12px">
++        <button class="btn ghost small" id="cartQuoteBackBtn" type="button">→ رجوع للسلة</button>
++      </div>
++      <div class="card no-print">
++        <h3 style="margin-bottom:8px">بيانات العميل</h3>
++        <div class="field-group g2" style="display:grid;grid-template-columns:1fr;gap:10px">
++          <div><label style="font-size:12px;color:var(--muted)">اسم العميل</label><input type="text" id="cartQuoteClientName" value="${cartClientName}" placeholder="اسم العميل"></div>
++          <div><label style="font-size:12px;color:var(--muted)">رقم الجوال</label><input type="text" id="cartQuoteClientPhone" value="${cartClientPhone}" placeholder="05xxxxxxxx"></div>
++        </div>
++        <div id="cartPrevBox">${renderCartPrevBox()}</div>
++      </div>
++
++      <div class="card no-print">
++        <h3 style="margin-bottom:8px">شكل عرض السعر</h3>
++        <div style="display:flex;gap:8px;flex-wrap:wrap">
++          <button type="button" class="btn small ${cartDisplayMode==='detailed'?'':'ghost'}" id="cartModeDetailedBtn">🧾 تفصيلي (سعر كل بند)</button>
++          <button type="button" class="btn small ${cartDisplayMode==='summary'?'':'ghost'}" id="cartModeSummaryBtn">📋 إجمالي (البنود بدون أسعار)</button>
++        </div>
++        <div class="note" style="margin-top:6px;font-size:11px">${cartDisplayMode==='summary'?'يظهر في العرض: البنود والكميات فقط، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.':'يظهر في العرض: سعر الوحدة وإجمالي كل بند، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.'}</div>
++        <div class="note cart-rev-hint" style="margin-top:6px;font-size:11px;${cartRevHintText()?'':'display:none'}">${esc(cartRevHintText())}</div>
++      </div>
++
++      ${renderCartExtrasCard()}
++      ${renderCartAdjustCard()}
+     </div>
+     <div id="quotePrintArea" class="quote-shell">
+       <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
+@@ -885,28 +908,6 @@
+         </div>
+       </div>
+ 
+-      <div class="card no-print">
+-        <h3 style="margin-bottom:8px">شكل عرض السعر</h3>
+-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+-          <button type="button" class="btn small ${cartDisplayMode==='detailed'?'':'ghost'}" id="cartModeDetailedBtn">🧾 تفصيلي (سعر كل بند)</button>
+-          <button type="button" class="btn small ${cartDisplayMode==='summary'?'':'ghost'}" id="cartModeSummaryBtn">📋 إجمالي (البنود بدون أسعار)</button>
+-        </div>
+-        <div class="note" style="margin-top:6px;font-size:11px">${cartDisplayMode==='summary'?'يظهر في العرض: البنود والكميات فقط، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.':'يظهر في العرض: سعر الوحدة وإجمالي كل بند، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.'}</div>
+-        <div class="note cart-rev-hint" style="margin-top:6px;font-size:11px;${cartRevHintText()?'':'display:none'}">${esc(cartRevHintText())}</div>
+-      </div>
+-
+-      ${renderCartExtrasCard()}
+-      ${renderCartAdjustCard()}
+-
+-      <div class="card no-print">
+-        <h3 style="margin-bottom:8px">بيانات العميل</h3>
+-        <div class="field-group g2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+-          <div><label style="font-size:12px;color:var(--muted)">اسم العميل</label><input type="text" id="cartQuoteClientName" value="${cartClientName}" placeholder="اسم العميل"></div>
+-          <div><label style="font-size:12px;color:var(--muted)">رقم الجوال</label><input type="text" id="cartQuoteClientPhone" value="${cartClientPhone}" placeholder="05xxxxxxxx"></div>
+-        </div>
+-        <div id="cartPrevBox">${renderCartPrevBox()}</div>
+-      </div>
+-
+       <div class="card">
+         <h3 style="margin-bottom:2px">العرض المالي</h3>
+         <div style="font-size:13px;margin:8px 0 4px">تحية طيبة وبعد،</div>
+@@ -988,7 +989,7 @@
    </div>`;
  }
  
@@ -9,7 +74,7 @@
  function renderCartExtrasAdminCard(){
    const cx = (adminConfig && adminConfig.offgrid && adminConfig.offgrid.cartExtras) || {};
    const sel = (v, cur) => v === cur ? 'selected' : '';
-@@ -1015,7 +1015,7 @@
+@@ -1015,7 +1016,7 @@
    const t = cx.transport || {};
    return `
    <div class="card">
@@ -18,7 +83,7 @@
      <div class="note" style="margin-bottom:10px">أسعار بيع فقط. <b>ثابت</b> = مبلغ واحد للبند مهما كان حجم المنظومة. <b>متغير</b> = سعر الوحدة × الكمية (الكمية بتتحسب تلقائيًا من الألواح في السلة والمندوب يقدر يعدّلها). <b>مفتوح للمندوب</b> = المندوب يقدر يغيّر سعر البند في العرض؛ <b>مقفول</b> = بيتسجّل بسعرك دايمًا (والسيرفر هو اللي يطبّق ده عند الحفظ).</div>
      <div style="overflow-x:auto">
      <table class="admtable">
-@@ -1934,6 +1934,7 @@
+@@ -1934,6 +1935,7 @@
      <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='pump'?'active':''}" data-admsubparent="calcs" data-admsub="pump" type="button"><span class="ic">🚜</span><span class="lbl">أنظمة البامب</span></button>
      <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='offgrid'?'active':''}" data-admsubparent="calcs" data-admsub="offgrid" type="button"><span class="ic">🔋</span><span class="lbl">حاسبة الأوف-جريد</span></button>
      <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='ongrid'?'active':''}" data-admsubparent="calcs" data-admsub="ongrid" type="button"><span class="ic">🔌</span><span class="lbl">حاسبة الأون-جريد</span></button>
@@ -26,7 +91,7 @@
    </aside>
    <div class="admsub-main">
  
-@@ -1989,14 +1990,12 @@
+@@ -1989,14 +1991,12 @@
  
    <div class="admsubsec ${currentAdminSubSection.calcs==='offgrid'?'active':''}" data-admsub="offgrid">
    <div class="card">
@@ -42,7 +107,7 @@
        <div><label>الشاسيه (﷼/لوح) - تكلفة</label><input type="number" id="a_og_strcost" value="${adminConfig.offgrid.structurePerPanelCost}"></div>
        <div><label>الشاسيه (﷼/لوح) - بيع</label><input type="number" id="a_og_strsell" value="${adminConfig.offgrid.structurePerPanelSell}"></div>
        <div><label>الكابلات ولوحة الحماية (﷼) - تكلفة</label><input type="number" id="a_og_cabcost" value="${adminConfig.offgrid.cablingFixedCost}"></div>
-@@ -2006,8 +2005,6 @@
+@@ -2006,8 +2006,6 @@
      </div>
    </div>
  
@@ -51,7 +116,7 @@
    <div class="card">
      <h3>جدول الأحمال — قائمة الأجهزة الافتراضية <span class="tag">قائمة "+ إضافة من القائمة" في حاسبة الأوف-جريد</span></h3>
      <div class="note" style="margin-bottom:10px">التعديل هنا بيغيّر الأجهزة الجاهزة اللي تظهر للمناديب والعملاء وهما بيبنوا ملف الأحمال. الـ Surge (تيار البدء) بيستخدمه السيرفر لحساب هل الانفرتر المختار كافي وقت تشغيل الجهاز أول مرة (موتورات/كمبروسورات عادةً محتاجة ×3 لـ×7 وقت البدء، أجهزة كهربائية عادية ×1).</div>
-@@ -2029,6 +2026,10 @@
+@@ -2029,6 +2027,10 @@
    </div>
    </div>
  

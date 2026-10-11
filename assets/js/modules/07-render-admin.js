@@ -859,9 +859,32 @@ function renderCartQuoteDocument(){
   const exLines = cartExtraLines();
   const exQty = l => l.mode === 'fixed' ? '—' : (cartRound2(l.qty).toLocaleString('en-US'));
   return `
-  <div class="catalog-main" style="max-width:820px;margin:0 auto">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px" class="no-print">
-      <button class="btn ghost small" id="cartQuoteBackBtn" type="button">→ رجوع للسلة</button>
+  <div class="grid2">
+    <div class="input-rail no-print">
+      <div style="margin-bottom:12px">
+        <button class="btn ghost small" id="cartQuoteBackBtn" type="button">→ رجوع للسلة</button>
+      </div>
+      <div class="card no-print">
+        <h3 style="margin-bottom:8px">بيانات العميل</h3>
+        <div class="field-group g2" style="display:grid;grid-template-columns:1fr;gap:10px">
+          <div><label style="font-size:12px;color:var(--muted)">اسم العميل</label><input type="text" id="cartQuoteClientName" value="${cartClientName}" placeholder="اسم العميل"></div>
+          <div><label style="font-size:12px;color:var(--muted)">رقم الجوال</label><input type="text" id="cartQuoteClientPhone" value="${cartClientPhone}" placeholder="05xxxxxxxx"></div>
+        </div>
+        <div id="cartPrevBox">${renderCartPrevBox()}</div>
+      </div>
+
+      <div class="card no-print">
+        <h3 style="margin-bottom:8px">شكل عرض السعر</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn small ${cartDisplayMode==='detailed'?'':'ghost'}" id="cartModeDetailedBtn">🧾 تفصيلي (سعر كل بند)</button>
+          <button type="button" class="btn small ${cartDisplayMode==='summary'?'':'ghost'}" id="cartModeSummaryBtn">📋 إجمالي (البنود بدون أسعار)</button>
+        </div>
+        <div class="note" style="margin-top:6px;font-size:11px">${cartDisplayMode==='summary'?'يظهر في العرض: البنود والكميات فقط، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.':'يظهر في العرض: سعر الوحدة وإجمالي كل بند، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.'}</div>
+        <div class="note cart-rev-hint" style="margin-top:6px;font-size:11px;${cartRevHintText()?'':'display:none'}">${esc(cartRevHintText())}</div>
+      </div>
+
+      ${renderCartExtrasCard()}
+      ${renderCartAdjustCard()}
     </div>
     <div id="quotePrintArea" class="quote-shell">
       <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">
@@ -883,28 +906,6 @@ function renderCartQuoteDocument(){
           <div class="num" style="font-size:14px;font-weight:700;margin-top:1px">${new Date().toLocaleDateString('en-GB')}</div>
           <div class="num cart-ref-line" style="font-size:12px;font-weight:700;margin-top:3px;${cartRefText()?'':'display:none'}">${esc(cartRefText())}</div>
         </div>
-      </div>
-
-      <div class="card no-print">
-        <h3 style="margin-bottom:8px">شكل عرض السعر</h3>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button type="button" class="btn small ${cartDisplayMode==='detailed'?'':'ghost'}" id="cartModeDetailedBtn">🧾 تفصيلي (سعر كل بند)</button>
-          <button type="button" class="btn small ${cartDisplayMode==='summary'?'':'ghost'}" id="cartModeSummaryBtn">📋 إجمالي (البنود بدون أسعار)</button>
-        </div>
-        <div class="note" style="margin-top:6px;font-size:11px">${cartDisplayMode==='summary'?'يظهر في العرض: البنود والكميات فقط، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.':'يظهر في العرض: سعر الوحدة وإجمالي كل بند، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.'}</div>
-        <div class="note cart-rev-hint" style="margin-top:6px;font-size:11px;${cartRevHintText()?'':'display:none'}">${esc(cartRevHintText())}</div>
-      </div>
-
-      ${renderCartExtrasCard()}
-      ${renderCartAdjustCard()}
-
-      <div class="card no-print">
-        <h3 style="margin-bottom:8px">بيانات العميل</h3>
-        <div class="field-group g2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div><label style="font-size:12px;color:var(--muted)">اسم العميل</label><input type="text" id="cartQuoteClientName" value="${cartClientName}" placeholder="اسم العميل"></div>
-          <div><label style="font-size:12px;color:var(--muted)">رقم الجوال</label><input type="text" id="cartQuoteClientPhone" value="${cartClientPhone}" placeholder="05xxxxxxxx"></div>
-        </div>
-        <div id="cartPrevBox">${renderCartPrevBox()}</div>
       </div>
 
       <div class="card">
