@@ -988,7 +988,7 @@ function renderCartQuoteDocument(){
   </div>`;
 }
 
-// كارت الأدمن: أسعار التركيب (مدني/كهربائي) والنقل لعروض السلة — داخل حاسبات الأنظمة ← الأوف-جريد.
+// كارت الأدمن: أسعار التركيب (مدني/كهربائي) والنقل لعروض السلة — قسم مستقل داخل حاسبات الأنظمة ← عروض سلة المنتجات.
 function renderCartExtrasAdminCard(){
   const cx = (adminConfig && adminConfig.offgrid && adminConfig.offgrid.cartExtras) || {};
   const sel = (v, cur) => v === cur ? 'selected' : '';
@@ -1015,7 +1015,7 @@ function renderCartExtrasAdminCard(){
   const t = cx.transport || {};
   return `
   <div class="card">
-    <h3>التركيب والنقل في عروض السلة <span class="tag">يظهر للمندوب في عرض السعر</span></h3>
+    <h3>عروض سلة المنتجات <span class="tag">يظهر للمندوب في عرض السعر</span></h3>
     <div class="note" style="margin-bottom:10px">أسعار بيع فقط. <b>ثابت</b> = مبلغ واحد للبند مهما كان حجم المنظومة. <b>متغير</b> = سعر الوحدة × الكمية (الكمية بتتحسب تلقائيًا من الألواح في السلة والمندوب يقدر يعدّلها). <b>مفتوح للمندوب</b> = المندوب يقدر يغيّر سعر البند في العرض؛ <b>مقفول</b> = بيتسجّل بسعرك دايمًا (والسيرفر هو اللي يطبّق ده عند الحفظ).</div>
     <div style="overflow-x:auto">
     <table class="admtable">
@@ -1934,6 +1934,7 @@ ${(function(){
     <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='pump'?'active':''}" data-admsubparent="calcs" data-admsub="pump" type="button"><span class="ic">🚜</span><span class="lbl">أنظمة البامب</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='offgrid'?'active':''}" data-admsubparent="calcs" data-admsub="offgrid" type="button"><span class="ic">🔋</span><span class="lbl">حاسبة الأوف-جريد</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='ongrid'?'active':''}" data-admsubparent="calcs" data-admsub="ongrid" type="button"><span class="ic">🔌</span><span class="lbl">حاسبة الأون-جريد</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='cart'?'active':''}" data-admsubparent="calcs" data-admsub="cart" type="button"><span class="ic">🛒</span><span class="lbl">عروض سلة المنتجات</span></button>
   </aside>
   <div class="admsub-main">
 
@@ -2004,8 +2005,6 @@ ${(function(){
     </div>
   </div>
 
-  ${renderCartExtrasAdminCard()}
-
   <div class="card">
     <h3>جدول الأحمال — قائمة الأجهزة الافتراضية <span class="tag">قائمة "+ إضافة من القائمة" في حاسبة الأوف-جريد</span></h3>
     <div class="note" style="margin-bottom:10px">التعديل هنا بيغيّر الأجهزة الجاهزة اللي تظهر للمناديب والعملاء وهما بيبنوا ملف الأحمال. الـ Surge (تيار البدء) بيستخدمه السيرفر لحساب هل الانفرتر المختار كافي وقت تشغيل الجهاز أول مرة (موتورات/كمبروسورات عادةً محتاجة ×3 لـ×7 وقت البدء، أجهزة كهربائية عادية ×1).</div>
@@ -2025,6 +2024,10 @@ ${(function(){
     </table>
     <button type="button" class="btn ghost small" id="addApplPresetBtn" style="margin-top:8px">+ إضافة جهاز للقائمة</button>
   </div>
+  </div>
+
+  <div class="admsubsec ${currentAdminSubSection.calcs==='cart'?'active':''}" data-admsub="cart">
+  ${renderCartExtrasAdminCard()}
   </div>
 
   <div class="admsubsec ${currentAdminSubSection.calcs==='ongrid'?'active':''}" data-admsub="ongrid">

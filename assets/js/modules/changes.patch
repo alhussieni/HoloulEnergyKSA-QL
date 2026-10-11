@@ -1,0 +1,75 @@
+--- orig/07-render-admin.js	2026-10-11 10:53:03.540611839 +0000
++++ 07-render-admin.js	2026-10-11 11:29:18.409205374 +0000
+@@ -988,7 +988,7 @@
+   </div>`;
+ }
+ 
+-// كارت الأدمن: أسعار التركيب (مدني/كهربائي) والنقل لعروض السلة — داخل حاسبات الأنظمة ← الأوف-جريد.
++// كارت الأدمن: أسعار التركيب (مدني/كهربائي) والنقل لعروض السلة — قسم مستقل داخل حاسبات الأنظمة ← عروض سلة المنتجات.
+ function renderCartExtrasAdminCard(){
+   const cx = (adminConfig && adminConfig.offgrid && adminConfig.offgrid.cartExtras) || {};
+   const sel = (v, cur) => v === cur ? 'selected' : '';
+@@ -1015,7 +1015,7 @@
+   const t = cx.transport || {};
+   return `
+   <div class="card">
+-    <h3>التركيب والنقل في عروض السلة <span class="tag">يظهر للمندوب في عرض السعر</span></h3>
++    <h3>عروض سلة المنتجات <span class="tag">يظهر للمندوب في عرض السعر</span></h3>
+     <div class="note" style="margin-bottom:10px">أسعار بيع فقط. <b>ثابت</b> = مبلغ واحد للبند مهما كان حجم المنظومة. <b>متغير</b> = سعر الوحدة × الكمية (الكمية بتتحسب تلقائيًا من الألواح في السلة والمندوب يقدر يعدّلها). <b>مفتوح للمندوب</b> = المندوب يقدر يغيّر سعر البند في العرض؛ <b>مقفول</b> = بيتسجّل بسعرك دايمًا (والسيرفر هو اللي يطبّق ده عند الحفظ).</div>
+     <div style="overflow-x:auto">
+     <table class="admtable">
+@@ -1934,6 +1934,7 @@
+     <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='pump'?'active':''}" data-admsubparent="calcs" data-admsub="pump" type="button"><span class="ic">🚜</span><span class="lbl">أنظمة البامب</span></button>
+     <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='offgrid'?'active':''}" data-admsubparent="calcs" data-admsub="offgrid" type="button"><span class="ic">🔋</span><span class="lbl">حاسبة الأوف-جريد</span></button>
+     <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='ongrid'?'active':''}" data-admsubparent="calcs" data-admsub="ongrid" type="button"><span class="ic">🔌</span><span class="lbl">حاسبة الأون-جريد</span></button>
++    <button class="admsub-nav-btn ${currentAdminSubSection.calcs==='cart'?'active':''}" data-admsubparent="calcs" data-admsub="cart" type="button"><span class="ic">🛒</span><span class="lbl">عروض سلة المنتجات</span></button>
+   </aside>
+   <div class="admsub-main">
+ 
+@@ -1989,14 +1990,12 @@
+ 
+   <div class="admsubsec ${currentAdminSubSection.calcs==='offgrid'?'active':''}" data-admsub="offgrid">
+   <div class="card">
+-    <h3>حاسبة الأوف-جريد <span class="tag">أسعار حقيقية من الكتالوج + هامش قابل للتعديل</span></h3>
++    <h3>حاسبة الأوف-جريد <span class="tag">الأسعار من الكتالوج + قسم الخصومات</span></h3>
+     <div class="assump">
+       <div><label>ساعات الشمس القصوى اليومية</label><input type="number" id="a_og_sun" step="0.1" value="${adminConfig.offgrid.sunHours}"></div>
+       <div><label>كفاءة المنظومة الإجمالية</label><input type="number" id="a_og_eff" step="0.01" value="${adminConfig.offgrid.systemEfficiency}"></div>
+       <div><label>عمق تفريغ البطارية القابل للاستخدام (DoD)</label><input type="number" id="a_og_dod" step="0.01" value="${adminConfig.offgrid.batteryDoD}"></div>
+       <div><label>أيام الاستقلالية الافتراضية</label><input type="number" id="a_og_autonomy" step="1" value="${adminConfig.offgrid.defaultAutonomyDays}"></div>
+-      <div><label>هامش/خصم البطاريات % <span style="color:var(--muted)">(فوق سعر الكتالوج)</span></label><input type="number" id="a_og_batmarkup" step="1" value="${adminConfig.offgrid.batteryMarkupPct}"></div>
+-      <div><label>هامش/خصم الانفرتر % <span style="color:var(--muted)">(فوق سعر الكتالوج)</span></label><input type="number" id="a_og_invmarkup" step="1" value="${adminConfig.offgrid.inverterMarkupPct}"></div>
+       <div><label>الشاسيه (﷼/لوح) - تكلفة</label><input type="number" id="a_og_strcost" value="${adminConfig.offgrid.structurePerPanelCost}"></div>
+       <div><label>الشاسيه (﷼/لوح) - بيع</label><input type="number" id="a_og_strsell" value="${adminConfig.offgrid.structurePerPanelSell}"></div>
+       <div><label>الكابلات ولوحة الحماية (﷼) - تكلفة</label><input type="number" id="a_og_cabcost" value="${adminConfig.offgrid.cablingFixedCost}"></div>
+@@ -2006,8 +2005,6 @@
+     </div>
+   </div>
+ 
+-  ${renderCartExtrasAdminCard()}
+-
+   <div class="card">
+     <h3>جدول الأحمال — قائمة الأجهزة الافتراضية <span class="tag">قائمة "+ إضافة من القائمة" في حاسبة الأوف-جريد</span></h3>
+     <div class="note" style="margin-bottom:10px">التعديل هنا بيغيّر الأجهزة الجاهزة اللي تظهر للمناديب والعملاء وهما بيبنوا ملف الأحمال. الـ Surge (تيار البدء) بيستخدمه السيرفر لحساب هل الانفرتر المختار كافي وقت تشغيل الجهاز أول مرة (موتورات/كمبروسورات عادةً محتاجة ×3 لـ×7 وقت البدء، أجهزة كهربائية عادية ×1).</div>
+@@ -2029,6 +2026,10 @@
+   </div>
+   </div>
+ 
++  <div class="admsubsec ${currentAdminSubSection.calcs==='cart'?'active':''}" data-admsub="cart">
++  ${renderCartExtrasAdminCard()}
++  </div>
++
+   <div class="admsubsec ${currentAdminSubSection.calcs==='ongrid'?'active':''}" data-admsub="ongrid">
+   <div class="card">
+     <h3>حاسبة الأون-جريد <span class="tag">أسعار حقيقية من الكتالوج + هامش قابل للتعديل</span></h3>
+--- orig/08-wiring.js	2026-10-11 10:53:03.540685350 +0000
++++ 08-wiring.js	2026-10-11 11:02:49.207115026 +0000
+@@ -756,7 +756,7 @@
+       const numOG = id => { const el=document.getElementById(id); return el ? +el.value : undefined; };
+       const setOG = (key,id) => { const v=numOG(id); if(v!==undefined && !isNaN(v)) adminConfig.offgrid[key]=v; };
+       setOG('sunHours','a_og_sun'); setOG('systemEfficiency','a_og_eff'); setOG('batteryDoD','a_og_dod');
+-      setOG('defaultAutonomyDays','a_og_autonomy'); setOG('batteryMarkupPct','a_og_batmarkup'); setOG('inverterMarkupPct','a_og_invmarkup');
++      setOG('defaultAutonomyDays','a_og_autonomy');
+       setOG('structurePerPanelCost','a_og_strcost'); setOG('structurePerPanelSell','a_og_strsell');
+       setOG('cablingFixedCost','a_og_cabcost'); setOG('cablingFixedSell','a_og_cabsell');
+       setOG('installPerKwCost','a_og_instcost'); setOG('installPerKwSell','a_og_instsell');
