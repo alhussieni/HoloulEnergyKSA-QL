@@ -29,7 +29,9 @@ a{color:var(--night-2);}
 header.top{background:rgba(255,255,255,.94);padding:14px 28px;position:sticky;top:0;z-index:50;border-bottom:1px solid var(--line);box-shadow:var(--shadow-soft);backdrop-filter:blur(10px);}
 .brandrow{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;}
 .brand{display:flex;align-items:center;gap:12px;}
-.brand .mark{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sun-2),var(--sun));display:flex;align-items:center;justify-content:center;font-size:19px;box-shadow:var(--shadow-soft);}
+.brand .mark{width:44px;height:44px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:19px;box-shadow:var(--shadow-soft);overflow:hidden;}
+.brand .mark img,.loginCard .mark img{width:100%;height:100%;object-fit:contain;display:block;}
+.mark.fallback{background:linear-gradient(135deg,var(--sun-2),var(--sun)) !important;}
 .brand .name{font-weight:800;font-size:18px;color:var(--night);}
 .brand .sub{font-size:11.5px;color:var(--muted);margin-top:1px;}
 nav.tabs{display:flex;gap:6px;background:var(--sand);padding:5px;border-radius:12px;border:1px solid var(--line);}
@@ -70,7 +72,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--teal);bo
 /* ---------- login ---------- */
 #loginScreen{min-height:calc(100vh - 0px);display:flex;align-items:center;justify-content:center;padding:20px;}
 .loginCard{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:32px 28px;box-shadow:var(--shadow);}
-.loginCard .mark{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--sun-2),var(--sun));display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px;}
+.loginCard .mark{width:64px;height:64px;border-radius:12px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;margin-bottom:14px;overflow:hidden;}
 .loginCard h1{font-size:19px;margin:0 0 4px;color:var(--night);}
 .loginCard p{color:var(--muted);font-size:13px;margin:0 0 18px;}
 .roleTabs{display:flex;gap:6px;margin-bottom:18px;background:var(--sand);border-radius:9px;padding:4px;border:1px solid var(--line);}
@@ -419,7 +421,7 @@ body.printing-cert #certPrintArea{display:block!important;}
 <!-- ================= LOGIN ================= -->
 <div id="loginScreen">
   <div class="loginCard">
-    <div class="mark">☀️</div>
+    <div class="mark"><img src="assets/logo.png" alt="Holoul Energy" onerror="this.parentNode.classList.add('fallback');this.replaceWith('☀️')"></div>
     <h1>متابعة العملاء (CRM)</h1>
     <p><span id="loginBrandLine">HoloulEnergy</span> · سجّل دخولك بنفس بيانات لوحة التحكم</p>
     <div class="roleTabs">
@@ -444,7 +446,7 @@ body.printing-cert #certPrintArea{display:block!important;}
   <header class="top">
     <div class="brandrow">
       <div class="brand">
-        <div class="mark">☀️</div>
+        <div class="mark"><img src="assets/logo.png" alt="Holoul Energy" onerror="this.parentNode.classList.add('fallback');this.replaceWith('☀️')"></div>
         <div><div class="name">متابعة العملاء</div><div class="sub"><span id="crmBrandSub">HoloulEnergy</span> CRM</div></div>
       </div>
       <nav class="tabs" id="tabsNav">
