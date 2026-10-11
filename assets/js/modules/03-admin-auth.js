@@ -9,6 +9,13 @@ function normalizeAdminConfig(cfg){
   if(!cfg.offgrid) cfg.offgrid = { sunHours:5.5, systemEfficiency:0.80, batteryDoD:0.90, defaultAutonomyDays:1, peakLoadDivisor:6, batteryMarkupPct:30, inverterMarkupPct:30, structurePerPanelCost:250, structurePerPanelSell:350, cablingFixedCost:800, cablingFixedSell:1200, installPerKwCost:150, installPerKwSell:250 };
   if(!cfg.ongrid) cfg.ongrid = { sunHours:5.5, performanceRatio:0.80, tariffRate:0.18, inverterMarkupPct:30, structurePerPanelCost:250, structurePerPanelSell:350, cablingFixedCost:800, cablingFixedSell:1200, netMeteringFeeCost:0, netMeteringFeeSell:0, installPerKwCost:150, installPerKwSell:250 };
   if(!Array.isArray(cfg.offgrid.appliancePresets) || !cfg.offgrid.appliancePresets.length) cfg.offgrid.appliancePresets = OFFGRID_APPLIANCE_PRESETS.map(p=>({...p}));
+  // بنود التركيب المدني/الكهربائي/النقل في عروض السلة (بتتسجّل داخل حاسبة الأوف-جريد). القيم الافتراضية = أسعار حاسبة الضخ الحالية.
+  if(!cfg.offgrid.cartExtras || typeof cfg.offgrid.cartExtras !== 'object') cfg.offgrid.cartExtras = {};
+  { const cx = cfg.offgrid.cartExtras;
+    cx.civil = Object.assign({ mode:'variable', unit:'panel', price:(+cfg.mechInstallPerPanel||0), repEdit:false }, cx.civil||{});
+    cx.elec = Object.assign({ mode:'variable', unit:'panel', price:(+cfg.elecInstallPerPanel||0), repEdit:false }, cx.elec||{});
+    cx.transport = Object.assign({ mode:'variable', unit:'trip', price:(+cfg.transportPerTrip||0), minimum:(+cfg.transportMinimum||0), kwPerTrip:20, repEdit:false }, cx.transport||{});
+  }
   if(!Array.isArray(cfg.readyOffgridSystems)) cfg.readyOffgridSystems = [];
   if(!Array.isArray(cfg.discounts)) cfg.discounts = [];
   return cfg;

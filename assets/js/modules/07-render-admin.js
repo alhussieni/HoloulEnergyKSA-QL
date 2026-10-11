@@ -292,12 +292,80 @@ let cartPrevMatches = [];           // earlier cart quotes found for the typed p
 let cartPrevSeq = 0;
 let cartPrevTimer = null;
 function cartRound2(n){ return Math.round((+n||0)*100)/100; }
+
+// ---- التركيب (مدني/كهربائي) والنقل + خصم خاص/زيادة: أسعار الأدمن من حاسبة الأوف-جريد ----
+const CART_EXTRAS_URL = (typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL : '') + '/functions/v1/cart-extras';
+const CART_EXTRA_KEYS = ['civil', 'elec', 'transport'];
+let cartExtrasCfg = null;           // {civil, elec, transport} من الـ Edge Function cart-extras (بيانات الأدمن)
+let cartExtrasLoading = false;
+let cartExtrasError = '';
+function cartBlankExtrasSel(){
+  return { civil:{on:false,qty:null,price:null}, elec:{on:false,qty:null,price:null}, transport:{on:false,qty:null,price:null} };
+}
+let cartExtrasSel = cartBlankExtrasSel();   // اختيار المندوب: تفعيل + كمية يدوية + سعر (لو الأدمن فاتح التعديل)
+let cartSpecialAmt = 0;             // موجب = خصم، سالب = زيادة (نفس "خصم خاص" في الحاسبة)
+
+function cartPanelStats(){
+  let panels = 0, watts = 0;
+  productCart.forEach(c=>{
+    if(c.category !== 'الألواح الشمسية') return;
+    const m = String(c.name||'').match(/(\d+(?:\.\d+)?)\s*W\b/i);
+    const q = c.qty || 1;
+    panels += q;
+    if(m) watts += (+m[1]) * q;
+  });
+  return { panels, kw: Math.round(watts)/1000 };
+}
+function cartExtraAutoQty(key){
+  const cfg = cartExtrasCfg && cartExtrasCfg[key];
+  if(!cfg) return 0;
+  const st = cartPanelStats();
+  if(key === 'transport') return st.kw > 0 ? Math.max(1, Math.ceil(st.kw / (cfg.kwPerTrip || 20))) : 0;
+  return cfg.unit === 'kw' ? cartRound2(st.kw) : st.panels;
+}
+function cartExtraQty(key){
+  const cfg = cartExtrasCfg && cartExtrasCfg[key];
+  if(!cfg) return 0;
+  if(cfg.mode === 'fixed') return 1;
+  const sel = cartExtrasSel[key];
+  const q = (sel && sel.qty != null && sel.qty !== '') ? +sel.qty : cartExtraAutoQty(key);
+  return isFinite(q) && q > 0 ? q : 0;
+}
+function cartExtraUnitPrice(key){
+  const cfg = cartExtrasCfg && cartExtrasCfg[key];
+  if(!cfg) return 0;
+  const sel = cartExtrasSel[key];
+  // السعر بيتغيّر بس لو الأدمن فاتح التعديل للمندوب؛ غير كده سعر الأدمن (والسيرفر بيطبّق نفس القاعدة عند الحفظ)
+  if(cfg.repEdit === true && sel && sel.price != null && sel.price !== '' && isFinite(+sel.price) && +sel.price >= 0) return +sel.price;
+  return +cfg.price || 0;
+}
+function cartExtraAmount(key){
+  const cfg = cartExtrasCfg && cartExtrasCfg[key];
+  if(!cfg) return 0;
+  const price = cartExtraUnitPrice(key);
+  if(cfg.mode === 'fixed') return cartRound2(price);
+  const qty = cartExtraQty(key);
+  let amt = qty * price;
+  if(key === 'transport' && qty > 0 && (+cfg.minimum || 0) > 0) amt = Math.max(amt, +cfg.minimum);
+  return cartRound2(amt);
+}
+function cartExtraLines(){
+  if(!cartExtrasCfg) return [];
+  return CART_EXTRA_KEYS
+    .filter(k=>cartExtrasSel[k] && cartExtrasSel[k].on && cartExtrasCfg[k])
+    .map(k=>({ key:k, label:cartExtrasCfg[k].label, mode:cartExtrasCfg[k].mode, unit:cartExtrasCfg[k].unit,
+               qty:cartExtraQty(k), unitPrice:cartExtraUnitPrice(k), amount:cartExtraAmount(k) }))
+    .filter(l=>l.amount > 0);
+}
+
 function cartQuoteSig(){
   return JSON.stringify([cartDisplayMode, phoneTail(cartClientPhone), String(cartClientName||'').trim(),
-    productCart.map(c=>[c.name, c.category, +c.price||0, c.qty||1])]);
+    productCart.map(c=>[c.name, c.category, +c.price||0, c.qty||1]),
+    cartExtraLines().map(l=>[l.key, l.qty, l.unitPrice, l.amount]), +cartSpecialAmt || 0]);
 }
 function cartResetQuoteMeta(){
   cartSavedInfo = null; cartRevisionParent = null; cartPrevMatches = []; cartDisplayMode = 'detailed';
+  cartExtrasSel = cartBlankExtrasSel(); cartSpecialAmt = 0;
 }
 function cartRefText(){
   const ok = cartSavedInfo && cartSavedInfo.ref && cartSavedInfo.sig === cartQuoteSig();
@@ -330,10 +398,16 @@ function cartSetQty(idx, qty){
   if(productCart[idx]) productCart[idx].qty = qty;
 }
 function cartTotals(){
-  const subtotal = productCart.reduce((s,c)=>s + (parseFloat(c.price)||0) * (c.qty||1), 0);
+  const itemsSubtotal = productCart.reduce((s,c)=>s + (parseFloat(c.price)||0) * (c.qty||1), 0);
+  const extrasSubtotal = cartExtraLines().reduce((s,l)=>s + l.amount, 0);
+  const gross = itemsSubtotal + extrasSubtotal;
+  // خصم خاص/زيادة: موجب = خصم (لا يزيد عن الإجمالي)، سالب = زيادة — قبل الضريبة (زي الحاسبة)
+  const adjIn = (typeof repAuthed !== 'undefined' && repAuthed) ? (+cartSpecialAmt || 0) : 0;
+  const adj = adjIn > 0 ? Math.min(gross, adjIn) : adjIn;
+  const subtotal = gross - adj;               // الإجمالي بدون ضريبة (بعد الخصم/الزيادة)
   const vat = subtotal * CART_VAT_RATE;
   const total = subtotal + vat;
-  return { subtotal, vat, total };
+  return { subtotal, vat, total, itemsSubtotal, extrasSubtotal, gross, adj };
 }
 
 // Known multi-word brand names checked before falling back to "first word",
@@ -575,17 +649,32 @@ async function saveCartQuote(){
   const phoneT = phoneTail(cartClientPhone);
   const par = cartRevisionParent;
   // عرض اتحمّل للتعديل وطُبع/اتبعت من غير أي تغيير → نفس الرمز المرجعي، من غير مراجعة جديدة
-  if(par && par.explicit && par.sig === sig && par.phone === phoneT){
+  if(par && par.explicit && par.sig === sig && par.phone === phoneT && (par.total == null || par.total === Math.round(cartTotals().total))){
     cartSavedInfo = { sig, ref: par.ref };
     refreshCartRefLines();
     return cartSavedInfo;
   }
-  const { subtotal, vat, total } = cartTotals();
+  const exLines = cartExtraLines();
+  // أسعار التركيب/النقل اتحدّثت من الأدمن بعد ما العرض اتفتح → نعرض الجديد قبل الحفظ بدل ما نطبع سعر قديم
+  if(asRep && exLines.length){
+    const before = JSON.stringify(cartExtrasCfg);
+    await loadCartExtras(true);
+    if(cartExtrasCfg && JSON.stringify(cartExtrasCfg) !== before){
+      render();
+      alert('تم تحديث أسعار التركيب/النقل من الإدارة — راجع العرض ثم اطبع أو أرسل مرة أخرى.');
+      return 'stale';
+    }
+  }
+  const { subtotal, vat, total, itemsSubtotal, extrasSubtotal, adj } = cartTotals();
   const snapshot = {
     type: 'product-cart',
     displayMode: cartDisplayMode,
     vatRate: CART_VAT_RATE,
     items: productCart.map(c=>({name:c.name, category:c.category, price:c.price, qty:c.qty})),
+    // السيرفر (trigger quotes_cart_enforce) بيعيد حساب البنود دي من إعدادات الأدمن عند الحفظ
+    extras: exLines.map(l=>({ key:l.key, label:l.label, mode:l.mode, unit:l.unit, qty:l.qty, unitPrice:l.unitPrice, amount:l.amount })),
+    specialDiscountAmt: cartRound2(adj),
+    itemsSubtotal: cartRound2(itemsSubtotal), extrasSubtotal: cartRound2(extrasSubtotal),
     subtotal: cartRound2(subtotal), vat: cartRound2(vat), total: cartRound2(total)
   };
   if(par && par.ref && par.phone === phoneT) snapshot.revisionOf = par.ref;
@@ -607,7 +696,7 @@ async function saveCartQuote(){
 }
 async function handleCartPrint(){
   if(!validateCartClient()) return;
-  await saveCartQuote();
+  if(await saveCartQuote() === 'stale') return;
   const originalTitle = document.title;
   const ref = (cartSavedInfo && cartSavedInfo.ref) ? cartSavedInfo.ref + '_' : '';
   document.title = ('عرض-سعر-منتجات-'+ref+cartClientName).replace(/[\/\\?%*:|"<>]/g,'-');
@@ -618,7 +707,7 @@ async function sendCartQuoteToClientWhatsapp(){
   if(!validateCartClient()) return;
   const phone = normalizePhone(cartClientPhone);
   if(phone.length<11){ alert('رقم هاتف العميل غير صحيح — تأكد إنه بالصيغة الصحيحة (05xxxxxxxx)'); return; }
-  await saveCartQuote();
+  if(await saveCartQuote() === 'stale') return;
   const { total } = cartTotals();
   const ref = (cartSavedInfo && cartSavedInfo.ref) ? cartSavedInfo.ref : '';
   const filename = ('عرض-سعر-منتجات-'+(ref?ref+'-':'')+cartClientName).replace(/[^A-Za-z0-9\u0600-\u06FF\-]/g,'') + '.pdf';
@@ -641,6 +730,26 @@ function cartFindCatalogPos(name, category){
     }
   }catch(e){}
   return null;
+}
+async function loadCartExtras(silent){
+  const auth = repTokenMem ? { token: repTokenMem } : (adminTokenMem ? { adminToken: adminTokenMem } : null);
+  if(!auth) return;
+  if(!silent){ cartExtrasLoading = true; cartExtrasError = ''; }
+  try{
+    const res = await fetch(CART_EXTRAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify(auth)
+    });
+    const data = await res.json();
+    if(!res.ok || !data.extras) throw new Error(data.error || 'خطأ في الخادم');
+    cartExtrasCfg = data.extras;
+    cartExtrasError = '';
+  }catch(e){
+    if(!silent) cartExtrasError = (e && e.message) || 'تعذر تحميل أسعار التركيب والنقل';
+  }
+  cartExtrasLoading = false;
+  if(!silent){ try{ render(); }catch(e){} }
 }
 function renderCartPrevBox(){
   if(!cartPrevMatches.length) return '';
@@ -688,13 +797,67 @@ function cartLoadPrev(m){
   });
   cartDisplayMode = s.displayMode === 'summary' ? 'summary' : 'detailed';
   cartClientName = m.client_name || cartClientName;
+  // التركيب/النقل والخصم: الكميات والأسعار المفتوحة بترجع من العرض المحفوظ؛ السعر المقفول بيستخدم سعر الأدمن الحالي
+  cartExtrasSel = cartBlankExtrasSel();
+  (Array.isArray(s.extras) ? s.extras : []).forEach(e=>{
+    if(cartExtrasSel[e.key]) cartExtrasSel[e.key] = { on:true, qty:(e.mode === 'fixed' ? null : e.qty), price:e.unitPrice };
+  });
+  cartSpecialAmt = +s.specialDiscountAmt || 0;
   cartSavedInfo = null;
-  cartRevisionParent = s.refCode ? { ref: s.refCode, phone: phoneTail(cartClientPhone), explicit: true, sig: cartQuoteSig() } : null;
+  cartRevisionParent = s.refCode ? { ref: s.refCode, phone: phoneTail(cartClientPhone), explicit: true, sig: cartQuoteSig(),
+    total: (m.final_total != null ? Math.round(Number(m.final_total)) : null) } : null;
   render();
 }
 
+function renderCartExtrasCard(){
+  if(!repAuthed) return '';
+  if(cartExtrasLoading) return `<div class="card no-print"><h3>التركيب والنقل</h3><div class="note">جارِ تحميل الأسعار...</div></div>`;
+  if(cartExtrasError) return `<div class="card no-print"><h3>التركيب والنقل</h3><div class="note" style="color:var(--bad)">${esc(cartExtrasError)}</div><button class="btn ghost small" id="cartExtrasRetryBtn" type="button" style="margin-top:6px">إعادة المحاولة</button></div>`;
+  if(!cartExtrasCfg) return '';
+  const st = cartPanelStats();
+  const rows = CART_EXTRA_KEYS.map(k=>{
+    const cfg = cartExtrasCfg[k]; if(!cfg) return '';
+    const sel = cartExtrasSel[k]; const on = !!sel.on;
+    const qtyUnit = k === 'transport' ? 'رحلة' : (cfg.unit === 'kw' ? 'كيلووات' : 'لوح');
+    const priceUnit = cfg.mode === 'fixed' ? 'مبلغ ثابت' : (k === 'transport' ? '﷼ / رحلة' : (cfg.unit === 'kw' ? '﷼ / كيلووات' : '﷼ / لوح'));
+    const priceCell = cfg.repEdit === true
+      ? `<input type="number" min="0" step="any" data-cxprice="${k}" value="${cartExtraUnitPrice(k)}" style="width:90px"> <span style="font-size:11px;color:var(--muted)">${priceUnit} 🔓</span>`
+      : `<b class="num">${cartExtraUnitPrice(k).toLocaleString('en-US')}</b> <span style="font-size:11px;color:var(--muted)">${priceUnit} 🔒</span>`;
+    const qtyCell = cfg.mode === 'fixed' ? '' : `<input type="number" min="0" step="any" data-cxqty="${k}" value="${cartExtraQty(k)}" style="width:80px" ${on?'':'disabled'}> <span style="font-size:11px;color:var(--muted)">${qtyUnit}</span>`;
+    return `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line, #eee)">
+      <label style="display:flex;align-items:center;gap:6px;min-width:170px;font-weight:700"><input type="checkbox" data-cxon="${k}" ${on?'checked':''}> ${esc(cfg.label)}</label>
+      <div>${priceCell}</div>
+      <div>${qtyCell}</div>
+      <div style="margin-inline-start:auto;font-weight:700" class="num">${on ? cartExtraAmount(k).toLocaleString('en-US') + ' ﷼' : '—'}</div>
+    </div>`;
+  }).join('');
+  const minNote = (cartExtrasCfg.transport && +cartExtrasCfg.transport.minimum > 0) ? ` الحد الأدنى للنقل ${(+cartExtrasCfg.transport.minimum).toLocaleString('en-US')} ﷼.` : '';
+  return `<div class="card no-print">
+    <h3 style="margin-bottom:6px">التركيب والنقل</h3>
+    ${rows}
+    <div class="note" style="margin-top:8px;font-size:11px">الألواح في السلة: ${st.panels} لوح (${st.kw} كيلووات) — الكميات المتغيرة بتتحسب منها تلقائيًا ويمكن تعديلها.${minNote} 🔒 السعر محدد من الإدارة · 🔓 مفتوح للتعديل.</div>
+  </div>`;
+}
+function renderCartAdjustCard(){
+  if(!repAuthed) return '';
+  return `<div class="card no-print">
+    <h3 style="margin-bottom:6px">خصم خاص / زيادة</h3>
+    ${discountUnlocked ? `
+      <div style="display:flex;gap:8px">
+        <input type="number" id="cartSpecialAmtInput" value="${cartSpecialAmt}" step="50" style="flex:1">
+        <button class="btn small" id="cartSpecialAmtBtn" type="button">تأكيد</button>
+      </div>
+      <div class="note" style="margin-top:6px;font-size:11px">مبلغ صريح بالريال يُخصم من إجمالي البنود قبل الضريبة — استخدم رقمًا سالبًا مثل ‎-1000 لزيادة السعر بدلًا من خصمه.</div>` : `
+      <button class="btn ghost small" id="cartUnlockDiscountBtn" type="button">فك القفل</button>
+      <div class="note" style="margin-top:6px;font-size:11px">الخصم والزيادة مقفولين بكلمة سر الأدمن.</div>`}
+  </div>`;
+}
+
 function renderCartQuoteDocument(){
-  const { subtotal, vat, total } = cartTotals();
+  if(repAuthed && !cartExtrasCfg && !cartExtrasLoading && !cartExtrasError) loadCartExtras();
+  const { subtotal, vat, total, gross, adj } = cartTotals();
+  const exLines = cartExtraLines();
+  const exQty = l => l.mode === 'fixed' ? '—' : (cartRound2(l.qty).toLocaleString('en-US'));
   return `
   <div class="catalog-main" style="max-width:820px;margin:0 auto">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px" class="no-print">
@@ -732,6 +895,9 @@ function renderCartQuoteDocument(){
         <div class="note cart-rev-hint" style="margin-top:6px;font-size:11px;${cartRevHintText()?'':'display:none'}">${esc(cartRevHintText())}</div>
       </div>
 
+      ${renderCartExtrasCard()}
+      ${renderCartAdjustCard()}
+
       <div class="card no-print">
         <h3 style="margin-bottom:8px">بيانات العميل</h3>
         <div class="field-group g2" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -763,6 +929,13 @@ function renderCartQuoteDocument(){
                 <td style="font-size:11.5px;color:var(--muted)">${esc(c.category)}</td>
                 <td style="font-size:11.5px">${c.qty}</td>
               </tr>`).join('')}
+            ${exLines.map((l,i)=>`
+              <tr>
+                <td>${productCart.length+i+1}</td>
+                <td class="bom-label">${esc(l.label)}</td>
+                <td style="font-size:11.5px;color:var(--muted)">تركيب ونقل</td>
+                <td style="font-size:11.5px">${exQty(l)}</td>
+              </tr>`).join('')}
           </tbody>` : `
           <thead><tr><th>#</th><th>المنتج</th><th>الفئة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
           <tbody>
@@ -775,9 +948,19 @@ function renderCartQuoteDocument(){
                 <td style="font-size:11.5px" class="num">${(+c.price).toLocaleString('en-US')} ﷼</td>
                 <td style="font-size:11.5px;font-weight:700" class="num">${(c.price*c.qty).toLocaleString('en-US')} ﷼</td>
               </tr>`).join('')}
+            ${exLines.map((l,i)=>`
+              <tr>
+                <td>${productCart.length+i+1}</td>
+                <td class="bom-label">${esc(l.label)}</td>
+                <td style="font-size:11.5px;color:var(--muted)">تركيب ونقل</td>
+                <td style="font-size:11.5px">${exQty(l)}</td>
+                <td style="font-size:11.5px" class="num">${l.mode === 'fixed' ? '—' : (+l.unitPrice).toLocaleString('en-US') + ' ﷼'}</td>
+                <td style="font-size:11.5px;font-weight:700" class="num">${l.amount.toLocaleString('en-US')} ﷼</td>
+              </tr>`).join('')}
           </tbody>`}
         </table>
         <div class="note" style="margin-top:10px">
+          ${adj ? `<div style="display:flex;justify-content:space-between;padding:3px 0"><span>إجمالي البنود</span><span class="num" style="color:var(--ink)">${fmt(gross)} ﷼</span></div>${renderPriceAdjustLine(adj)}` : ''}
           <div style="display:flex;justify-content:space-between;padding:3px 0"><span>الإجمالي بدون ضريبة</span><span class="num" style="color:var(--ink)">${fmt(subtotal)} ﷼</span></div>
           <div style="display:flex;justify-content:space-between;padding:3px 0"><span>ضريبة القيمة المضافة (15%)</span><span class="num" style="color:var(--ink)">${fmt(vat)} ﷼</span></div>
         </div>
@@ -801,6 +984,51 @@ function renderCartQuoteDocument(){
           <button class="btn" style="background:#25D366;color:#fff" onclick="sendCartQuoteToClientWhatsapp()">📤 إرسال العرض للعميل (واتساب)</button>
         </div>
       </div>
+    </div>
+  </div>`;
+}
+
+// كارت الأدمن: أسعار التركيب (مدني/كهربائي) والنقل لعروض السلة — داخل حاسبات الأنظمة ← الأوف-جريد.
+function renderCartExtrasAdminCard(){
+  const cx = (adminConfig && adminConfig.offgrid && adminConfig.offgrid.cartExtras) || {};
+  const sel = (v, cur) => v === cur ? 'selected' : '';
+  const row = (key, title, unitHtml) => {
+    const c = cx[key] || {};
+    return `<tr>
+      <td><b>${title}</b></td>
+      <td><input type="number" step="any" min="0" id="a_cx_${key}_price" value="${c.price ?? 0}" style="width:100px"></td>
+      <td><select id="a_cx_${key}_mode">
+        <option value="variable" ${sel('variable', c.mode === 'fixed' ? 'fixed' : 'variable')}>متغير (سعر الوحدة × الكمية)</option>
+        <option value="fixed" ${sel('fixed', c.mode === 'fixed' ? 'fixed' : 'variable')}>ثابت (مبلغ واحد للبند)</option>
+      </select></td>
+      <td>${unitHtml}</td>
+      <td><select id="a_cx_${key}_edit">
+        <option value="0" ${c.repEdit === true ? '' : 'selected'}>🔒 مقفول — سعر الأدمن فقط</option>
+        <option value="1" ${c.repEdit === true ? 'selected' : ''}>🔓 مفتوح للمندوب</option>
+      </select></td>
+    </tr>`;
+  };
+  const unitSel = key => `<select id="a_cx_${key}_unit">
+      <option value="panel" ${sel('panel', (cx[key] || {}).unit === 'kw' ? 'kw' : 'panel')}>﷼ لكل لوح</option>
+      <option value="kw" ${sel('kw', (cx[key] || {}).unit === 'kw' ? 'kw' : 'panel')}>﷼ لكل كيلووات</option>
+    </select>`;
+  const t = cx.transport || {};
+  return `
+  <div class="card">
+    <h3>التركيب والنقل في عروض السلة <span class="tag">يظهر للمندوب في عرض السعر</span></h3>
+    <div class="note" style="margin-bottom:10px">أسعار بيع فقط. <b>ثابت</b> = مبلغ واحد للبند مهما كان حجم المنظومة. <b>متغير</b> = سعر الوحدة × الكمية (الكمية بتتحسب تلقائيًا من الألواح في السلة والمندوب يقدر يعدّلها). <b>مفتوح للمندوب</b> = المندوب يقدر يغيّر سعر البند في العرض؛ <b>مقفول</b> = بيتسجّل بسعرك دايمًا (والسيرفر هو اللي يطبّق ده عند الحفظ).</div>
+    <div style="overflow-x:auto">
+    <table class="admtable">
+      <thead><tr><th>البند</th><th>السعر (﷼)</th><th>نوع التسعير</th><th>الوحدة (للمتغير)</th><th>تعديل المندوب</th></tr></thead>
+      <tbody>
+        ${row('civil', 'التركيب المدني', unitSel('civil'))}
+        ${row('elec', 'التركيب الكهربائي', unitSel('elec'))}
+        ${row('transport', 'النقل', `﷼ لكل رحلة (رحلة كل <input type="number" step="any" min="1" id="a_cx_transport_kwpertrip" value="${t.kwPerTrip ?? 20}" style="width:60px"> كيلووات)`)}
+      </tbody>
+    </table>
+    </div>
+    <div class="assump" style="margin-top:10px">
+      <div><label>الحد الأدنى للنقل (﷼)</label><input type="number" step="any" min="0" id="a_cx_transport_min" value="${t.minimum ?? 0}"></div>
     </div>
   </div>`;
 }
@@ -1777,6 +2005,8 @@ ${(function(){
       <div><label>التركيب (﷼/KW) - بيع</label><input type="number" id="a_og_instsell" value="${adminConfig.offgrid.installPerKwSell}"></div>
     </div>
   </div>
+
+  ${renderCartExtrasAdminCard()}
 
   <div class="card">
     <h3>جدول الأحمال — قائمة الأجهزة الافتراضية <span class="tag">قائمة "+ إضافة من القائمة" في حاسبة الأوف-جريد</span></h3>

@@ -3,6 +3,7 @@
 // (no browser / Supabase needed).
 "use strict";
 const assert = require("assert");
+const sameJSON = (a, b) => assert.strictEqual(JSON.stringify(a), JSON.stringify(b));
 const vm = require("vm");
 const fs = require("fs");
 const path = require("path");
@@ -21,7 +22,7 @@ const metaEnd = src07.indexOf("function refreshCartRefLines(){");
 const metaBlock = src07.slice(metaStart, metaEnd);
 
 const fnNames = ["cartTotals", "refreshCartRefLines", "saveCartQuote", "cartFindCatalogPos", "cartLoadPrev",
-  "renderCartPrevBox", "renderCartQuoteDocument", "validateCartClient"];
+  "renderCartPrevBox", "renderCartQuoteDocument", "validateCartClient", "renderCartExtrasCard", "renderCartAdjustCard"];
 // extractFunctionSource matches "function name(" only, so re-add "async" for the async ones
 const ASYNC = new Set(["saveCartQuote"]);
 const fns = fnNames.map((n) => (ASYNC.has(n) ? "async " : "") + extractFunctionSource(src07, n)).join("\n\n");
@@ -39,7 +40,8 @@ const sandbox = {
   esc: (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"),
   fmt: (n) => Math.round(n).toLocaleString("en-US"),
   LOGO_SRC: "", escAttr: (s) => s, companyShort: () => "Co", companyBrand: () => "Brand", companyContactHtml: () => "",
-  COMPANY: {},
+  COMPANY: {}, SUPABASE_URL: "https://x.supabase.co", discountUnlocked: true, __nextCfg: null,
+  renderPriceAdjustLine: (a) => `<div class="adj">${a < 0 ? "زيادة" : "الخصم"} ${Math.abs(a)}</div>`,
   callEngine: async (action, body) => {
     calls.push({ action, body });
     // mimic quotes_stamp_codes
@@ -59,7 +61,10 @@ vm.runInContext(phoneTail + "\n" + stateBlock + "\n" + fns +
   "\nthis.api = { saveCartQuote, cartLoadPrev, renderCartQuoteDocument, cartTotals, " +
   "get: () => ({ productCart, cartDisplayMode, cartSavedInfo, cartRevisionParent }), " +
   "set: (o) => { if (o.items) productCart = o.items; if (o.mode) cartDisplayMode = o.mode; " +
-  "if (o.name != null) cartClientName = o.name; if (o.phone != null) cartClientPhone = o.phone; } };", sandbox);
+  "if (o.name != null) cartClientName = o.name; if (o.phone != null) cartClientPhone = o.phone; " +
+  "if (o.cfg !== undefined) cartExtrasCfg = o.cfg; if (o.sel) cartExtrasSel = o.sel; if (o.special != null) cartSpecialAmt = o.special; }, " +
+  "cartExtraLines, cartPanelStats, renderCartExtrasCard, renderCartAdjustCard, cartResetQuoteMeta, cartBlankExtrasSel };" +
+  "\nasync function loadCartExtras(silent){ if (typeof __nextCfg !== 'undefined' && __nextCfg) cartExtrasCfg = __nextCfg; }", sandbox);
 const api = sandbox.api;
 
 (async () => {
@@ -131,5 +136,97 @@ const api = sandbox.api;
   api.set({ mode: "detailed" });
   html = api.renderCartQuoteDocument();
   assert.ok(html.includes("سعر الوحدة") && html.includes("1,000 ﷼"));
+
+  // ================= installation / transport / discount-increase =================
+  const CFG = () => ({
+    civil: { key: "civil", label: "أعمال التركيب المدني", mode: "variable", unit: "panel", price: 40, repEdit: false },
+    elec: { key: "elec", label: "أعمال التركيب الكهربائي", mode: "variable", unit: "panel", price: 30, repEdit: false },
+    transport: { key: "transport", label: "النقل", mode: "variable", unit: "trip", price: 200, minimum: 2000, kwPerTrip: 20, repEdit: false },
+  });
+  const panelCart = () => [
+    { catIdx: 0, ri: 0, name: "JA Solar 625W", category: "الألواح الشمسية", price: 400, qty: 16 }, // 10 kW
+    { catIdx: 1, ri: 0, name: "Battery X", category: "Bat", price: 5000, qty: 1 },
+  ];
+  api.cartResetQuoteMeta(); calls.length = 0;
+  api.set({ items: panelCart(), name: "Omar", phone: "0555555555", cfg: CFG(), special: 0, mode: "detailed" });
+  api.set({ sel: { civil: { on: true, qty: null, price: 1 }, elec: { on: true, qty: null, price: null }, transport: { on: true, qty: null, price: null } } });
+  let st = api.cartPanelStats();
+  assert.strictEqual(st.panels, 16); assert.strictEqual(st.kw, 10);
+  let lines = api.cartExtraLines();
+  // civil 16x40 (client's price=1 ignored: locked), elec 16x30, transport 1 trip=200 -> admin minimum 2000
+  sameJSON(lines.map((l) => [l.key, l.qty, l.unitPrice, l.amount]),
+    [["civil", 16, 40, 640], ["elec", 16, 30, 480], ["transport", 1, 200, 2000]]);
+  let T = api.cartTotals();
+  assert.strictEqual(T.itemsSubtotal, 11400); assert.strictEqual(T.extrasSubtotal, 3120);
+  assert.strictEqual(T.gross, 14520); assert.strictEqual(T.subtotal, 14520);
+  assert.ok(Math.abs(T.total - 14520 * 1.15) < 1e-9);
+
+  // discount 500 then increase -250 (before VAT); discount can never exceed the gross
+  api.set({ special: 500 });
+  T = api.cartTotals();
+  assert.strictEqual(T.adj, 500); assert.strictEqual(T.subtotal, 14020);
+  api.set({ special: -250 });
+  T = api.cartTotals(); assert.strictEqual(T.subtotal, 14770);
+  api.set({ special: 999999 });
+  T = api.cartTotals(); assert.strictEqual(T.adj, 14520); assert.strictEqual(T.subtotal, 0);
+  api.set({ special: 500 });
+
+  // repEdit open => rep's price is used; fixed mode counts once regardless of qty
+  const cfg2 = CFG(); cfg2.civil.repEdit = true; cfg2.elec.mode = "fixed"; cfg2.elec.price = 1500;
+  api.set({ cfg: cfg2, sel: { civil: { on: true, qty: 20, price: 55 }, elec: { on: true, qty: 99, price: 1 }, transport: { on: false } } });
+  lines = api.cartExtraLines();
+  sameJSON(lines.map((l) => [l.key, l.qty, l.unitPrice, l.amount]), [["civil", 20, 55, 1100], ["elec", 1, 1500, 1500]]);
+  api.set({ cfg: CFG(), sel: { civil: { on: true, qty: null, price: null }, elec: { on: true, qty: null, price: null }, transport: { on: true, qty: null, price: null } } });
+
+  // save: snapshot carries extras + signed adjustment; same doc not saved twice; toggling an extra = revision
+  calls.length = 0;
+  let sr = await api.saveCartQuote();
+  assert.strictEqual(calls.length, 1);
+  const sn = calls[0].body.snapshot;
+  assert.strictEqual(sn.specialDiscountAmt, 500);
+  sameJSON(sn.extras.map((e) => e.key), ["civil", "elec", "transport"]);
+  assert.strictEqual(sn.extrasSubtotal, 3120); assert.strictEqual(sn.subtotal, 14020);
+  assert.strictEqual(calls[0].body.finalTotal, Math.round(14020 * 1.15));
+  await api.saveCartQuote(); assert.strictEqual(calls.length, 1);
+  api.get().cartExtrasSel; // (state read only)
+  api.set({ sel: { civil: { on: true, qty: null, price: null }, elec: { on: false, qty: null, price: null }, transport: { on: true, qty: null, price: null } } });
+  await api.saveCartQuote();
+  assert.strictEqual(calls.length, 2);
+  assert.ok(calls[1].body.snapshot.revisionOf, "changing the extras after a save is a revision");
+
+  // admin changed the prices while the document was open -> re-render, alert, NO save
+  const callsBefore = calls.length;
+  const newCfg = CFG(); newCfg.civil.price = 45;
+  sandbox.__nextCfg = newCfg;
+  api.set({ sel: { civil: { on: true, qty: null, price: null }, elec: { on: true, qty: null, price: null }, transport: { on: false, qty: null, price: null } } });
+  const stale = await api.saveCartQuote();
+  assert.strictEqual(stale, "stale"); assert.strictEqual(calls.length, callsBefore);
+  sandbox.__nextCfg = null;
+  api.set({ cfg: CFG() });
+
+  // rendering: summary hides every price (items AND extras) but keeps labels, adjustment line, totals
+  api.set({ cfg: CFG(), special: 500, mode: "summary", sel: { civil: { on: true, qty: null, price: null }, elec: { on: true, qty: null, price: null }, transport: { on: true, qty: null, price: null } } });
+  let h = api.renderCartQuoteDocument();
+  assert.ok(h.includes("أعمال التركيب المدني") && h.includes("النقل"));
+  // the PDF drops every .no-print card (rep-only controls), so only the document table matters here
+  const tbl = (html) => (html.match(/<table class="bom">[\s\S]*?<\/table>/) || [""])[0];
+  assert.ok(tbl(h).includes("أعمال التركيب المدني"));
+  assert.ok(!tbl(h).includes("سعر الوحدة") && !tbl(h).includes("2,000") && !tbl(h).includes("640") && !tbl(h).includes("﷼"), "summary table must not leak any price");
+  assert.ok(h.includes("الخصم") && h.includes("إجمالي البنود") && h.includes("السعر النهائي شامل الضريبة"));
+  api.set({ mode: "detailed" });
+  h = api.renderCartQuoteDocument();
+  assert.ok(tbl(h).includes("سعر الوحدة") && tbl(h).includes("640 ﷼") && tbl(h).includes("2,000 ﷼"));
+  // control panel: locked prices are shown read-only, open ones are inputs
+  const cfg3 = CFG(); cfg3.transport.repEdit = true; api.set({ cfg: cfg3 });
+  const card = api.renderCartExtrasCard();
+  assert.ok(card.includes('data-cxprice="transport"') && !card.includes('data-cxprice="civil"'));
+  assert.ok(api.renderCartAdjustCard().includes("cartSpecialAmtInput"));
+
+  // no rep session -> guests never get extras or a discount in the totals
+  api.set({ special: 700 }); sandbox.repAuthed = false;
+  api.set({ sel: api.cartBlankExtrasSel() });
+  T = api.cartTotals(); assert.strictEqual(T.adj, 0); assert.strictEqual(T.subtotal, T.itemsSubtotal);
+  sandbox.repAuthed = true;
+
   console.log("cart-quote.test.js: all assertions passed");
 })().catch((e) => { console.error(e); process.exit(1); });

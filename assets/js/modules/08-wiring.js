@@ -400,6 +400,18 @@ function wire(){
     if(cartQuoteClientName) cartQuoteClientName.oninput = e=>{ cartClientName = e.target.value; refreshCartRefLines(); };
     const cartQuoteClientPhone = document.getElementById('cartQuoteClientPhone');
     if(cartQuoteClientPhone) cartQuoteClientPhone.oninput = e=>{ cartClientPhone = e.target.value; refreshCartRefLines(); cartDebouncedLookupPrev(); };
+    document.querySelectorAll('[data-cxon]').forEach(c=>c.onchange = ()=>{ cartExtrasSel[c.dataset.cxon].on = c.checked; render(); });
+    document.querySelectorAll('[data-cxqty]').forEach(i=>i.onchange = ()=>{ cartExtrasSel[i.dataset.cxqty].qty = (i.value === '' ? null : Math.max(0, +i.value || 0)); render(); });
+    document.querySelectorAll('[data-cxprice]').forEach(i=>i.onchange = ()=>{ cartExtrasSel[i.dataset.cxprice].price = (i.value === '' ? null : Math.max(0, +i.value || 0)); render(); });
+    const cxRetry = document.getElementById('cartExtrasRetryBtn');
+    if(cxRetry) cxRetry.onclick = ()=>{ cartExtrasError = ''; cartExtrasCfg = null; render(); };
+    const cartUnlockDiscountBtn = document.getElementById('cartUnlockDiscountBtn');
+    if(cartUnlockDiscountBtn) cartUnlockDiscountBtn.onclick = ()=>adminPasswordGate(()=>{ discountUnlocked = true; render(); });
+    const applyCartSpecial = ()=>{ const el = document.getElementById('cartSpecialAmtInput'); if(!el) return; cartSpecialAmt = +el.value || 0; render(); };
+    const cartSpecialAmtBtn = document.getElementById('cartSpecialAmtBtn');
+    if(cartSpecialAmtBtn) cartSpecialAmtBtn.onclick = applyCartSpecial;
+    const cartSpecialAmtInput = document.getElementById('cartSpecialAmtInput');
+    if(cartSpecialAmtInput) cartSpecialAmtInput.onkeydown = e=>{ if(e.key === 'Enter') applyCartSpecial(); };
     const cartModeDetailedBtn = document.getElementById('cartModeDetailedBtn');
     if(cartModeDetailedBtn) cartModeDetailedBtn.onclick = ()=>{ cartDisplayMode = 'detailed'; render(); };
     const cartModeSummaryBtn = document.getElementById('cartModeSummaryBtn');
@@ -748,6 +760,22 @@ function wire(){
       setOG('structurePerPanelCost','a_og_strcost'); setOG('structurePerPanelSell','a_og_strsell');
       setOG('cablingFixedCost','a_og_cabcost'); setOG('cablingFixedSell','a_og_cabsell');
       setOG('installPerKwCost','a_og_instcost'); setOG('installPerKwSell','a_og_instsell');
+      // التركيب المدني/الكهربائي/النقل لعروض السلة
+      { const cxs = adminConfig.offgrid.cartExtras = adminConfig.offgrid.cartExtras || {};
+        ['civil','elec','transport'].forEach(k=>{
+          const pEl = document.getElementById('a_cx_'+k+'_price'); if(!pEl) return; // الكارت مش مرسوم
+          const c = cxs[k] = cxs[k] || {};
+          const pv = +pEl.value; if(!isNaN(pv)) c.price = Math.max(0, pv);
+          c.mode = document.getElementById('a_cx_'+k+'_mode').value === 'fixed' ? 'fixed' : 'variable';
+          c.repEdit = document.getElementById('a_cx_'+k+'_edit').value === '1';
+          const uEl = document.getElementById('a_cx_'+k+'_unit'); if(uEl) c.unit = (uEl.value === 'kw' ? 'kw' : 'panel');
+        });
+        if(cxs.transport){
+          cxs.transport.unit = 'trip';
+          const mEl = document.getElementById('a_cx_transport_min'); if(mEl && !isNaN(+mEl.value)) cxs.transport.minimum = Math.max(0, +mEl.value);
+          const kEl = document.getElementById('a_cx_transport_kwpertrip'); if(kEl && +kEl.value > 0) cxs.transport.kwPerTrip = +kEl.value;
+        }
+      }
       if(!adminConfig.offgrid.appliancePresets || !adminConfig.offgrid.appliancePresets.length){
         adminConfig.offgrid.appliancePresets = OFFGRID_APPLIANCE_PRESETS.map(p=>({...p}));
       }
