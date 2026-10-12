@@ -40,7 +40,7 @@ function renderIrrigationCalc(){
     <div class="input-rail no-print">
       <div class="card">
         <h3>بيانات العميل</h3>
-        <label>اسم العميل *</label>
+        <label>اسم العميل (اختياري)</label>
         <input type="text" id="in_client" value="${state.client}" placeholder="اسم العميل">
         <label>رقم الهاتف / واتساب *</label>
         <input type="text" id="in_phone" value="${state.clientPhone}" placeholder="05xxxxxxxx">
@@ -375,7 +375,7 @@ function renderQuoteBomAndTotal(q, introText, qtyEdit){
 function sendGenericQuoteWhatsapp(finalTotal){
   if(!state.clientPhone){ alert('من فضلك اكتب رقم هاتف العميل أولاً'); return; }
   const phone = state.clientPhone.replace(/\D/g,'').replace(/^0/,'966');
-  const msg = `${companyShort()} — ${companyBrand()}\n\nعرض سعر منظومة طاقة شمسية\nالعميل: ${state.client}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
+  const msg = `${companyShort()} — ${companyBrand()}\n\nعرض سعر منظومة طاقة شمسية${state.client ? '\nالعميل: '+state.client : ''}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
   window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank');
 }
 
@@ -607,7 +607,7 @@ function renderOffgridCalc(){
   const inputCard = `
     <div class="card">
       <h3>بيانات العميل</h3>
-      <label>اسم العميل *</label>
+      <label>اسم العميل (اختياري)</label>
       <input type="text" id="og_client" value="${state.client}" placeholder="اسم العميل">
       <label>رقم الهاتف / واتساب *</label>
       <input type="text" id="og_phone" value="${state.clientPhone}" placeholder="05xxxxxxxx">
@@ -786,7 +786,7 @@ function renderOngridCalc(){
   const inputCard = `
     <div class="card">
       <h3>بيانات العميل</h3>
-      <label>اسم العميل *</label>
+      <label>اسم العميل (اختياري)</label>
       <input type="text" id="ng_client" value="${state.client}" placeholder="اسم العميل">
       <label>رقم الهاتف / واتساب *</label>
       <input type="text" id="ng_phone" value="${state.clientPhone}" placeholder="05xxxxxxxx">

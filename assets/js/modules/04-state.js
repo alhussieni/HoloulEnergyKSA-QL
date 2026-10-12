@@ -274,9 +274,14 @@ function applyCrmEditHandoff(){
   }catch(e){}
   return true;
 }
+// الهاتف إجباري وصحيح (٩ أرقام على الأقل، ومش أصفار)، والاسم اختياري.
+function isValidClientPhone(p){
+  const d = String(p||'').replace(/\D/g,'');
+  return d.length >= 9 && !/^0+$/.test(d);
+}
 function validateClient(){
-  if(!state.client.trim() || !state.clientPhone.trim()){
-    alert('من فضلك أدخل اسم العميل ورقم الهاتف أولًا');
+  if(!isValidClientPhone(state.clientPhone)){
+    alert('من فضلك أدخل رقم هاتف العميل بشكل صحيح (05xxxxxxxx) — الاسم اختياري');
     return false;
   }
   return true;
@@ -295,7 +300,7 @@ function sendLeadWhatsapp(){
   if(!validateClient()) return;
   const q = currentQuote();
   saveLead(q);
-  const msg = `طلب عرض سعر جديد\nالعميل: ${state.client}\nالهاتف: ${state.clientPhone}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي: ${fmt(q.finalTotal)} ﷼`;
+  const msg = `طلب عرض سعر جديد${state.client ? '\nالعميل: '+state.client : ''}\nالهاتف: ${state.clientPhone}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي: ${fmt(q.finalTotal)} ﷼`;
   window.open('https://wa.me/'+companyWaNumber()+'?text='+encodeURIComponent(msg), '_blank');
 }
 
@@ -453,8 +458,8 @@ async function sendQuoteToClientWhatsapp(){
   const filename = qlFileBase(q).replace(/[^A-Za-z0-9\-_]/g,'') + '.pdf';
   const ok = await downloadQuotePdf(filename);
   const msg = ok
-    ? `${companyShort()} — ${companyBrand()}\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\nالعميل: ${state.client}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(q.finalTotal)} ﷼\n\nللتواصل: 966561274344+`
-    : `${companyShort()} — ${companyBrand()}\n\nعرض سعر منظومة طاقة شمسية\nالعميل: ${state.client}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(q.finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
+    ? `${companyShort()} — ${companyBrand()}\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:${state.client ? '\nالعميل: '+state.client : ''}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(q.finalTotal)} ﷼\n\nللتواصل: 966561274344+`
+    : `${companyShort()} — ${companyBrand()}\n\nعرض سعر منظومة طاقة شمسية${state.client ? '\nالعميل: '+state.client : ''}\nالقدرة: ${state.hp} حصان (${fmt1(q.calcKW)} KW)\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(q.finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
   setTimeout(()=>window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank'), ok?600:0);
 }
 

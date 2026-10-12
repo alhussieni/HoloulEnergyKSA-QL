@@ -1,0 +1,22 @@
+// OPTIONAL: يفعّل ظهور كل العروض (بما فيها غير المربوطة بعميل) في تاب "عروض الأسعار".
+// التاب شغّال بدونه، لكن بيعرض العروض المربوطة بعملاء بس.
+//
+// طريقة التفعيل: Supabase Dashboard ← Edge Functions ← crm-api ← Code،
+// الصق الكتلة دي قبل السطر ده بالظبط:
+//     return json({ error: "unknown_action" }, 400);
+// بعدين اضغط Deploy.
+//
+    if (action === "admin-crm-list-quotes") {
+      const { data, error } = await supabase.from("quotes")
+        .select("id, rep_username, rep_display_name, client_name, client_phone, hp, final_total, created_at, customer_id, snapshot")
+        .order("created_at", { ascending: false }).limit(2000);
+      if (error) throw error;
+      const ids = Array.from(new Set((data || []).map((q: any) => q.customer_id).filter((x: any) => x != null)));
+      const customers: Record<string, any> = {};
+      if (ids.length) {
+        const { data: cs, error: cErr } = await supabase.from("customers").select("id, name, phone").in("id", ids);
+        if (cErr) throw cErr;
+        for (const c of cs || []) customers[String(c.id)] = c;
+      }
+      return json({ ok: true, quotes: data || [], customers });
+    }

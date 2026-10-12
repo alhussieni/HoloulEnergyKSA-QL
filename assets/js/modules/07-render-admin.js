@@ -641,8 +641,8 @@ function renderSimilarProducts(catalog, catIdx, excludeRowIdx){
    save-quote so it shows up in the customer database and the rep's history.
    ======================================================================= */
 function validateCartClient(){
-  if(!cartClientName.trim() || !cartClientPhone.trim()){
-    alert('من فضلك أدخل اسم العميل ورقم الهاتف أولًا');
+  if(!isValidClientPhone(cartClientPhone)){
+    alert('من فضلك أدخل رقم هاتف العميل بشكل صحيح (05xxxxxxxx) — الاسم اختياري');
     return false;
   }
   return true;
@@ -722,8 +722,8 @@ async function sendCartQuoteToClientWhatsapp(){
   const ok = await downloadQuotePdf(filename);
   const refLine = ref ? `رقم العرض: ${ref}\n` : '';
   const msg = ok
-    ? `${companyShort()} — ${companyBrand()}\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\n${refLine}العميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: ${COMPANY.phone||''}`
-    : `${companyShort()} — ${companyBrand()}\n\nعرض سعر منتجات\n${refLine}العميل: ${cartClientName}\nعدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: ${COMPANY.phone||''}`;
+    ? `${companyShort()} — ${companyBrand()}\n\nمرفق لكم عرض السعر (PDF) — تم تنزيله على هذا الجهاز باسم "${filename}"، الرجاء إرفاقه في هذه المحادثة 📎\n\nملخص العرض:\n${refLine}${cartClientName ? 'العميل: '+cartClientName+'\n' : ''}عدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: ${COMPANY.phone||''}`
+    : `${companyShort()} — ${companyBrand()}\n\nعرض سعر منتجات\n${refLine}${cartClientName ? 'العميل: '+cartClientName+'\n' : ''}عدد الأصناف: ${productCart.length}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(total)} ﷼\n\nللتواصل: ${COMPANY.phone||''}`;
   setTimeout(()=>window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank'), ok?600:0);
 }
 
@@ -877,7 +877,7 @@ function renderCartQuoteDocument(){
       <div class="card no-print">
         <h3 style="margin-bottom:8px">بيانات العميل</h3>
         <div class="field-group g2" style="display:grid;grid-template-columns:1fr;gap:10px">
-          <div><label style="font-size:12px;color:var(--muted)">اسم العميل</label><input type="text" id="cartQuoteClientName" value="${cartClientName}" placeholder="اسم العميل"></div>
+          <div><label style="font-size:12px;color:var(--muted)">اسم العميل (اختياري)</label><input type="text" id="cartQuoteClientName" value="${cartClientName}" placeholder="اسم العميل"></div>
           <div><label style="font-size:12px;color:var(--muted)">رقم الجوال</label><input type="text" id="cartQuoteClientPhone" value="${cartClientPhone}" placeholder="05xxxxxxxx"></div>
         </div>
         <div id="cartPrevBox">${renderCartPrevBox()}</div>

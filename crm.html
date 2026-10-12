@@ -452,6 +452,7 @@ body.printing-cert #certPrintArea{display:block!important;}
       <nav class="tabs" id="tabsNav">
         <button class="active" data-tab="dashboard">لوحة المتابعة</button>
         <button data-tab="customers">العملاء</button>
+        <button data-tab="quotes">📄 عروض الأسعار</button>
         <button data-tab="pipeline">الصفقات</button>
         <button data-tab="sites">المزارع</button>
         <button data-tab="warranty">الضمانات</button>
@@ -559,6 +560,31 @@ body.printing-cert #certPrintArea{display:block!important;}
         <select id="projectStatusFilter"><option value="">كل الحالات</option></select>
       </div>
       <div class="card" style="padding:0;overflow:auto;"><div id="projectsTableWrap"><div class="loadingNote">بيحمّل المشاريع...</div></div></div>
+    </section>
+
+    <section id="view-quotes" class="view">
+      <div class="filterBar">
+        <input type="text" id="quotesSearch" placeholder="دور بالاسم أو الجوال أو رقم العرض (QL-...)">
+        <select id="quotesRepFilter"><option value="">كل المندوبين</option></select>
+        <select id="quotesTypeFilter">
+          <option value="">كل الأنواع</option>
+          <option value="solar">عروض المنظومات</option>
+          <option value="cart">عروض سلة المنتجات</option>
+        </select>
+        <select id="quotesFlagFilter">
+          <option value="">كل الحالات</option>
+          <option value="linked">مربوط بعميل</option>
+          <option value="unlinked">غير مربوط بعميل</option>
+          <option value="notes">فيها ملاحظات على البنود</option>
+          <option value="nameonly">اسم بدون هاتف (غير مقبول)</option>
+        </select>
+        <input type="date" id="quotesFrom" title="من تاريخ" style="max-width:150px;">
+        <input type="date" id="quotesTo" title="إلى تاريخ" style="max-width:150px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;white-space:nowrap;"><input type="checkbox" id="quotesShowEmpty" style="width:auto;"> إظهار العروض بدون بيانات عميل</label>
+        <button class="btn ghost small" id="quotesReloadBtn" type="button">↻ تحديث</button>
+      </div>
+      <div id="quotesSummary" style="font-size:12.5px;color:var(--muted);margin-bottom:8px;"></div>
+      <div class="card" style="padding:0;overflow:auto;"><div id="quotesTableWrap"><div class="loadingNote">بيحمّل العروض...</div></div></div>
     </section>
 
     <section id="view-maintenance" class="view">
@@ -859,6 +885,7 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   document.getElementById('view-'+tab).classList.add('active');
   if(tab==='dashboard') loadDashboard();
   if(tab==='customers') loadCustomers();
+  if(tab==='quotes') loadQuotesTab();
   if(tab==='pipeline') loadPipeline();
   if(tab==='sites') loadSites();
   if(tab==='warranty') loadWarranty();
@@ -1176,6 +1203,30 @@ function openQuoteDetail(q, c, all){
         <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>الصافي قبل الضريبة</span><b>${qpFmt(fq.netAfterManual)} ﷼</b></div>
         <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>ضريبة القيمة المضافة</span><b>${qpFmt(fq.vat)} ﷼</b></div>
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #123;margin-top:4px;font-size:16px;"><span>الإجمالي شامل الضريبة</span><b>${qpFmt(fq.finalTotal)} ﷼</b></div>
+      </div>`;
+  } else if(q.snapshot && q.snapshot.type === 'product-cart' && Array.isArray(q.snapshot.items)){
+    const cs = q.snapshot, cn = cs.itemNotes || {};
+    const cnote = k => String(cn[k] || '').trim();
+    const cItems = cs.items || [], cExtras = Array.isArray(cs.extras) ? cs.extras : [];
+    const cHasNotes = cItems.some(i=>cnote('p:'+i.name)) || cExtras.some(e=>cnote('x:'+e.key));
+    const showPrices = cs.displayMode !== 'summary';
+    const cAdj = Number(cs.specialDiscountAmt) || 0;
+    body = `
+      <div style="font-size:12px;color:#555;margin-top:8px;">عرض سلة منتجات · طريقة العرض للعميل: ${showPrices?'تفصيلي بالأسعار':'مختصر بدون أسعار'}</div>
+      <table style="width:100%;border-collapse:collapse;margin-top:10px;">
+        <thead><tr><th style="${th}">#</th><th style="${th}">المنتج</th><th style="${th}">الفئة</th><th style="${th}">الكمية</th><th style="${th}text-align:left;">سعر الوحدة</th><th style="${th}text-align:left;">الإجمالي (﷼)</th>${cHasNotes?`<th style="${th}">ملاحظات</th>`:''}</tr></thead>
+        <tbody>
+          ${cItems.map((i,n)=>`<tr><td style="${td}">${n+1}</td><td style="${td}font-weight:600;">${escapeHtml(i.name)}</td><td style="${td}font-size:12px;color:#555;">${escapeHtml(i.category)}</td><td style="${td}">${escapeHtml(String(i.qty))}</td><td style="${td}text-align:left;">${qpFmt(i.price)}</td><td style="${td}text-align:left;font-weight:700;">${qpFmt((Number(i.price)||0)*(Number(i.qty)||1))}</td>${cHasNotes?`<td style="${td}font-size:12px;">${escapeHtml(cnote('p:'+i.name))}</td>`:''}</tr>`).join('')}
+          ${cExtras.map((e,n)=>`<tr><td style="${td}">${cItems.length+n+1}</td><td style="${td}font-weight:600;">${escapeHtml(e.label)}</td><td style="${td}font-size:12px;color:#555;">تركيب ونقل</td><td style="${td}">${e.mode==='fixed'?'—':escapeHtml(String(e.qty))}</td><td style="${td}text-align:left;">${e.mode==='fixed'?'—':qpFmt(e.unitPrice)}</td><td style="${td}text-align:left;font-weight:700;">${qpFmt(e.amount)}</td>${cHasNotes?`<td style="${td}font-size:12px;">${escapeHtml(cnote('x:'+e.key))}</td>`:''}</tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="margin-top:12px;max-width:380px;margin-inline-start:auto;font-size:13px;">
+        <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>إجمالي الأصناف</span><b>${qpFmt(cs.itemsSubtotal)} ﷼</b></div>
+        ${cExtras.length?`<div style="display:flex;justify-content:space-between;padding:3px 0;"><span>التركيب والنقل</span><b>${qpFmt(cs.extrasSubtotal)} ﷼</b></div>`:''}
+        ${cAdj!==0?`<div style="display:flex;justify-content:space-between;padding:3px 0;color:${cAdj<0?'#146C4C':'#B0432C'};"><span>${cAdj<0?'زيادة':'الخصم'}</span><b>${cAdj<0?'+':'-'} ${qpFmt(Math.abs(cAdj))} ﷼</b></div>`:''}
+        <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>الصافي قبل الضريبة</span><b>${qpFmt(cs.subtotal)} ﷼</b></div>
+        <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>ضريبة القيمة المضافة</span><b>${qpFmt(cs.vat)} ﷼</b></div>
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:2px solid #123;margin-top:4px;font-size:16px;"><span>الإجمالي شامل الضريبة</span><b>${qpFmt(cs.total)} ﷼</b></div>
       </div>`;
   } else if(frozenItems && frozenItems.length){
     body = `
@@ -3372,6 +3423,136 @@ async function loadProjects(){
     wrap.querySelectorAll('tbody tr').forEach(r=>r.addEventListener('click', ()=>openOpportunityEditor(r.dataset.oppId)));
   }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
 }
+
+/* ============ TOP-LEVEL: QUOTES TAB (كل العروض بالتفاصيل) ============ */
+let QUOTES_ALL = [], QUOTES_CUST = {}, QUOTES_FULL = true, QUOTES_LOADED = false;
+const qlPhoneOk = p => { const d = String(p||'').replace(/\D/g,''); return d.length >= 9 && !/^0+$/.test(d); };
+const qlNameOk = n => { const t = String(n||'').trim(); return t !== '' && t !== '0'; };
+function quoteKind(q){ return q.snapshot && q.snapshot.type === 'product-cart' ? 'cart' : 'solar'; }
+function quoteWho(q){
+  const c = q.customer_id != null ? QUOTES_CUST[String(q.customer_id)] : null;
+  return { name: (c && c.name) || q.client_name || '', phone: (c && c.phone) || q.client_phone || '' };
+}
+// ok = فيه هاتف صحيح | nameonly = اسم بدون هاتف | empty = لا اسم ولا هاتف (تجريبي/زائر)
+function quoteDataState(q){
+  const w = quoteWho(q), ph = qlPhoneOk(w.phone), nm = qlNameOk(w.name);
+  return ph ? 'ok' : (nm ? 'nameonly' : 'empty');
+}
+function quoteNotesCount(q){
+  const n = q.snapshot && q.snapshot.itemNotes; return n ? Object.keys(n).filter(k=>String(n[k]||'').trim()).length : 0;
+}
+async function fetchAllQuotes(){
+  try{
+    const d = await crmApi('admin-crm-list-quotes', {});
+    return { quotes: d.quotes || [], customers: d.customers || {}, full: true };
+  }catch(e){
+    if(!/unknown_action/.test(String(e.message))) throw e;
+  }
+  // الـ API الجديدة لسه ما اتنشرتش: نجمّع العروض من بيانات العملاء (العروض غير المربوطة بعميل مش هتظهر)
+  const list = (await crmApi('admin-crm-list-customers', {})).customers || [];
+  const cs = list.filter(c => (c.quotes_count||0) > 0);
+  const out = [], map = {}; let i = 0;
+  async function worker(){
+    while(i < cs.length){
+      const c = cs[i++];
+      const d = await crmApi('admin-crm-customer-detail', {customerId:c.id});
+      map[String(c.id)] = {id:c.id, name:c.name, phone:c.phone};
+      (d.quotes||[]).forEach(q => out.push(Object.assign({}, q, {customer_id:c.id, client_name:c.name, client_phone:c.phone})));
+    }
+  }
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  out.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  return { quotes: out, customers: map, full: false };
+}
+async function loadQuotesTab(force){
+  const wrap = document.getElementById('quotesTableWrap');
+  if(QUOTES_LOADED && !force){ renderQuotesTab(); return; }
+  wrap.innerHTML = '<div class="loadingNote">بيحمّل العروض...</div>';
+  try{
+    const r = await fetchAllQuotes();
+    QUOTES_ALL = r.quotes; QUOTES_CUST = r.customers; QUOTES_FULL = r.full; QUOTES_LOADED = true;
+    const sel = document.getElementById('quotesRepFilter'), cur = sel.value;
+    const reps = Array.from(new Set(QUOTES_ALL.map(q=>q.rep_display_name).filter(Boolean))).sort();
+    sel.innerHTML = '<option value="">كل المندوبين</option>' + reps.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
+    sel.value = reps.includes(cur) ? cur : '';
+    renderQuotesTab();
+  }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+escapeHtml(err.message)+'</div>'; }
+}
+function renderQuotesTab(){
+  const wrap = document.getElementById('quotesTableWrap');
+  const search = document.getElementById('quotesSearch').value.trim().toLowerCase();
+  const digits = search.replace(/\D/g,'');
+  const rep = document.getElementById('quotesRepFilter').value;
+  const type = document.getElementById('quotesTypeFilter').value;
+  const flag = document.getElementById('quotesFlagFilter').value;
+  const from = document.getElementById('quotesFrom').value, to = document.getElementById('quotesTo').value;
+  const showEmpty = document.getElementById('quotesShowEmpty').checked;
+  const hiddenEmpty = QUOTES_ALL.filter(q=>quoteDataState(q)==='empty').length;
+  const rows = QUOTES_ALL.filter(q=>{
+    const st = quoteDataState(q);
+    if(st === 'empty' && !showEmpty) return false;
+    if(rep && q.rep_display_name !== rep) return false;
+    if(type && quoteKind(q) !== type) return false;
+    if(from && String(q.created_at).slice(0,10) < from) return false;
+    if(to && String(q.created_at).slice(0,10) > to) return false;
+    if(flag === 'linked' && q.customer_id == null) return false;
+    if(flag === 'unlinked' && q.customer_id != null) return false;
+    if(flag === 'notes' && !quoteNotesCount(q)) return false;
+    if(flag === 'nameonly' && st !== 'nameonly') return false;
+    if(search){
+      const w = quoteWho(q), ref = String((q.snapshot&&q.snapshot.refCode)||'').toLowerCase();
+      const hay = (String(w.name||'')+' '+ref+' '+String((q.snapshot&&q.snapshot.qlCode)||'')).toLowerCase();
+      const ph = String(w.phone||'').replace(/\D/g,'');
+      if(!(hay.includes(search) || (digits.length>=3 && ph.includes(digits)))) return false;
+    }
+    return true;
+  });
+  const total = rows.reduce((s,q)=>s+(Number(q.final_total)||0),0);
+  document.getElementById('quotesSummary').innerHTML =
+    `عدد العروض: <b>${rows.length}</b> · إجمالي القيم: <b>${fmtMoney(total)} ﷼</b>` +
+    (hiddenEmpty && !showEmpty ? ` · <span title="العروض اللي لا اسم ولا هاتف صحيح فيها">مخفي ${hiddenEmpty} عرض بدون بيانات عميل</span>` : '') +
+    (QUOTES_FULL ? '' : ' · <span style="color:#B5720B;">⚠ العروض غير المربوطة بعميل مش ظاهرة (محتاج تفعيل الـ API الجديدة)</span>');
+  if(!rows.length){ wrap.innerHTML = '<div class="loadingNote">مفيش عروض مطابقة</div>'; return; }
+  wrap.innerHTML = `<table class="admtable"><thead><tr>
+    <th>التاريخ</th><th>رقم العرض</th><th>العميل</th><th>المندوب</th><th>النوع</th><th>الإجمالي</th><th>ملاحظات الحالة</th><th></th>
+    </tr></thead><tbody>
+    ${rows.map(q=>{
+      const w = quoteWho(q), st = quoteDataState(q), kind = quoteKind(q), sn = q.snapshot || {};
+      const nn = quoteNotesCount(q);
+      const tags = [
+        q.customer_id == null ? '<span class="tag" style="background:#c0392b22;color:#c0392b">غير مربوط</span>' : '',
+        st === 'nameonly' ? '<span class="tag" style="background:#B5720B22;color:#B5720B">⚠ اسم بدون هاتف</span>' : '',
+        st === 'empty' ? '<span class="tag" style="background:#93a89c33;color:#5b6b63">بدون بيانات عميل</span>' : '',
+        nn ? `<span class="tag" style="background:#155E8522;color:#155E85">📝 ${nn} ملاحظة</span>` : '',
+        sn.revisionNo ? `<span class="tag" style="background:#E7AC1222;color:#8a6208">مراجعة R${sn.revisionNo}</span>` : ''
+      ].filter(Boolean).join(' ');
+      const kindTxt = kind === 'cart'
+        ? `سلة منتجات (${(sn.items||[]).length} صنف)`
+        : `${escapeHtml(String(q.hp||sn.hp||'-'))} حصان`;
+      return `<tr data-qid="${q.id}" style="cursor:pointer;">
+        <td>${fmtDate(q.created_at)}</td>
+        <td dir="ltr" style="font-weight:700;">${escapeHtml(sn.refCode||('#'+q.id))}</td>
+        <td>${escapeHtml(w.name && qlNameOk(w.name) ? w.name : '—')}<div class="num" style="font-size:11.5px;color:var(--muted);">${qlPhoneOk(w.phone)?escapeHtml(w.phone):'—'}</div></td>
+        <td>${escapeHtml(q.rep_display_name||'-')}</td>
+        <td>${kindTxt}</td>
+        <td style="font-weight:700;">${fmtMoney(q.final_total)} ﷼</td>
+        <td>${tags||'-'}</td>
+        <td>${q.customer_id!=null?`<button class="btn ghost small qtCustBtn" data-cid="${q.customer_id}" type="button">👤 العميل</button>`:''}</td>
+      </tr>`;
+    }).join('')}
+    </tbody></table>`;
+  wrap.querySelectorAll('tbody tr').forEach(r=>r.addEventListener('click', ()=>{
+    const q = QUOTES_ALL.find(x=>String(x.id)===r.dataset.qid); if(!q) return;
+    const w = quoteWho(q);
+    openQuoteDetail(q, {name: qlNameOk(w.name)?w.name:'', phone: qlPhoneOk(w.phone)?w.phone:''}, QUOTES_ALL);
+  }));
+  wrap.querySelectorAll('.qtCustBtn').forEach(b=>b.addEventListener('click', (e)=>{ e.stopPropagation(); openCustomer(b.dataset.cid); }));
+}
+['quotesRepFilter','quotesTypeFilter','quotesFlagFilter','quotesFrom','quotesTo','quotesShowEmpty'].forEach(id=>
+  document.getElementById(id).addEventListener('change', renderQuotesTab));
+let quotesSearchDebounce;
+document.getElementById('quotesSearch').addEventListener('input', ()=>{ clearTimeout(quotesSearchDebounce); quotesSearchDebounce = setTimeout(renderQuotesTab, 250); });
+document.getElementById('quotesReloadBtn').addEventListener('click', ()=>loadQuotesTab(true));
 
 /* ============ TOP-LEVEL: MAINTENANCE TAB (tickets + contracts) ============ */
 document.getElementById('ticketStatusFilter').addEventListener('change', loadMaintenance);
