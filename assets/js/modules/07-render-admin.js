@@ -361,11 +361,18 @@ function cartExtraLines(){
 function cartQuoteSig(){
   return JSON.stringify([cartDisplayMode, phoneTail(cartClientPhone), String(cartClientName||'').trim(),
     productCart.map(c=>[c.name, c.category, +c.price||0, c.qty||1]),
-    cartExtraLines().map(l=>[l.key, l.qty, l.unitPrice, l.amount]), +cartSpecialAmt || 0]);
+    cartExtraLines().map(l=>[l.key, l.qty, l.unitPrice, l.amount]), +cartSpecialAmt || 0, cartNotesOnly()]);
+}
+// ملاحظات السلة بس (p:/x:) عشان ملاحظات عروض المنظومات ما تتخلطش معاها
+function cartNotesOnly(){
+  const n = cleanNotes(), out = {};
+  Object.keys(n).forEach(k=>{ if(k.startsWith('p:') || k.startsWith('x:')) out[k] = n[k]; });
+  return out;
 }
 function cartResetQuoteMeta(){
   cartSavedInfo = null; cartRevisionParent = null; cartPrevMatches = []; cartDisplayMode = 'detailed';
   cartExtrasSel = cartBlankExtrasSel(); cartSpecialAmt = 0;
+  Object.keys(quoteItemNotes).forEach(k=>{ if(k.startsWith('p:') || k.startsWith('x:')) delete quoteItemNotes[k]; });
 }
 function cartRefText(){
   const ok = cartSavedInfo && cartSavedInfo.ref && cartSavedInfo.sig === cartQuoteSig();
@@ -677,6 +684,7 @@ async function saveCartQuote(){
     itemsSubtotal: cartRound2(itemsSubtotal), extrasSubtotal: cartRound2(extrasSubtotal),
     subtotal: cartRound2(subtotal), vat: cartRound2(vat), total: cartRound2(total)
   };
+  { const n = cartNotesOnly(); if(Object.keys(n).length) snapshot.itemNotes = n; }
   if(par && par.ref && par.phone === phoneT) snapshot.revisionOf = par.ref;
   logLead({name:cartClientName, phone:cartClientPhone, hp:null, total:Math.round(total), date:new Date().toISOString()});
   let res = null;
@@ -803,6 +811,8 @@ function cartLoadPrev(m){
     if(cartExtrasSel[e.key]) cartExtrasSel[e.key] = { on:true, qty:(e.mode === 'fixed' ? null : e.qty), price:e.unitPrice };
   });
   cartSpecialAmt = +s.specialDiscountAmt || 0;
+  { const keep = {}; Object.keys(quoteItemNotes).forEach(k=>{ if(!(k.startsWith('p:') || k.startsWith('x:'))) keep[k] = quoteItemNotes[k]; });
+    quoteItemNotes = Object.assign(keep, s.itemNotes || {}); }
   cartSavedInfo = null;
   cartRevisionParent = s.refCode ? { ref: s.refCode, phone: phoneTail(cartClientPhone), explicit: true, sig: cartQuoteSig(),
     total: (m.final_total != null ? Math.round(Number(m.final_total)) : null) } : null;
@@ -919,9 +929,9 @@ function renderCartQuoteDocument(){
 
       <div class="card">
         <h3>تفصيل عرض السعر</h3>
-        <table class="bom">
+        <table class="bom${anyNoteFor([...productCart.map(c=>'p:'+c.name), ...exLines.map(l=>'x:'+l.key)]) ? ' has-notes' : ''}">
           ${cartDisplayMode==='summary' ? `
-          <thead><tr><th>#</th><th>المنتج</th><th>الفئة</th><th>الكمية</th></tr></thead>
+          <thead><tr><th>#</th><th>المنتج</th><th>الفئة</th><th>الكمية</th>${noteTh()}</tr></thead>
           <tbody>
             ${productCart.map((c,i)=>`
               <tr>
@@ -929,6 +939,7 @@ function renderCartQuoteDocument(){
                 <td class="bom-label">${esc(c.name)}</td>
                 <td style="font-size:11.5px;color:var(--muted)">${esc(c.category)}</td>
                 <td style="font-size:11.5px">${c.qty}</td>
+                ${noteTd('p:'+c.name)}
               </tr>`).join('')}
             ${exLines.map((l,i)=>`
               <tr>
@@ -936,9 +947,10 @@ function renderCartQuoteDocument(){
                 <td class="bom-label">${esc(l.label)}</td>
                 <td style="font-size:11.5px;color:var(--muted)">تركيب ونقل</td>
                 <td style="font-size:11.5px">${exQty(l)}</td>
+                ${noteTd('x:'+l.key)}
               </tr>`).join('')}
           </tbody>` : `
-          <thead><tr><th>#</th><th>المنتج</th><th>الفئة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
+          <thead><tr><th>#</th><th>المنتج</th><th>الفئة</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th>${noteTh()}</tr></thead>
           <tbody>
             ${productCart.map((c,i)=>`
               <tr>
@@ -948,6 +960,7 @@ function renderCartQuoteDocument(){
                 <td style="font-size:11.5px">${c.qty}</td>
                 <td style="font-size:11.5px" class="num">${(+c.price).toLocaleString('en-US')} ﷼</td>
                 <td style="font-size:11.5px;font-weight:700" class="num">${(c.price*c.qty).toLocaleString('en-US')} ﷼</td>
+                ${noteTd('p:'+c.name)}
               </tr>`).join('')}
             ${exLines.map((l,i)=>`
               <tr>
@@ -957,6 +970,7 @@ function renderCartQuoteDocument(){
                 <td style="font-size:11.5px">${exQty(l)}</td>
                 <td style="font-size:11.5px" class="num">${l.mode === 'fixed' ? '—' : (+l.unitPrice).toLocaleString('en-US') + ' ﷼'}</td>
                 <td style="font-size:11.5px;font-weight:700" class="num">${l.amount.toLocaleString('en-US')} ﷼</td>
+                ${noteTd('x:'+l.key)}
               </tr>`).join('')}
           </tbody>`}
         </table>

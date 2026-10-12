@@ -108,6 +108,11 @@ table.bom td{padding:5px 8px;border-bottom:1px solid #EFEBE0;}
 table.bom tr.off td{opacity:.35;}
 table.bom tr:hover td{background:var(--sand);}
 table.bom td.num,table.bom th.num{font-family:'Cairo';text-align:left;}
+/* عمود ملاحظات البنود: خانة الكتابة بتظهر على الشاشة دايمًا، لكن في الطباعة / الـ PDF العمود
+   كله بيختفي لو مفيش ولا ملاحظة، ولو فيه ملاحظات بيظهر النص بدل الخانة. */
+table.bom .notecol{min-width:130px;}
+table.bom .note-print{display:none;white-space:pre-wrap;font-size:11.5px;}
+table.bom input.note-edit{width:100%;box-sizing:border-box;font-size:11.5px;padding:4px 6px;}
 
 .totalbar{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,var(--night) 0%,var(--night-2) 100%);color:#fff;border-radius:12px;padding:10px 20px;margin-top:14px;flex-wrap:wrap;gap:10px;box-shadow:0 14px 32px rgba(13,52,82,.18);}
 .totalbar .big{font-family:'Cairo',sans-serif;font-weight:800;font-size:26px;color:var(--sun-2);}
@@ -626,6 +631,9 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
 @media print{
   header.top,.no-print,footer.foot{display:none!important;}
   .qty-print-fallback{display:inline!important;}
+  table.bom:not(.has-notes) .notecol{display:none!important;}
+  table.bom input.note-edit{display:none!important;}
+  table.bom .note-print{display:inline!important;}
   body{background:#fff;font-size:11px!important;line-height:1.36!important;font-weight:400!important;}
   main{padding:0!important;max-width:100%!important;}
   .grid2{grid-template-columns:1fr!important;gap:7px!important;display:block!important;}
@@ -667,6 +675,9 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
    JS by adding the "pdf-compact" class to the cloned print area before
    capture — kept in sync manually with @media print above. */
 .pdf-compact{font-size:11px;line-height:1.36;font-weight:400;}
+.pdf-compact table.bom:not(.has-notes) .notecol{display:none!important;}
+.pdf-compact table.bom input.note-edit{display:none!important;}
+.pdf-compact table.bom .note-print{display:inline!important;}
 .pdf-compact .grid2{grid-template-columns:1fr!important;gap:7px!important;display:block!important;}
 .pdf-compact .card{border:1px solid #ddd!important;box-shadow:none!important;padding:8px 14px!important;margin-bottom:6px!important;border-radius:8px!important;}
 .pdf-compact .card h3{font-size:12.5px!important;font-weight:700!important;letter-spacing:.01em;margin:0 0 7px!important;}

@@ -171,8 +171,8 @@ function renderIrrigationCalc(){
 
       <div class="card">
         <h3>تفصيل عرض السعر</h3>
-        <table class="bom">
-          <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
+        <table class="bom${anyNoteFor(q.items.map(it=>it.key||it.label)) ? ' has-notes' : ''}">
+          <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th>${noteTh()}</tr></thead>
           <tbody>
             ${q.items.map((it,i)=>`
               <tr class="${it.on?'':'off'}">
@@ -181,6 +181,7 @@ function renderIrrigationCalc(){
                 <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
                 <td style="font-size:11.5px">${it.qty}</td>
                 <td style="font-size:11.5px">${it.warranty}</td>
+                ${noteTd(it.key||it.label)}
               </tr>`).join('')}
           </tbody>
         </table>
@@ -333,14 +334,14 @@ function renderQuoteBomAndTotal(q, introText, qtyEdit){
     <h3>تفصيل عرض السعر</h3>
     ${editableKeys.length ? `<div class="note no-print" style="margin-bottom:10px">✏️ تقدر تعدّل كمية أي بند من البنود المميّزة تحت (زوّد أو قلّل) حسب تقييمك الفني لوضع العميل والموقع — السعر والتحذيرات الفنية هيتحدّثوا تلقائيًا على أساس الكمية اللي تدخلها.</div>` : ''}
     ${q.qtyOverrideNotice ? `<div class="note no-print" style="margin-bottom:10px;border-color:var(--sun-2);background:var(--sun-tint);color:#8a6208">${q.qtyOverrideNotice}</div>` : ''}
-    <table class="bom">
-      <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead>
+    <table class="bom${anyNoteFor(q.items.map(it=>it.key||it.label)) ? ' has-notes' : ''}">
+      <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th>${noteTh()}</tr></thead>
       <tbody>
         ${q.items.map((it,i)=>`
           <tr class="${it.on===false?'off':''}"><td>${i+1}</td><td class="bom-label">${it.label}${it.key==='panel' ? panelDatasheetLinkForIdx(state.offgrid?.panelIdx ?? state.ongrid?.panelIdx) : ''}</td>
             <td style="font-size:11.5px;color:var(--muted)">${it.type}</td>
             <td style="font-size:11.5px">${(it.on!==false && editableKeys.includes(it.key)) ? renderEditableQtyCell(it.key, bomQtyNum(it.qty), overrides[it.key], autoQty[it.key]) : it.qty}</td>
-            <td style="font-size:11.5px">${it.warranty}</td></tr>`).join('')}
+            <td style="font-size:11.5px">${it.warranty}</td>${noteTd(it.key||it.label)}</tr>`).join('')}
       </tbody>
     </table>
     ${((q.discountTotal + q.manualDiscountAmt) > 0) ? `

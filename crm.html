@@ -1054,7 +1054,11 @@ function buildCustomerQuoteHtml(q, c){
   const isInc = adj < 0;
   const dateGB = qpDateGB(q.created_at);
   const isGuest = !q.rep_display_name || String(q.rep_display_name).startsWith('الحاسبة الآلية');
-  const rows = fq.items.map((it,i)=>`<tr class="${it.on?'':'off'}"><td>${i+1}</td><td class="bom-label">${it.label}</td><td style="font-size:11.5px;color:var(--muted)">${it.type}</td><td style="font-size:11.5px">${it.qty}</td><td style="font-size:11.5px">${it.warranty}</td></tr>`).join('');
+  // عمود الملاحظات بيظهر بس لو العرض اتحفظ وفيه ملاحظة واحدة على الأقل
+  const qpNotes = (q.snapshot && q.snapshot.itemNotes) || {};
+  const qpNote = it => String(qpNotes[it.key||it.label] || '').trim();
+  const qpHasNotes = fq.items.some(it=>qpNote(it));
+  const rows = fq.items.map((it,i)=>`<tr class="${it.on?'':'off'}"><td>${i+1}</td><td class="bom-label">${it.label}</td><td style="font-size:11.5px;color:var(--muted)">${it.type}</td><td style="font-size:11.5px">${it.qty}</td><td style="font-size:11.5px">${it.warranty}</td>${qpHasNotes?`<td style="font-size:11.5px">${escapeHtml(qpNote(it))}</td>`:''}</tr>`).join('');
   const adjBlock = adj !== 0 ? `
     <div class="note" style="margin-top:10px">
       <div style="display:flex;justify-content:space-between;padding:3px 0"><span>السعر الأساسي</span><span class="num" style="color:var(--ink)">${qpFmt(fq.sellTotal)} ﷼</span></div>
@@ -1095,7 +1099,7 @@ function buildCustomerQuoteHtml(q, c){
   </div>
   <div class="card">
     <h3>تفصيل عرض السعر</h3>
-    <table class="bom"><thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th></tr></thead><tbody>${rows}</tbody></table>
+    <table class="bom"><thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th>${qpHasNotes?'<th>ملاحظات</th>':''}</tr></thead><tbody>${rows}</tbody></table>
     ${adjBlock}
     <div class="totalbar" style="justify-content:center"><div class="line"><div class="lbl">السعر النهائي شامل الضريبة</div><div class="big num">${qpFmt(fq.finalTotal)} ﷼</div></div></div>
     ${qpPaymentHtml(fq, q.snapshot && q.snapshot.toggles)}
@@ -1158,10 +1162,13 @@ function openQuoteDetail(q, c, all){
   let body = '';
   if(fq){
     const adj = (Number(fq.discountTotal)||0) + (Number(fq.manualDiscountAmt)||0);
+    const dNotes = (q.snapshot && q.snapshot.itemNotes) || {};
+    const dNote = it => String(dNotes[it.key||it.label] || '').trim();
+    const dHasNotes = fq.items.some(it=>it.on && dNote(it));
     body = `
       <table style="width:100%;border-collapse:collapse;margin-top:10px;">
-        <thead><tr><th style="${th}">#</th><th style="${th}">البند</th><th style="${th}">النوع</th><th style="${th}">العدد</th><th style="${th}">الضمان</th><th style="${th}text-align:left;">سعر البيع (﷼)</th></tr></thead>
-        <tbody>${fq.items.filter(it=>it.on).map((it,i)=>`<tr><td style="${td}">${i+1}</td><td style="${td}font-weight:600;">${escapeHtml(it.label)}</td><td style="${td}font-size:12px;color:#555;">${escapeHtml(it.type)}</td><td style="${td}">${escapeHtml(it.qty)}</td><td style="${td}font-size:12px;">${escapeHtml(it.warranty)}</td><td style="${td}text-align:left;font-weight:700;">${qpFmt(it.sell)}</td></tr>`).join('')}</tbody>
+        <thead><tr><th style="${th}">#</th><th style="${th}">البند</th><th style="${th}">النوع</th><th style="${th}">العدد</th><th style="${th}">الضمان</th>${dHasNotes?`<th style="${th}">ملاحظات</th>`:''}<th style="${th}text-align:left;">سعر البيع (﷼)</th></tr></thead>
+        <tbody>${fq.items.filter(it=>it.on).map((it,i)=>`<tr><td style="${td}">${i+1}</td><td style="${td}font-weight:600;">${escapeHtml(it.label)}</td><td style="${td}font-size:12px;color:#555;">${escapeHtml(it.type)}</td><td style="${td}">${escapeHtml(it.qty)}</td><td style="${td}font-size:12px;">${escapeHtml(it.warranty)}</td>${dHasNotes?`<td style="${td}font-size:12px;">${escapeHtml(dNote(it))}</td>`:''}<td style="${td}text-align:left;font-weight:700;">${qpFmt(it.sell)}</td></tr>`).join('')}</tbody>
       </table>
       <div style="margin-top:12px;max-width:380px;margin-inline-start:auto;font-size:13px;">
         <div style="display:flex;justify-content:space-between;padding:3px 0;"><span>السعر الأساسي (قبل الخصم)</span><b>${qpFmt(fq.sellTotal)} ﷼</b></div>

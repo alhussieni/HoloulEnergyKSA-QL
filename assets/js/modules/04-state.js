@@ -68,12 +68,46 @@ let savedQuoteInfo = null; // {key, ref, ql}
 /* رمز المراجعة: أي تعديل على عرض محفوظ لنفس العميل بيتحفظ كمراجعة (R1, R2...) بنفس الرمز المرجعي الأساسي */
 let revisionParent = null; // {ref, phone, hp, explicit}
 /* بصمة مدخلات العرض (بدون بيانات العميل) — بتتقارن مع العرض المحمّل علشان نعرف لو اتغيّر فعلاً */
+/* ---- ملاحظات البنود في العروض ----
+   كل بند في جدول العرض له خانة ملاحظة اختيارية. عمود "ملاحظات" بيظهر في العرض
+   المطبوع / الـ PDF / واتساب / الـ CRM بس لو فيه ملاحظة واحدة على الأقل، ولو مفيش
+   ولا ملاحظة العمود بيختفي تمامًا. على الشاشة خانة الكتابة بتفضل موجودة عشان تقدر
+   تكتب فيها. المفتاح = it.key في عروض المنظومات، و p:<اسم المنتج> / x:<مفتاح الإضافة> في السلة. */
+let quoteItemNotes = {};
+function noteEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function noteOf(key){ return String(quoteItemNotes[key]==null ? '' : quoteItemNotes[key]).trim(); }
+function cleanNotes(){
+  const out = {};
+  Object.keys(quoteItemNotes).sort().forEach(k=>{ const v = noteOf(k); if(v) out[k] = v.slice(0,300); });
+  return out;
+}
+function anyNoteFor(keys){ return keys.some(k=>!!noteOf(k)); }
+function noteTh(){ return '<th class="notecol">ملاحظات</th>'; }
+function noteTd(key){
+  const v = noteOf(key);
+  return `<td class="notecol"><input type="text" class="note-edit no-print" data-itemnote="${noteEsc(key)}" maxlength="300" placeholder="ملاحظة (اختياري)" value="${noteEsc(v)}"><span class="note-print">${noteEsc(v)}</span></td>`;
+}
+function setQuoteNotes(obj){
+  quoteItemNotes = {};
+  if(obj && typeof obj === 'object') Object.keys(obj).forEach(k=>{ const v = String(obj[k]==null?'':obj[k]).trim(); if(v) quoteItemNotes[k] = v.slice(0,300); });
+}
+// الكتابة في خانة الملاحظة بتحدّث الحالة والعمود مباشرة من غير إعادة رسم (عشان المؤشر ما يضيعش)
+document.addEventListener('input', e=>{
+  const el = e.target;
+  if(!el || !el.matches || !el.matches('[data-itemnote]')) return;
+  quoteItemNotes[el.dataset.itemnote] = el.value;
+  const sp = el.parentElement && el.parentElement.querySelector('.note-print');
+  if(sp) sp.textContent = el.value.trim();
+  const tbl = el.closest('table');
+  if(tbl) tbl.classList.toggle('has-notes', Array.from(tbl.querySelectorAll('[data-itemnote]')).some(i=>i.value.trim()));
+});
 function inputSig(o){
-  return JSON.stringify([o.hp, o.panelIdx, o.structureType || 'FIXED', o.toggles || {}, o.specialDiscountAmt || 0, o.discountOverrideIdx == null ? null : o.discountOverrideIdx]);
+  const notes = (o === state) ? cleanNotes() : (o && o.itemNotes) || {};
+  return JSON.stringify([o.hp, o.panelIdx, o.structureType || 'FIXED', o.toggles || {}, o.specialDiscountAmt || 0, o.discountOverrideIdx == null ? null : o.discountOverrideIdx, notes]);
 }
 function phoneTail(v){ return String(v||'').replace(/\D/g,'').slice(-9); }
 function currentQuoteKey(q){
-  return JSON.stringify([state.hp, state.panelIdx, state.structureType, state.toggles, state.specialDiscountAmt, state.discountOverrideIdx, state.client, state.clientPhone, Math.round(q.finalTotal)]);
+  return JSON.stringify([state.hp, state.panelIdx, state.structureType, state.toggles, state.specialDiscountAmt, state.discountOverrideIdx, state.client, state.clientPhone, Math.round(q.finalTotal), cleanNotes()]);
 }
 function qlDisplay(q){
   if(savedQuoteInfo && savedQuoteInfo.key === currentQuoteKey(q)){
@@ -107,6 +141,7 @@ async function saveLead(q){
     structureType: state.structureType, toggles: {...state.toggles}, specialDiscountAmt: state.specialDiscountAmt,
     discountOverrideIdx: state.discountOverrideIdx
   };
+  { const n = cleanNotes(); if(Object.keys(n).length) snapshot.itemNotes = n; }
   if(revisionParent && revisionParent.phone === phoneTail(state.clientPhone) && (revisionParent.explicit || revisionParent.hp === state.hp)){
     snapshot.revisionOf = revisionParent.ref;
   }
@@ -202,6 +237,7 @@ function loadPrevLead(lead){
   state.structureType = s.structureType || 'FIXED';
   state.toggles = {...s.toggles};
   state.specialDiscountAmt = s.specialDiscountAmt || 0;
+  setQuoteNotes(s.itemNotes);
   if(discountUnlocked) state.discountOverrideIdx = s.discountOverrideIdx ?? null;
   refresh();
 }
@@ -223,6 +259,7 @@ function applyCrmEditHandoff(){
   state.structureType = s.structureType || 'FIXED';
   state.toggles = {...s.toggles};
   state.specialDiscountAmt = s.specialDiscountAmt || 0;
+  setQuoteNotes(s.itemNotes);
   if(typeof discountUnlocked !== 'undefined' && discountUnlocked) state.discountOverrideIdx = s.discountOverrideIdx ?? null;
   revisionParent = h.refCode ? { ref: h.refCode, phone: phoneTail(state.clientPhone), hp: s.hp, explicit: true, sig: inputSig(s), ql: h.qlCode || null, total: (h.total != null ? Math.round(Number(h.total)) : null) } : null;
   try{

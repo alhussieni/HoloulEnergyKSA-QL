@@ -21,12 +21,13 @@ const metaStart = src07.indexOf("// ---- Rep-prepared cart quote");
 const metaEnd = src07.indexOf("function refreshCartRefLines(){");
 const metaBlock = src07.slice(metaStart, metaEnd);
 
-const fnNames = ["cartTotals", "refreshCartRefLines", "saveCartQuote", "cartFindCatalogPos", "cartLoadPrev",
+const fnNames = ["cartNotesOnly", "cartTotals", "refreshCartRefLines", "saveCartQuote", "cartFindCatalogPos", "cartLoadPrev",
   "renderCartPrevBox", "renderCartQuoteDocument", "validateCartClient", "renderCartExtrasCard", "renderCartAdjustCard"];
 // extractFunctionSource matches "function name(" only, so re-add "async" for the async ones
 const ASYNC = new Set(["saveCartQuote"]);
 const fns = fnNames.map((n) => (ASYNC.has(n) ? "async " : "") + extractFunctionSource(src07, n)).join("\n\n");
-const phoneTail = extractFunctionSource(src04, "phoneTail");
+const phoneTail = extractFunctionSource(src04, "phoneTail") + "\nlet quoteItemNotes = {};\n" +
+  ["noteEsc", "noteOf", "cleanNotes", "anyNoteFor", "noteTh", "noteTd", "setQuoteNotes"].map((n) => extractFunctionSource(src04, n)).join("\n");
 
 const calls = [];
 let refCounter = 0;
@@ -63,7 +64,7 @@ vm.runInContext(phoneTail + "\n" + stateBlock + "\n" + fns +
   "set: (o) => { if (o.items) productCart = o.items; if (o.mode) cartDisplayMode = o.mode; " +
   "if (o.name != null) cartClientName = o.name; if (o.phone != null) cartClientPhone = o.phone; " +
   "if (o.cfg !== undefined) cartExtrasCfg = o.cfg; if (o.sel) cartExtrasSel = o.sel; if (o.special != null) cartSpecialAmt = o.special; }, " +
-  "cartExtraLines, cartPanelStats, renderCartExtrasCard, renderCartAdjustCard, cartResetQuoteMeta, cartBlankExtrasSel };" +
+  "cartExtraLines, cartPanelStats, renderCartExtrasCard, renderCartAdjustCard, cartResetQuoteMeta, cartBlankExtrasSel, setQuoteNotes, cleanNotes };" +
   "\nasync function loadCartExtras(silent){ if (typeof __nextCfg !== 'undefined' && __nextCfg) cartExtrasCfg = __nextCfg; }", sandbox);
 const api = sandbox.api;
 
@@ -227,6 +228,36 @@ const api = sandbox.api;
   api.set({ sel: api.cartBlankExtrasSel() });
   T = api.cartTotals(); assert.strictEqual(T.adj, 0); assert.strictEqual(T.subtotal, T.itemsSubtotal);
   sandbox.repAuthed = true;
+
+  // ---- item notes column: hidden entirely without notes, shown (and saved) with notes ----
+  api.cartResetQuoteMeta(); api.setQuoteNotes({});
+  api.set({ items: [
+    { catIdx: 0, ri: 0, name: "Inverter A", category: "Inv", price: 1000, qty: 2 },
+    { catIdx: 0, ri: 1, name: "Cable <B>", category: "Cab", price: 50.5, qty: 10 },
+  ], name: "Ali", phone: "0501234567", mode: "detailed", special: 0 });
+  let notesHtml = api.renderCartQuoteDocument();
+  assert.ok(!notesHtml.includes("has-notes"), "no notes -> table must not carry has-notes");
+  const nBefore = calls.length;
+  await api.saveCartQuote();
+  assert.ok(!("itemNotes" in calls[calls.length - 1].body.snapshot), "no notes -> snapshot has no itemNotes");
+  assert.strictEqual(calls.length, nBefore + 1);
+
+  api.setQuoteNotes({ "p:Inverter A": "ضمان خاص <b>", "p:Gone": "stale" });
+  notesHtml = api.renderCartQuoteDocument();
+  assert.ok(notesHtml.includes('class="bom has-notes"'), "a note -> table gets has-notes");
+  assert.ok(notesHtml.includes("ضمان خاص &lt;b&gt;"), "note text is HTML-escaped");
+  assert.ok(notesHtml.includes("<th class=\"notecol\">ملاحظات</th>"));
+  api.set({ mode: "summary" });
+  assert.ok(api.renderCartQuoteDocument().includes('class="bom has-notes"'), "summary mode shows it too");
+  api.set({ mode: "detailed" });
+  await api.saveCartQuote();
+  assert.strictEqual(calls.length, nBefore + 2, "changed notes -> a new save (revision), not deduped");
+  sameJSON(calls[calls.length - 1].body.snapshot.itemNotes, { "p:Gone": "stale", "p:Inverter A": "ضمان خاص <b>" });
+  await api.saveCartQuote();
+  assert.strictEqual(calls.length, nBefore + 2, "same notes again -> deduped");
+
+  api.cartResetQuoteMeta();
+  sameJSON(api.cleanNotes(), {}, "cart reset clears cart notes");
 
   console.log("cart-quote.test.js: all assertions passed");
 })().catch((e) => { console.error(e); process.exit(1); });
