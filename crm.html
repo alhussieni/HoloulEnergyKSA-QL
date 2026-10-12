@@ -2457,6 +2457,7 @@ async function openAssetEditor(assetId, customerId){
       <div><label>مدة ضمان أداء الإنتاجية للألواح (بالسنين)</label><input type="number" id="asf_perf_years" min="0" step="1" value="${asset.performance_warranty_years??''}" placeholder="مثال: 30"></div>
       <div><label>نهاية ضمان الأداء (تلقائي)</label><input type="date" id="asf_perf_end" value="${asset.performance_warranty_end_date||''}" readonly style="background:var(--sand);color:var(--muted);"></div>
     </div>
+    <div id="asf_start_hint"></div>
     <div id="asf_warranty_request_box"></div>
     <label>ملاحظات</label><textarea id="asf_notes">${escapeHtml(asset.notes||'')}</textarea>
     <div class="saveBar">
@@ -2551,6 +2552,30 @@ async function openAssetEditor(assetId, customerId){
   m.querySelector('#asf_warranty_years').addEventListener('input', recalcWarrantyEnd);
   m.querySelector('#asf_perf_years').addEventListener('input', recalcPerfEnd);
   updateStdNoteAndPanelFields();
+
+  // Suggest the warranty start from the linked project: warehouse-receipt date,
+  // else the date of the payment that completed the contract. Never auto-filled.
+  (async ()=>{
+    try{
+      if(asset.warranty_start_date || !asset.opportunity_id) return;
+      const d = await crmApi('admin-crm-project-by-opportunity', {opportunityId: asset.opportunity_id});
+      if(!d || !d.project) return;
+      let date = d.project.actual_supply_date, why = 'تاريخ الاستلام من المخزن';
+      if(!date && d.project.payment_status === 'paid'){
+        const ds = (d.payments||[]).map(x=>x.payment_date).filter(Boolean).sort();
+        date = ds[ds.length-1]; why = 'تاريخ آخر دفعة مكمّلة للسداد';
+      }
+      if(!date) return;
+      const box = m.querySelector('#asf_start_hint');
+      if(!box) return;
+      box.innerHTML = `<div class="custLinkNote" style="background:#E6F4EC;color:#1e6b46;">💡 اقتراح بداية الضمان: <b>${fmtDate(date)}</b> (${why}) <button type="button" class="btn small" id="useStartBtn" style="margin-inline-start:8px;">استخدم</button></div>`;
+      m.querySelector('#useStartBtn').addEventListener('click', ()=>{
+        m.querySelector('#asf_warranty_start').value = date;
+        recalcWarrantyEnd(); recalcPerfEnd();
+        box.innerHTML = '';
+      });
+    }catch(e){ /* suggestion only, never blocks the form */ }
+  })();
 
   m.querySelector('#saveAssetBtn').addEventListener('click', async ()=>{
     const type = m.querySelector('#asf_type').value || null;
@@ -3124,7 +3149,8 @@ async function renderProjectPanel(wrap, opportunityId, opp){
   const isAdmin = SESSION.role === 'admin';
   const sm = metaOf(SETTINGS.projectStatuses, p.status) || {label:p.status, color:'#93a89c'};
   wrap.innerHTML = `
-    <div style="margin-bottom:10px;"><span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span> <b>${p.project_number}</b></div>
+    <div style="margin-bottom:10px;"><span class="tag" style="background:${sm.color}22;color:${sm.color}">${sm.label}</span> <b>${p.project_number}</b>
+      ${(()=>{ const PS={unpaid:['غير مسدّد','#c0392b'],partial:['مسدّد جزئيًا','#B5720B'],paid:['مسدّد بالكامل','#1e8e5a']}[p.payment_status||'unpaid']; return `<span class="tag" style="background:${PS[1]}22;color:${PS[1]}">${PS[0]}</span>`; })()}</div>
     <div class="grid2">
       <div><label>قيمة العقد (﷼)</label><input type="number" id="pf_contract_value" value="${p.contract_value??''}"></div>
       <div><label>نطاق المشروع (Scope)</label><select id="pf_scope">${optHtml(SETTINGS.idScopeTypes, p.scope_type)}</select></div>
@@ -3134,7 +3160,7 @@ async function renderProjectPanel(wrap, opportunityId, opp){
       <div><label>مدير المشروع</label><input type="text" id="pf_pm" value="${escapeHtml(p.project_manager||'')}"></div>
       <div><label>المهندس المسؤول</label><input type="text" id="pf_eng" value="${escapeHtml(p.engineer||'')}"></div>
       <div><label>تاريخ التوريد المخطط</label><input type="date" id="pf_psupply" value="${p.planned_supply_date||''}"></div>
-      <div><label>تاريخ التوريد الفعلي</label><input type="date" id="pf_asupply" value="${p.actual_supply_date||''}"></div>
+      <div><label>تاريخ الاستلام من المخزن (تعبئته تقفل المشروع تلقائيًا)</label><input type="date" id="pf_asupply" value="${p.actual_supply_date||''}"></div>
       <div><label>تاريخ التركيب المخطط</label><input type="date" id="pf_pinstall" value="${p.planned_install_date||''}"></div>
       <div><label>تاريخ التركيب الفعلي</label><input type="date" id="pf_ainstall" value="${p.actual_install_date||''}"></div>
     </div>
@@ -3155,6 +3181,17 @@ async function renderProjectPanel(wrap, opportunityId, opp){
             </div>
           </div>`;
         }).join('') : '<div class="emptyNote">لسه مفيش خطة سداد متفق عليها مسجلة</div>'}
+        ${(!data.milestones.length && Number(p.contract_value)>0) ? `
+          <div class="custLinkNote" id="msSuggest" style="background:#E6F4EC;color:#1e6b46;margin-top:8px;">
+            💡 اقتراح: دفعة واحدة قبل التوريد
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+              <input type="number" id="sg_pct" value="100" min="1" max="100" style="width:80px;"> %
+              <span>=</span>
+              <input type="number" id="sg_amt" value="${Math.round(Number(p.contract_value))}" style="width:130px;"> ﷼
+              <button class="btn small" id="sgAccept" type="button">اعتماد الاقتراح</button>
+            </div>
+            <div style="font-size:11px;margin-top:4px;">عدّل النسبة أو المبلغ لو الاتفاق مختلف، ولا يتسجل شيء إلا بعد الضغط على "اعتماد".</div>
+          </div>` : ''}
       </div>
       <div class="grid2" style="margin-top:10px;">
         <div><label>وصف الدفعة</label><input type="text" id="ms_title" placeholder="مثال: دفعة مقدم"></div>
@@ -3234,6 +3271,21 @@ async function renderProjectPanel(wrap, opportunityId, opp){
       renderProjectPanel(wrap, opportunityId, opp);
     }catch(err){ toast('خطأ: '+err.message); }
   });
+  const sgBox = wrap.querySelector('#msSuggest');
+  if(sgBox){
+    const cv = Number(p.contract_value)||0, pctEl = wrap.querySelector('#sg_pct'), amtEl = wrap.querySelector('#sg_amt');
+    pctEl.addEventListener('input', ()=>{ amtEl.value = Math.round(cv * (Number(pctEl.value)||0) / 100); });
+    amtEl.addEventListener('input', ()=>{ pctEl.value = cv ? Math.round((Number(amtEl.value)||0) / cv * 10000) / 100 : ''; });
+    wrap.querySelector('#sgAccept').addEventListener('click', async ()=>{
+      const pct = Number(pctEl.value), amt = Number(amtEl.value);
+      if(!(amt > 0)){ toast('اكتب مبلغ صحيح'); return; }
+      try{
+        await crmApi('admin-crm-add-milestone', {projectId:p.id, title:'دفعة قبل التوريد', percentage: pct||null, amount: amt});
+        toast('اتسجلت الدفعة المقترحة ✅');
+        renderProjectPanel(wrap, opportunityId, opp);
+      }catch(err){ toast('خطأ: '+err.message); }
+    });
+  }
   wrap.querySelectorAll('.msStatusSelect').forEach(sel=>{
     sel.addEventListener('change', async ()=>{
       try{
