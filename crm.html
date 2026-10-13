@@ -86,6 +86,19 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--teal);bo
 .stat.bad{border-inline-end-color:var(--bad);}
 .stat .v{font-size:22px;font-weight:800;color:var(--night);}
 .stat .l{font-size:11.5px;color:var(--muted);margin-top:3px;}
+.stat .s{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.6;}
+.stat.clickable{cursor:pointer;}
+.qd .qdH{font-size:11px;font-weight:700;color:var(--muted);margin:8px 0 4px;}
+.qd .qdGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:6px;}
+.qd .stat{padding:6px 9px;border-radius:8px;}
+.qd .stat .v{font-size:15px;line-height:1.3;}
+.qd .stat .l{font-size:10.5px;margin-top:1px;}
+.qd .stat .s{font-size:10px;margin-top:2px;line-height:1.5;}
+.qd summary{cursor:pointer;font-size:11px;color:var(--muted);margin:8px 0 2px;}
+.qDashTitle{font-size:12.5px;font-weight:700;color:var(--night-2);margin:0 0 6px;}
+.qDashNote{font-size:11.5px;color:#B5720B;margin:-6px 0 10px;}
+.qTrend{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:12px;}
+.qTrend th,.qTrend td{padding:4px 8px;text-align:start;border-bottom:1px solid var(--line);}
 .panels{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;}
 @media(max-width:860px){.panels{grid-template-columns:1fr;}}
 .barRow{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-size:12.5px;}
@@ -583,6 +596,7 @@ body.printing-cert #certPrintArea{display:block!important;}
         <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;white-space:nowrap;"><input type="checkbox" id="quotesShowEmpty" style="width:auto;"> إظهار العروض بدون بيانات عميل</label>
         <button class="btn ghost small" id="quotesReloadBtn" type="button">↻ تحديث</button>
       </div>
+      <div id="quotesDash"></div>
       <div id="quotesSummary" style="font-size:12.5px;color:var(--muted);margin-bottom:8px;"></div>
       <div class="card" style="padding:0;overflow:auto;"><div id="quotesTableWrap"><div class="loadingNote">بيحمّل العروض...</div></div></div>
     </section>
@@ -699,6 +713,8 @@ const ENGINE_FN = SUPABASE_URL + '/functions/v1/compute-quote'; // login only
 const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything else
 const INVOICE_FN = SUPABASE_URL + '/functions/v1/invoice-api';  // e-invoices (QR, credit notes, numbering)
 const PIPELINE_FN = SUPABASE_URL + '/functions/v1/crm-pipeline'; // pipeline board/table/alerts/bulk (server-side)
+const QUOTES_FN = SUPABASE_URL + '/functions/v1/crm-quotes'; // كل العروض (حتى غير المربوطة بعميل)
+const QUOTES_ACTIONS = new Set(['admin-crm-list-quotes']);
 const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live','crm-list-customer-quotations','seller-info']);
 
 let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[],
@@ -751,7 +767,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch(INVOICE_ACTIONS.has(action) ? INVOICE_FN : CRM_FN, {
+  const res = await fetch(INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN), {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -3510,7 +3526,7 @@ function quoteNotesCount(q){
 async function fetchAllQuotes(){
   try{
     const d = await crmApi('admin-crm-list-quotes', {});
-    return { quotes: d.quotes || [], customers: d.customers || {}, full: true };
+    return { quotes: d.quotes || [], customers: d.customers || {}, full: true, custRegions: d.custRegions || {} };
   }catch(e){
     if(!/unknown_action/.test(String(e.message))) throw e;
   }
@@ -3537,12 +3553,112 @@ async function loadQuotesTab(force){
   try{
     const r = await fetchAllQuotes();
     QUOTES_ALL = r.quotes; QUOTES_CUST = r.customers; QUOTES_FULL = r.full; QUOTES_LOADED = true;
+    QUOTES_CUSTREG = {byId:{}, byPhone:{}};
+    Object.entries(r.custRegions||{}).forEach(([id,c])=>{ if(!c.region) return; QUOTES_CUSTREG.byId[id] = c.region; const k = qlPhoneKey(c.phone); if(k) QUOTES_CUSTREG.byPhone[k] = c.region; });
+    try{ QUOTES_PROJECTS = (await crmApi('admin-crm-list-projects', {})).projects || []; }catch(e){ QUOTES_PROJECTS = null; }
     const sel = document.getElementById('quotesRepFilter'), cur = sel.value;
     const reps = Array.from(new Set(QUOTES_ALL.map(q=>q.rep_display_name).filter(Boolean))).sort();
     sel.innerHTML = '<option value="">كل المندوبين</option>' + reps.map(x=>`<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
     sel.value = reps.includes(cur) ? cur : '';
     renderQuotesTab();
   }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+escapeHtml(err.message)+'</div>'; }
+}
+/* ---- داشبورد عروض الأسعار: بيتحسب من نفس العروض المعروضة (بعد الفلاتر) ---- */
+let QUOTES_PROJECTS = null; // null = لسه/فشل التحميل
+let QUOTES_CUSTREG = {byId:{}, byPhone:{}}; // المنطقة لكل عميل (بالـ id أو بالهاتف المطبّع)
+const qRegionOf = (cid, phone) => (cid!=null && QUOTES_CUSTREG.byId[String(cid)]) || QUOTES_CUSTREG.byPhone[qlPhoneKey(phone)] || '';
+const qlPhoneKey = raw => { let d = String(raw||'').replace(/\D/g,''); if(d.startsWith('00966')) d = d.slice(5); else if(d.startsWith('966') && d.length > 9) d = d.slice(3); if(d.length === 9) d = '0'+d; return d; };
+function quoteGroupKey(q){ const sn = q.snapshot || {}; return sn.revisionOf || sn.refCode || ('#'+q.id); }
+// نسخ المراجعة (R1, R2...) بتتحسب مرة واحدة: آخر نسخة بس
+function latestRevisions(rows){
+  const m = new Map();
+  rows.forEach(q=>{
+    const k = quoteGroupKey(q), rn = Number((q.snapshot||{}).revisionNo)||0, cur = m.get(k);
+    if(!cur || rn > cur.rn || (rn === cur.rn && q.id > cur.q.id)) m.set(k, {q, rn});
+  });
+  return Array.from(m.values()).map(x=>x.q);
+}
+const qHp = q => Number(q.hp || (q.snapshot||{}).hp) || 0;
+function topCounts(map, n){ return Array.from(map.entries()).sort((a,b)=>b[1].count-a[1].count || (b[1].total||0)-(a[1].total||0)).slice(0,n); }
+function computeQuotesDashboard(rows, from, to){
+  const uniq = latestRevisions(rows);
+  const solar = uniq.filter(q=>quoteKind(q)==='solar'), cart = uniq.filter(q=>quoteKind(q)==='cart');
+  const solarVals = solar.map(q=>Number(q.final_total)||0).filter(v=>v>0);
+  const cartVals = cart.map(q=>Number(q.final_total)||0).filter(v=>v>0);
+  const avg = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0;
+  // أكثر عميل نشط: بالهاتف المطبّع (عشان نفس العميل ميتقسمش، والعروض بدون هاتف صحيح ميتجمعوش في "عميل" وهمي)
+  const byPhone = new Map();
+  uniq.forEach(q=>{
+    const w = quoteWho(q); if(!qlPhoneOk(w.phone)) return;
+    const k = qlPhoneKey(w.phone), e = byPhone.get(k) || {count:0,total:0,name:'',done:0,doneValue:0};
+    e.count++; e.total += Number(q.final_total)||0; if(!e.name && qlNameOk(w.name)) e.name = w.name; byPhone.set(k,e);
+  });
+  const hpMap = new Map();
+  solar.forEach(q=>{ const h = qHp(q); if(h>0){ const e = hpMap.get(h)||{count:0}; e.count++; hpMap.set(h,e); } });
+  const hps = solar.map(qHp).filter(h=>h>0);
+  const unlinked = uniq.filter(q=>q.customer_id==null && quoteDataState(q)!=='empty').length;
+  const months = new Map();
+  uniq.forEach(q=>{ const k = String(q.created_at).slice(0,7), e = months.get(k)||{count:0,total:0}; e.count++; e.total += Number(q.final_total)||0; months.set(k,e); });
+  const regQ = new Map(), regE = new Map();
+  uniq.forEach(q=>{ const rg = qRegionOf(q.customer_id, quoteWho(q).phone), e = regQ.get(rg)||{count:0,total:0}; e.count++; e.total += Number(q.final_total)||0; regQ.set(rg,e); });
+  let contracts = null;
+  if(Array.isArray(QUOTES_PROJECTS)){
+    const inRange = QUOTES_PROJECTS.filter(p=>{ const d = String(p.contract_signed_date || p.created_at || '').slice(0,10); return !(from && d < from) && !(to && d > to); });
+    const done = inRange.filter(p=>p.status==='commissioned');
+    const sum = a => a.reduce((s,p)=>s+(Number(p.contract_value)||0),0);
+    contracts = {count:inRange.length, value:sum(inRange), doneCount:done.length, doneValue:sum(done)};
+    done.forEach(pr=>{ const rg = qRegionOf(pr.customer_id, (pr.customers||{}).phone), e = regE.get(rg)||{done:0,value:0}; e.done++; e.value += Number(pr.contract_value)||0; regE.set(rg,e); });
+    inRange.forEach(pr=>{
+      const cu = pr.customers || {}, k = qlPhoneKey(cu.phone) || ('c'+pr.customer_id);
+      const e = byPhone.get(k) || {count:0,total:0,name:'',done:0,doneValue:0};
+      if(!e.name && qlNameOk(cu.name)) e.name = cu.name;
+      if(pr.status==='commissioned'){ e.done++; e.doneValue += Number(pr.contract_value)||0; }
+      byPhone.set(k,e);
+    });
+  }
+  return {uniq:uniq.length, raw:rows.length, solar:solar.length, cart:cart.length,
+    avgSolar:avg(solarVals), avgCart:avg(cartVals), avgHp:avg(hps), hpTop:topCounts(hpMap,3), hpN:hps.length,
+    topCust:Array.from(byPhone.entries()).sort((a,b)=>b[1].done-a[1].done || b[1].doneValue-a[1].doneValue || b[1].count-a[1].count || b[1].total-a[1].total).slice(0,3), unlinked, months:Array.from(months.entries()).sort().slice(-4), contracts,
+    regQ:Array.from(regQ.entries()).sort((a,b)=>b[1].count-a[1].count||b[1].total-a[1].total), regE:Array.from(regE.entries()).sort((a,b)=>b[1].done-a[1].done||b[1].value-a[1].value)};
+}
+function renderQuotesDashboard(rows, from, to){
+  const el = document.getElementById('quotesDash'); if(!el) return;
+  if(!rows.length){ el.innerHTML = ''; return; }
+  const d = computeQuotesDashboard(rows, from, to);
+  const regName = k => k ? labelOf(SETTINGS.regions, k, k) : 'غير محدد';
+  const card = (cls, v, l, s, extra='', title='') => `<div class="stat ${cls}" ${extra} ${title?`title="${escapeHtml(title)}"`:''}><div class="v">${v}</div><div class="l">${l}</div>${s?`<div class="s">${s}</div>`:''}</div>`;
+  const top = d.topCust[0], hpTop = d.hpTop[0], c = d.contracts;
+  const custTip = d.topCust.map(([k,e],i)=>(i+1)+'. '+(e.name||k)+' — '+e.done+' منفّذ · '+e.count+' عرض').join('\n');
+  const hpTip = d.hpTop.map(([h,e])=>h+' حصان: '+e.count+' عرض').join('\n');
+  // أنشط منطقة: بنستبعد "غير محدد" من الترتيب ونعرض عدده لوحده (عشان ميغطّيش على المناطق الحقيقية)
+  const known = a => a.filter(([k])=>k), unk = a => (a.find(([k])=>!k)||[null,null])[1];
+  const rq = known(d.regQ), re = known(d.regE), uq = unk(d.regQ), ue = unk(d.regE);
+  const regTip = (arr)=>arr.map(([k,e],i)=>(i+1)+'. '+regName(k)+' — '+(e.done!=null?e.done+' منفّذ':e.count+' عرض')).join('\n');
+  el.innerHTML = `<div class="qd">
+    <div class="qDashTitle">📊 ملخص عروض الأسعار <span style="font-weight:400;color:var(--muted)">(بيتبع الفلاتر · ${d.uniq} عرض فعلي من ${d.raw} صف · المراجعات بتتحسب مرة)</span></div>
+    ${QUOTES_FULL ? '' : '<div class="qDashNote">⚠ الأرقام ناقصة: العروض غير المربوطة بعميل مش محمّلة</div>'}
+    <div class="qdH">العملاء والمناطق</div>
+    <div class="qdGrid">
+      ${card('sun', top ? escapeHtml(top[1].name||top[0]) : '—', 'أكثر عميل نشط (تنفيذًا)', top ? `${top[1].done} منفّذ (${fmtMoney(top[1].doneValue)} ﷼) · ${top[1].count} عرض` : '', '', custTip)}
+      ${card('', rq[0] ? escapeHtml(regName(rq[0][0])) : '—', 'أنشط منطقة — عروض', rq[0] ? `${rq[0][1].count} عرض · ${fmtMoney(rq[0][1].total)} ﷼` + (uq ? `<br>بدون منطقة: ${uq.count}` : '') : (uq ? `بدون منطقة: ${uq.count}` : ''), '', regTip(rq))}
+      ${card('', re[0] ? escapeHtml(regName(re[0][0])) : '—', 'أنشط منطقة — تنفيذ', re[0] ? `${re[0][1].done} عقد منفّذ · ${fmtMoney(re[0][1].value)} ﷼` + (ue ? `<br>بدون منطقة: ${ue.done}` : '') : (ue ? `بدون منطقة: ${ue.done}` : ''), '', regTip(re))}
+    </div>
+    <div class="qdH">العروض</div>
+    <div class="qdGrid">
+      ${card('', fmtMoney(d.avgSolar)+' ﷼', 'متوسط قيمة عرض المنظومة', `${d.solar} عرض` + (d.cart ? ` · سلة: ${d.cart} (متوسط ${fmtMoney(d.avgCart)})` : ''))}
+      ${card('', hpTop ? hpTop[0]+' حصان' : '—', 'أكثر قدرة مطلوبة', hpTop ? `${hpTop[1].count} من ${d.hpN} عرض` : '', '', hpTip)}
+      ${card('', d.avgHp ? d.avgHp.toLocaleString('ar-EG',{maximumFractionDigits:1})+' حصان' : '—', 'متوسط القدرة المطلوبة', `على ${d.hpN} عرض`)}
+      ${card(d.unlinked ? 'bad clickable' : '', fmtMoney(d.unlinked), 'عروض غير مربوطة بعميل', d.unlinked ? 'اضغط لعرضها' : 'كله مربوط', d.unlinked ? 'id="qDashUnlinked"' : '')}
+    </div>
+    <div class="qdH">العقود <span style="font-weight:400">(حسب تاريخ التوقيع)</span></div>
+    <div class="qdGrid">
+      ${card('sun', c ? fmtMoney(c.count) : '—', 'إجمالي العقود', c ? `منفّذة: ${fmtMoney(c.doneCount)}` : 'تعذر تحميل العقود')}
+      ${card('', c ? fmtMoney(c.value)+' ﷼' : '—', 'إجمالي قيمة العقود', c ? `المنفّذة: ${fmtMoney(c.doneValue)} ﷼` : '')}
+    </div>
+    ${d.months.length > 1 ? `<details><summary>العروض حسب الشهر</summary><table class="qTrend"><thead><tr><th>الشهر</th><th>عدد العروض</th><th>إجمالي القيمة (﷼)</th></tr></thead><tbody>${d.months.map(([m,e])=>`<tr><td dir="ltr">${m}</td><td>${e.count}</td><td>${fmtMoney(e.total)}</td></tr>`).join('')}</tbody></table></details>` : ''}
+  </div>`;
+  const u = document.getElementById('qDashUnlinked');
+  if(u) u.addEventListener('click', ()=>{ document.getElementById('quotesFlagFilter').value = 'unlinked'; renderQuotesTab(); });
 }
 function renderQuotesTab(){
   const wrap = document.getElementById('quotesTableWrap');
@@ -3573,6 +3689,7 @@ function renderQuotesTab(){
     }
     return true;
   });
+  renderQuotesDashboard(rows, from, to);
   const total = rows.reduce((s,q)=>s+(Number(q.final_total)||0),0);
   document.getElementById('quotesSummary').innerHTML =
     `عدد العروض: <b>${rows.length}</b> · إجمالي القيم: <b>${fmtMoney(total)} ﷼</b>` +
