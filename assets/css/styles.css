@@ -707,3 +707,7 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
 .pdf-compact .legal-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
 .pdf-compact .support-note{font-size:9.5px!important;font-weight:500!important;padding:5px 10px!important;margin-top:5px!important;}
 .pdf-compact .contact-note{font-size:8.5px!important;font-weight:400!important;line-height:1.36!important;margin-top:6px!important;}
+
+/* وضع النافذة المدمجة (iframe من الـ CRM): نخفي الهيدر والفوتر وأزرار التواصل */
+html.embed-mode header.top, html.embed-mode footer.foot, html.embed-mode .fab-bar{ display:none !important; }
+html.embed-mode body{ padding-top:0; }

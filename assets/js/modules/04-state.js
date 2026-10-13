@@ -155,7 +155,15 @@ async function saveLead(q){
   if(savedQuoteInfo && savedQuoteInfo.key === key) return savedQuoteInfo;
   let res = null;
   try{
-    if(repUsername && repTokenMem){
+    if(typeof embedAdminToken !== 'undefined' && embedAdminToken){
+      // أدمن فاتح الحاسبة من الـ CRM: لو السيرفر لسه ما يعرفش adminToken في save-quote نرجع لحفظ كـ guest
+      try{
+        res = await callEngine('save-quote', { adminToken: embedAdminToken, clientName: state.client, clientPhone: state.clientPhone, hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot });
+      }catch(e){ res = null; }
+      if(!(res && res.ok)){
+        try{ res = await callEngine('save-quote', { guest: true, clientName: state.client, clientPhone: state.clientPhone, hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot }); }catch(e){ res = null; }
+      }
+    } else if(repUsername && repTokenMem){
       res = await callEngine('save-quote', {
         token: repTokenMem,
         clientName: state.client, clientPhone: state.clientPhone,
@@ -171,6 +179,7 @@ async function saveLead(q){
   }catch(e){ res = null; }
   if(res && res.ok){
     savedQuoteInfo = { key, ref: res.refCode || null, ql: res.qlCode || null };
+    try{ if(window.parent && window.parent !== window) window.parent.postMessage({ type:'holoul-quote-saved', ref: res.refCode || null, ql: res.qlCode || null, phone: state.clientPhone }, location.origin); }catch(e){}
     if(res.refCode) revisionParent = { ref: res.refCode, phone: phoneTail(state.clientPhone), hp: state.hp, explicit: false };
     refreshQlLines(q);
     return savedQuoteInfo;

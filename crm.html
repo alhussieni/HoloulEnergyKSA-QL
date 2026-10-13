@@ -1177,6 +1177,68 @@ function editQuoteInCalculator(q, c){
   if(!w) toast('⚠️ المتصفح منع فتح نافذة جديدة — اسمح بالنوافذ المنبثقة وجرّب تاني');
 }
 
+/* ===== عرض سعر جديد من نافذة العميل: الحاسبة الحقيقية داخل نافذة (iframe) أو في تبويب كامل =====
+   بنمرّر اسم/جوال العميل + جلسة الأدمن أو المندوب بمفتاح مؤقت (دقيقتين) والحاسبة بتقفل الجوال.
+   العرض بيتربط بالعميل بالجوال، وتريجر الداتابيز بيربطه بالصفقة المفتوحة أو بيفتح صفقة جديدة. */
+const CRM_NEWQUOTE_KEY = 'holoul_crm_newquote_v1';
+function stageIsOpen(st){ return st !== 'won' && st !== 'lost'; }
+function writeNewQuoteHandoff(c){
+  const payload = { ts: Date.now(), name: c.name || '', phone: c.phone || '', role: SESSION.role, token: SESSION.token, displayName: SESSION.displayName || '' };
+  try{ localStorage.setItem(CRM_NEWQUOTE_KEY, JSON.stringify(payload)); return true; }
+  catch(e){ toast('⚠️ تعذّر تجهيز العرض (التخزين المحلي غير متاح)'); return false; }
+}
+async function newQuoteForCustomer(c, opportunities){
+  if(!c || !c.phone){ toast('لازم يكون للعميل رقم هاتف صحيح علشان يتسجل له عرض'); return; }
+  if(!Array.isArray(opportunities)){
+    try{ const d = await crmApi('admin-crm-customer-detail', {customerId:c.id}); opportunities = d.opportunities || []; }catch(e){ opportunities = []; }
+  }
+  const openOpps = (opportunities||[]).filter(o=>stageIsOpen(o.stage));
+  const oppTxt = openOpps.length
+    ? `عنده صفقة مفتوحة${openOpps[0].name?': '+escapeHtml(openOpps[0].name):''} — العرض الجديد هيتضاف عليها`
+    : 'مفيش صفقة مفتوحة — هيتفتح له صفقة جديدة تلقائيًا (عرض سعر مُرسل)';
+  const old = document.getElementById('newQuoteOverlay'); if(old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'newQuoteOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,30,.6);z-index:10050;display:flex;align-items:center;justify-content:center;padding:12px;';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:12px;width:min(1100px,100%);height:min(94vh,100%);display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e3e8ee;flex-wrap:wrap;">
+        <div><b>➕ عرض سعر جديد — ${escapeHtml(c.name||'بدون اسم')}</b> <span style="direction:ltr;unicode-bidi:embed;color:#555;">${escapeHtml(c.phone)}</span>
+          <div style="font-size:12.5px;color:${openOpps.length?'#0b6b3a':'#8a5a00'};margin-top:3px;">${oppTxt}</div></div>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn ghost small" id="nqFullBtn">↗ فتح في تبويب كامل</button>
+          <button type="button" class="btn small" id="nqCloseBtn">✖ إغلاق</button>
+        </div>
+      </div>
+      <iframe id="nqFrame" title="حاسبة عروض الأسعار" style="flex:1;border:0;width:100%;background:#fff;"></iframe>
+    </div>`;
+  document.body.appendChild(ov);
+  let saved = false;
+  const onMsg = (e)=>{
+    if(e.origin !== location.origin || !e.data || e.data.type !== 'holoul-quote-saved') return;
+    saved = true;
+    toast('✅ اتسجل العرض ' + (e.data.ref || '') + ' على العميل');
+  };
+  window.addEventListener('message', onMsg);
+  const close = ()=>{
+    window.removeEventListener('message', onMsg);
+    ov.remove();
+    if(saved){
+      openCustomer(c.id); // تحديث عروض/صفقات العميل
+      if(typeof loadQuotesTab === 'function' && document.getElementById('view-quotes') && document.getElementById('view-quotes').classList.contains('active')) loadQuotesTab(true);
+    }
+  };
+  ov.querySelector('#nqCloseBtn').addEventListener('click', close);
+  ov.querySelector('#nqFullBtn').addEventListener('click', ()=>{
+    if(!writeNewQuoteHandoff(c)) return;
+    const w = window.open('index.html?newquote=1', '_blank');
+    if(!w) toast('⚠️ المتصفح منع فتح نافذة جديدة — اسمح بالنوافذ المنبثقة وجرّب تاني');
+    else { toast('اتفتحت الحاسبة في تبويب جديد — بعد الحفظ حدّث صفحة العميل'); window.removeEventListener('message', onMsg); ov.remove(); }
+  });
+  if(!writeNewQuoteHandoff(c)){ ov.remove(); return; }
+  ov.querySelector('#nqFrame').src = 'index.html?embed=1&newquote=1';
+}
+
 function openQuoteDetail(q, c, all){
   const fq = qpFrozen(q);
   const frozenItems = q.snapshot && Array.isArray(q.snapshot.frozenItems) ? q.snapshot.frozenItems : null;
@@ -1260,6 +1322,7 @@ function openQuoteDetail(q, c, all){
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn small" id="qdPrintBtn" ${fq?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>🖨️ طباعة بشكل العميل</button>
           <button type="button" class="btn small" id="qdEditBtn" title="يفتح الحاسبة بالعرض ده محمّل، وأي طباعة بعد التعديل بتتحفظ كمراجعة جديدة (R1, R2...)" ${qpEditable(q)?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>✏️ تعديل (مراجعة جديدة)</button>
+          ${c && c.id && c.phone ? '<button type="button" class="btn small" id="qdNewBtn">➕ عرض جديد لنفس العميل</button>' : ''}
           <button type="button" class="btn ghost small" id="qdCloseBtn">✖ إغلاق</button>
         </div>
       </div>
@@ -1282,6 +1345,7 @@ function openQuoteDetail(q, c, all){
   ov.querySelectorAll('.qdRev').forEach(b=>b.addEventListener('click', ()=>{ const x = (all||[]).find(y=>String(y.id)===b.dataset.qid); if(x) openQuoteDetail(x, c, all); }));
   const pb = ov.querySelector('#qdPrintBtn');
   if(fq) pb.addEventListener('click', ()=>printCustomerQuote(q, c));
+  const nb = ov.querySelector('#qdNewBtn'); if(nb) nb.addEventListener('click', ()=>{ ov.remove(); newQuoteForCustomer(c, null); });
   const eb = ov.querySelector('#qdEditBtn');
   if(qpEditable(q)) eb.addEventListener('click', ()=>editQuoteInCalculator(q, c));
 }
@@ -1299,6 +1363,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
   m.innerHTML = `
     <div class="mhead"><div><h2>${c.name || 'بدون اسم'}</h2><div class="phone">${c.phone}</div></div>
       <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn small" id="custNewQuoteBtn" type="button">➕ عرض سعر جديد</button>
         <button class="btn teal small" id="custInvoiceBtn" type="button">🧾 فاتورة جديدة</button>
         <button class="closeX" data-close>×</button>
       </div>
@@ -1454,6 +1519,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     </div>
   `;
   m.querySelector('[data-close]').addEventListener('click', closeCustomer);
+  m.querySelector('#custNewQuoteBtn').addEventListener('click', ()=>newQuoteForCustomer(c, opportunities));
   m.querySelector('#custInvoiceBtn').addEventListener('click', ()=>{
     openInvoiceModal({ customer: c });
   });

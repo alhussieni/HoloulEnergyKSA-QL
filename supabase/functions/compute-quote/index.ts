@@ -1249,7 +1249,11 @@ Deno.serve(async (req: Request) => {
 
   if (body.action === "save-quote") {
     let repUsername: string | null = null, repDisplayName = "الحاسبة الآلية (تسعير مباشر من العميل)";
-    if (!body.guest) {
+    if (!body.guest && body.adminToken) {
+      // أدمن بيسجل عرض من الـ CRM (نافذة العرض الجديد)
+      if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
+      repUsername = null; repDisplayName = "الأدمن"; // مفيش rep_username عشان ما نغيّرش مندوب العميل
+    } else if (!body.guest) {
       const rep = await checkRepToken(body.token);
       if (!rep) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
       repUsername = rep.username; repDisplayName = rep.displayName;
