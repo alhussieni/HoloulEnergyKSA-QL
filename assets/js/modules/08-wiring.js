@@ -1438,8 +1438,46 @@ function scheduleRefreshOngrid(delay = 220){
   refreshOngridTimer = setTimeout(()=>{ refreshOngridTimer = null; refreshOngrid(); }, delay);
 }
 
+/* ===== عرض سعر جديد من الـ CRM (نافذة مدمجة iframe أو تبويب كامل) =====
+   الـ CRM بيكتب مفتاح مؤقت (دقيقتين) فيه اسم/جوال العميل + جلسة اللي فاتح (أدمن أو مندوب).
+   الجوال بيتقفل لأن ربط العرض بالعميل بيتم بالجوال. */
+const CRM_NEWQUOTE_KEY = 'holoul_crm_newquote_v1';
+let embedLockPhone = false, embedAdminToken = null;
+function applyCrmNewQuoteHandoff(){
+  let h = null;
+  try{
+    h = JSON.parse(localStorage.getItem(CRM_NEWQUOTE_KEY)||'null');
+    localStorage.removeItem(CRM_NEWQUOTE_KEY);
+  }catch(e){ h = null; }
+  if(!h || !h.ts || Date.now() - h.ts > 2*60*1000) return false;
+  state.client = h.name || '';
+  state.clientPhone = h.phone || '';
+  embedLockPhone = !!h.phone;
+  if(h.role === 'admin' && h.token){
+    embedAdminToken = h.token;
+    repUsername = 'admin'; repTokenMem = null; repDisplayName = 'الأدمن'; repAuthed = true;
+  } else if(h.token){
+    repUsername = h.username || h.displayName || 'rep'; repTokenMem = h.token; repDisplayName = h.displayName || ''; repAuthed = true;
+  }
+  try{
+    history.replaceState(null, '', location.pathname + location.search);
+    if(/[?&]embed=1/.test(location.search)) document.documentElement.classList.add('embed-mode');
+    const lock = ()=>{
+      if(!embedLockPhone) return;
+      ['in_phone','og_phone','ng_phone'].forEach(id=>{
+        const el = document.getElementById(id);
+        if(el){ el.readOnly = true; el.title = 'رقم العميل مقفول — العرض بيتربط بالعميل برقمه'; el.style.background = '#f1f3f5'; }
+      });
+    };
+    const w0 = wire; wire = function(){ w0(); lock(); };
+  }catch(e){}
+  showRepBadge();
+  return true;
+}
+let crmNewQuoteMode = false;
+try{ crmNewQuoteMode = applyCrmNewQuoteHandoff(); }catch(e){}
 // خيار إضافي: لو الحاسبة اتفتحت من زر "تعديل (مراجعة جديدة)" في الـ CRM، حمّل العرض قبل أول حساب
-try{ applyCrmEditHandoff(); }catch(e){}
+if(!crmNewQuoteMode){ try{ applyCrmEditHandoff(); }catch(e){} }
 refresh();
 
 // If the admin previously checked "remember me", silently restore that
