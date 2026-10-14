@@ -711,3 +711,5 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
 /* وضع النافذة المدمجة (iframe من الـ CRM): نخفي الهيدر والفوتر وأزرار التواصل */
 html.embed-mode header.top, html.embed-mode footer.foot, html.embed-mode .fab-bar{ display:none !important; }
 html.embed-mode body{ padding-top:0; }
+/* في النافذة المدمجة: زر دراسة الجدوى بيخرّج من شاشة العرض فنخفيه */
+html.embed-mode .calc-subtab[onclick*="feas"]{ display:none !important; }

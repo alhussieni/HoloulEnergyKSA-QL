@@ -373,7 +373,8 @@ function renderQuoteBomAndTotal(q, introText, qtyEdit){
 }
 
 function sendGenericQuoteWhatsapp(finalTotal){
-  if(!state.clientPhone){ alert('من فضلك اكتب رقم هاتف العميل أولاً'); return; }
+  if(!validateClient()) return;
+  if(state.calcSystem === 'offgrid' || state.calcSystem === 'ongrid') saveSystemQuote(state.calcSystem);
   const phone = state.clientPhone.replace(/\D/g,'').replace(/^0/,'966');
   const msg = `${companyShort()} — ${companyBrand()}\n\nعرض سعر منظومة طاقة شمسية${state.client ? '\nالعميل: '+state.client : ''}\nالسعر النهائي شامل ضريبة القيمة المضافة: ${fmt(finalTotal)} ﷼\n\nللتواصل: 966561274344+`;
   window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(msg), '_blank');

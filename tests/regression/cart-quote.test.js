@@ -26,7 +26,8 @@ const fnNames = ["cartNotesOnly", "cartTotals", "refreshCartRefLines", "saveCart
 // extractFunctionSource matches "function name(" only, so re-add "async" for the async ones
 const ASYNC = new Set(["saveCartQuote"]);
 const fns = fnNames.map((n) => (ASYNC.has(n) ? "async " : "") + extractFunctionSource(src07, n)).join("\n\n");
-const phoneTail = extractFunctionSource(src04, "phoneTail") + "\nlet quoteItemNotes = {};\n" +
+const phoneTail = extractFunctionSource(src04, "phoneTail") + "\nlet quoteItemNotes = {};\nlet embedAdminToken = null;\n" +
+  "async " + extractFunctionSource(src04, "postSaveQuote") + "\n" + extractFunctionSource(src04, "notifyParentQuoteSaved") + "\n" +
   ["noteEsc", "noteOf", "cleanNotes", "anyNoteFor", "noteTh", "noteTd", "setQuoteNotes"].map((n) => extractFunctionSource(src04, n)).join("\n");
 
 const calls = [];

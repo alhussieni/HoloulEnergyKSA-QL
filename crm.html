@@ -1063,8 +1063,11 @@ async function openCustomer(id){
 function qpFmt(n){ return Math.round(Number(n)||0).toLocaleString('en-US'); }
 function qpFrozen(q){ return (q && q.snapshot && q.snapshot.frozenQuote) ? q.snapshot.frozenQuote : null; }
 function qpDateGB(v){ try{ return new Date(v).toLocaleDateString('en-GB'); }catch(e){ return ''; } }
+function qpSysType(q){ const t = q && q.snapshot && q.snapshot.type; return (t === 'offgrid' || t === 'ongrid') ? t : ''; }
+function qpSysLabel(t){ return t === 'offgrid' ? 'منظومة أوف-جريد' : (t === 'ongrid' ? 'منظومة أون-جريد' : ''); }
 function qpQLCode(q, fq, phone){
   const sn = q.snapshot || {};
+  if(qpSysType(q)) return sn.qlCode || qpSysLabel(qpSysType(q));
   if(sn.qlCode) return sn.qlCode; // الكود المحفوظ وقت الحفظ
   const d = new Date(q.created_at);
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1137,7 +1140,7 @@ function buildCustomerQuoteHtml(q, c){
     <div class="num" dir="ltr" style="font-size:11px;color:var(--muted);margin-bottom:8px;text-align:right">${qpRefLine(q, fq, c.phone)}</div>
     <h3 style="margin-bottom:2px">العرض المالي</h3>
     <div style="font-size:13px;margin:8px 0 4px">تحية طيبة وبعد،</div>
-    <div style="font-size:13px;color:var(--ink);line-height:1.8">نتشرف بتقديم عرض سعر منظومة توليد الكهرباء من خلال الطاقة الشمسية للتشغيل راس كهرباء /محرك غطاس ${fq.hp||q.hp} حصان</div>
+    <div style="font-size:13px;color:var(--ink);line-height:1.8">${qpSysType(q) ? 'نتشرف بتقديم عرض سعر '+qpSysLabel(qpSysType(q))+' لتوليد الكهرباء من خلال الطاقة الشمسية' : 'نتشرف بتقديم عرض سعر منظومة توليد الكهرباء من خلال الطاقة الشمسية للتشغيل راس كهرباء /محرك غطاس '+(fq.hp||q.hp)+' حصان'}</div>
     <div class="note" style="margin-top:8px">${isGuest ? '🖥️ تم إصدار هذا العرض مباشرة عبر الحاسبة الإلكترونية' : `📋 قدّم هذا العرض: <b>${escapeHtml(q.rep_display_name)}</b>`}</div>
   </div>
   <div class="card">
@@ -1198,8 +1201,8 @@ function editQuoteInCalculator(q, c){
    العرض بيتربط بالعميل بالجوال، وتريجر الداتابيز بيربطه بالصفقة المفتوحة أو بيفتح صفقة جديدة. */
 const CRM_NEWQUOTE_KEY = 'holoul_crm_newquote_v1';
 function stageIsOpen(st){ return st !== 'won' && st !== 'lost'; }
-function writeNewQuoteHandoff(c){
-  const payload = { ts: Date.now(), name: c.name || '', phone: c.phone || '', role: SESSION.role, token: SESSION.token, displayName: SESSION.displayName || '' };
+function writeNewQuoteHandoff(c, kind){
+  const payload = { ts: Date.now(), kind: kind || 'calc', name: c.name || '', phone: c.phone || '', role: SESSION.role, token: SESSION.token, displayName: SESSION.displayName || '' };
   try{ localStorage.setItem(CRM_NEWQUOTE_KEY, JSON.stringify(payload)); return true; }
   catch(e){ toast('⚠️ تعذّر تجهيز العرض (التخزين المحلي غير متاح)'); return false; }
 }
@@ -1221,7 +1224,9 @@ async function newQuoteForCustomer(c, opportunities){
       <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #e3e8ee;flex-wrap:wrap;">
         <div><b>➕ عرض سعر جديد — ${escapeHtml(c.name||'بدون اسم')}</b> <span style="direction:ltr;unicode-bidi:embed;color:#555;">${escapeHtml(c.phone)}</span>
           <div style="font-size:12.5px;color:${openOpps.length?'#0b6b3a':'#8a5a00'};margin-top:3px;">${oppTxt}</div></div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button type="button" class="btn small" data-nqkind="calc">🧮 الحاسبات (ضخ / أوف-جريد / أون-جريد)</button>
+          <button type="button" class="btn ghost small" data-nqkind="cart">🛒 سلة منتجات</button>
           <button type="button" class="btn ghost small" id="nqFullBtn">↗ فتح في تبويب كامل</button>
           <button type="button" class="btn small" id="nqCloseBtn">✖ إغلاق</button>
         </div>
@@ -1246,13 +1251,21 @@ async function newQuoteForCustomer(c, opportunities){
   };
   ov.querySelector('#nqCloseBtn').addEventListener('click', close);
   ov.querySelector('#nqFullBtn').addEventListener('click', ()=>{
-    if(!writeNewQuoteHandoff(c)) return;
+    if(!writeNewQuoteHandoff(c, nqKind)) return;
     const w = window.open('index.html?newquote=1', '_blank');
     if(!w) toast('⚠️ المتصفح منع فتح نافذة جديدة — اسمح بالنوافذ المنبثقة وجرّب تاني');
     else { toast('اتفتحت الحاسبة في تبويب جديد — بعد الحفظ حدّث صفحة العميل'); window.removeEventListener('message', onMsg); ov.remove(); }
   });
-  if(!writeNewQuoteHandoff(c)){ ov.remove(); return; }
-  ov.querySelector('#nqFrame').src = 'index.html?embed=1&newquote=1';
+  let nqKind = 'calc';
+  const loadKind = (kind)=>{
+    if(saved && !confirm('تم حفظ عرض بالفعل — التبديل هيفتح شاشة جديدة فاضية. متابعة؟')) return;
+    if(!writeNewQuoteHandoff(c, kind)) return;
+    nqKind = kind;
+    ov.querySelectorAll('[data-nqkind]').forEach(b=>b.classList.toggle('ghost', b.dataset.nqkind !== kind));
+    ov.querySelector('#nqFrame').src = 'index.html?embed=1&newquote=1&t=' + Date.now();
+  };
+  ov.querySelectorAll('[data-nqkind]').forEach(b=>b.addEventListener('click', ()=>loadKind(b.dataset.nqkind)));
+  loadKind('calc');
 }
 
 function openQuoteDetail(q, c, all){
@@ -1333,7 +1346,8 @@ function openQuoteDetail(q, c, all){
             <span style="background:#EEF2F5;border-radius:6px;padding:1px 8px;" title="رقم داخلي في النظام">رقم النظام #${q.id}</span>
           </div>
           <div style="font-size:12.5px;color:#555;margin-top:3px;">${escapeHtml(c.name||'')} · ${escapeHtml(c.phone||'')} · ${qpDateGB(q.created_at)} · ${escapeHtml(q.rep_display_name||'')}</div>
-          ${fq ? `<div style="font-size:12.5px;color:#555;margin-top:2px;">${fq.hp||q.hp} حصان · ${escapeHtml(fq.panelLabel||'')} × ${fq.totalPanels} لوح (${(Number(fq.calcKW)||0).toFixed(1)} KW) · انفرتر ${escapeHtml(String(fq.invBrandName||''))} ${fq.invKW} KW</div>` : ''}
+          ${fq && qpSysType(q) ? `<div style="font-size:12.5px;color:#555;margin-top:2px;">${qpSysLabel(qpSysType(q))}${fq.totalPanels?` · ${fq.totalPanels} لوح`:''}${Number(fq.calcKW)?` (${(Number(fq.calcKW)||0).toFixed(1)} KW)`:''}</div>` : ''}
+          ${fq && !qpSysType(q) ? `<div style="font-size:12.5px;color:#555;margin-top:2px;">${fq.hp||q.hp} حصان · ${escapeHtml(fq.panelLabel||'')} × ${fq.totalPanels} لوح (${(Number(fq.calcKW)||0).toFixed(1)} KW) · انفرتر ${escapeHtml(String(fq.invBrandName||''))} ${fq.invKW} KW</div>` : ''}
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn small" id="qdPrintBtn" ${fq?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>🖨️ طباعة بشكل العميل</button>
@@ -3711,7 +3725,7 @@ function renderQuotesTab(){
       ].filter(Boolean).join(' ');
       const kindTxt = kind === 'cart'
         ? `سلة منتجات (${(sn.items||[]).length} صنف)`
-        : `${escapeHtml(String(q.hp||sn.hp||'-'))} حصان`;
+        : (qpSysType(q) ? qpSysLabel(qpSysType(q)) : `${escapeHtml(String(q.hp||sn.hp||'-'))} حصان`);
       return `<tr data-qid="${q.id}" style="cursor:pointer;">
         <td>${fmtDate(q.created_at)}</td>
         <td dir="ltr" style="font-weight:700;">${escapeHtml(sn.refCode||('#'+q.id))}</td>

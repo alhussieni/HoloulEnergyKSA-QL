@@ -648,7 +648,7 @@ function validateCartClient(){
   return true;
 }
 async function saveCartQuote(){
-  const asRep = !!(repUsername && repTokenMem);
+  const asRep = !!(repUsername && (repTokenMem || embedAdminToken));
   if(!asRep && !guestMode) return null;
   const sig = cartQuoteSig();
   // نفس العرض بالظبط (نفس البنود/الشكل/العميل) ما بيتحفظش مرتين — نرجّع الرمز المرجعي اللي اتحفظ
@@ -689,12 +689,11 @@ async function saveCartQuote(){
   logLead({name:cartClientName, phone:cartClientPhone, hp:null, total:Math.round(total), date:new Date().toISOString()});
   let res = null;
   try{
-    res = await callEngine('save-quote', asRep
-      ? { token: repTokenMem, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot }
-      : { guest: true, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot });
+    res = await postSaveQuote({ clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot });
   }catch(e){ res = null; }
   if(res && res.ok){
     cartSavedInfo = { sig, ref: res.refCode || null };
+    notifyParentQuoteSaved(res, cartClientPhone);
     if(res.refCode) cartRevisionParent = { ref: res.refCode, phone: phoneT, explicit: false, sig };
     refreshCartRefLines();
     if(asRep) cartLookupPrev();
@@ -740,7 +739,7 @@ function cartFindCatalogPos(name, category){
   return null;
 }
 async function loadCartExtras(silent){
-  const auth = repTokenMem ? { token: repTokenMem } : (adminTokenMem ? { adminToken: adminTokenMem } : null);
+  const auth = repTokenMem ? { token: repTokenMem } : (adminTokenMem ? { adminToken: adminTokenMem } : (embedAdminToken ? { adminToken: embedAdminToken } : null));
   if(!auth) return;
   if(!silent){ cartExtrasLoading = true; cartExtrasError = ''; }
   try{

@@ -1453,6 +1453,9 @@ function applyCrmNewQuoteHandoff(){
   state.client = h.name || '';
   state.clientPhone = h.phone || '';
   embedLockPhone = !!h.phone;
+  // نوع العرض المطلوب: ضخ (افتراضي) | أوف-جريد | أون-جريد | سلة منتجات
+  if(h.kind === 'offgrid' || h.kind === 'ongrid'){ state.calcSystem = h.kind; currentView = 'calc'; }
+  else if(h.kind === 'cart'){ currentView = 'products'; cartClientName = h.name || ''; cartClientPhone = h.phone || ''; }
   if(h.role === 'admin' && h.token){
     embedAdminToken = h.token;
     repUsername = 'admin'; repTokenMem = null; repDisplayName = 'الأدمن'; repAuthed = true;
@@ -1464,7 +1467,7 @@ function applyCrmNewQuoteHandoff(){
     if(/[?&]embed=1/.test(location.search)) document.documentElement.classList.add('embed-mode');
     const lock = ()=>{
       if(!embedLockPhone) return;
-      ['in_phone','og_phone','ng_phone'].forEach(id=>{
+      ['in_phone','og_phone','ng_phone','cartQuoteClientPhone'].forEach(id=>{
         const el = document.getElementById(id);
         if(el){ el.readOnly = true; el.title = 'رقم العميل مقفول — العرض بيتربط بالعميل برقمه'; el.style.background = '#f1f3f5'; }
       });
