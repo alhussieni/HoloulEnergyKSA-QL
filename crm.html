@@ -1268,6 +1268,117 @@ async function newQuoteForCustomer(c, opportunities){
   loadKind('calc');
 }
 
+/* ===== التكاليف والهامش الفعلي + مقارنة بأسعار اليوم (للأدمن فقط) =====
+   البيانات من compute-quote (action: admin-quote-financials): نسخة وقت العرض لو محفوظة + إعادة حساب بأسعار وتكاليف اليوم. */
+async function openQuoteFinancials(q, c){
+  if(!SESSION || SESSION.role !== 'admin'){ toast('الصفحة دي للأدمن فقط'); return; }
+  const old = document.getElementById('quoteFinOverlay'); if(old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'quoteFinOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,30,.6);z-index:10060;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px;';
+  ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:24px;font-family:Cairo,sans-serif;direction:rtl;">بيحسب التكاليف والهامش...</div>';
+  document.body.appendChild(ov);
+  ov.addEventListener('click', (e)=>{ if(e.target === ov) ov.remove(); });
+  let d;
+  try{
+    const res = await fetch(ENGINE_FN, { method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPABASE_ANON_KEY,'apikey':SUPABASE_ANON_KEY},
+      body: JSON.stringify({ action:'admin-quote-financials', adminToken: SESSION.token, quoteId: q.id }) });
+    d = await res.json();
+    if(!res.ok || d.error) throw new Error(d.error || ('HTTP '+res.status));
+  }catch(err){
+    ov.firstElementChild.innerHTML = '<b>تعذر تحميل التكاليف:</b> '+escapeHtml(err.message)+'<div style="margin-top:8px;font-size:12.5px;color:#555;">لو الرسالة unknown action: لازم تنشر نسخة compute-quote الجديدة على Supabase.</div><button class="btn small" style="margin-top:12px" id="qfClose">إغلاق</button>';
+    ov.querySelector('#qfClose').addEventListener('click', ()=>ov.remove());
+    return;
+  }
+  const sn = q.snapshot || {}, fq = sn.frozenQuote;
+  const frozen = d.frozen, cur = d.current;
+  // "وقت العرض": النسخة المحفوظة بالتكاليف لو موجودة، وإلا الأسعار المحفوظة في العرض (من غير تكلفة)
+  let then = frozen, thenIsFull = !!frozen;
+  const num0 = v => (v == null || isNaN(v)) ? null : Number(v);
+  if(!then){
+    if(sn.type === 'product-cart' && Array.isArray(sn.items)){
+      then = { items: sn.items.map(it=>({ key:'p:'+it.name, label:it.name, qty:it.qty, sell:(Number(it.price)||0)*(Number(it.qty)||0), costBasis:null, net:null, margin:null })),
+        totalCost:null, finalTotal:Number(q.final_total)||Number(sn.total)||0, netAfterManual:Number(sn.subtotal)||null, profit:null, profitPct:null };
+    }else if(fq && Array.isArray(fq.items)){
+      then = { items: fq.items.filter(it=>it.on).map(it=>({ key:it.key, label:it.label, qty:it.qty, sell:it.sell, costBasis:null, net:null, margin:null })),
+        totalCost:null, sellTotal:num0(fq.sellTotal), discountTotal:num0(fq.discountTotal), manualDiscountAmt:num0(fq.manualDiscountAmt), vat:num0(fq.vat), finalTotal:Number(fq.finalTotal)||Number(q.final_total)||0, netAfterManual:Number(fq.netAfterManual)||null, profit:null, profitPct:null };
+    }
+  }
+  const num = v => (v == null || isNaN(v)) ? null : Number(v);
+  const m = v => v == null ? '<span style="color:#aaa">—</span>' : qpFmt(v);
+  const pct = (profit, base) => (profit == null || !base) ? '—' : (profit/base*100).toFixed(1)+'%';
+  const qtyTxt = v => escapeHtml(String(v == null ? '' : v).replace(/#/g,''));
+  const rowsMap = new Map();
+  const keyOf = it => it.key || it.label;
+  (then ? then.items : []).forEach(it=>rowsMap.set(keyOf(it), { label: it.label, qty: it.qty, t: it, n: null }));
+  (cur ? cur.items : []).forEach(it=>{ const k = keyOf(it); const r = rowsMap.get(k); if(r) r.n = it; else rowsMap.set(k, { label: it.label, qty: it.qty, t: null, n: it }); });
+  const rows = Array.from(rowsMap.values());
+  const th = 'text-align:right;padding:6px 7px;border-bottom:2px solid #123;font-size:11.5px;white-space:nowrap;';
+  const td = 'padding:6px 7px;border-bottom:1px solid #e6e6e6;font-size:12.5px;';
+  const bodyRows = rows.map((r,i)=>{
+    const tSell = r.t ? num(r.t.sell) : null, nSell = r.n ? num(r.n.sell) : null;
+    const diff = (tSell != null && nSell != null) ? nSell - tSell : null;
+    const diffTxt = diff == null ? (r.t ? '<span style="color:#B0432C">غير موجود اليوم</span>' : '<span style="color:#155E85">بند جديد</span>')
+      : (Math.abs(diff) < 1 ? '<span style="color:#0b6b3a">ثابت</span>' : `<span style="color:${diff>0?'#B0432C':'#0b6b3a'};font-weight:700;">${diff>0?'+':''}${qpFmt(diff)}</span>`);
+    const tm = r.t && r.t.margin != null ? pct(r.t.margin, r.t.net || r.t.sell) : '—';
+    const nm = r.n && r.n.margin != null ? pct(r.n.margin, r.n.net || r.n.sell) : '—';
+    return `<tr><td style="${td}">${i+1}</td><td style="${td}font-weight:600;">${escapeHtml(r.label||'')}</td><td style="${td}">${qtyTxt(r.qty)}</td>
+      <td style="${td}background:#fafbfc;">${m(r.t ? num(r.t.costBasis) : null)}</td><td style="${td}background:#fafbfc;">${m(tSell)}</td><td style="${td}background:#fafbfc;">${tm}</td>
+      <td style="${td}">${m(r.n ? num(r.n.costBasis) : null)}</td><td style="${td}">${m(nSell)}</td><td style="${td}">${nm}</td><td style="${td}">${diffTxt}</td></tr>`;
+  }).join('');
+  const tf = then ? num(then.finalTotal) : num(q.final_total), nf = cur ? num(cur.finalTotal) : null;
+  const fdiff = (tf != null && nf != null) ? nf - tf : null;
+  const created = new Date(q.created_at), expires = new Date(created.getTime() + 3*24*3600*1000);
+  const daysOver = Math.floor((Date.now() - expires.getTime())/86400000);
+  const expTxt = Date.now() > expires.getTime() ? `⏰ انتهت صلاحية العرض (٣ أيام) من ${daysOver<=0?'أقل من يوم':daysOver+' يوم'}` : `✅ العرض لسه ساري لحد ${qpDateGB(expires)}`;
+  let verdict, vColor;
+  if(!cur){ verdict = 'تعذر إعادة حساب العرض بأسعار اليوم (مواصفات العرض غير محفوظة بالكامل).'; vColor = '#8a5a00'; }
+  else if(fdiff == null){ verdict = 'مفيش إجمالي محفوظ للمقارنة.'; vColor = '#8a5a00'; }
+  else if(Math.abs(fdiff) < 1){ verdict = '✅ الأسعار لم تتغير — الإجمالي بأسعار اليوم نفس إجمالي العرض. تقدر تكمل مع العميل بنفس السعر.'; vColor = '#0b6b3a'; }
+  else if(fdiff > 0){ verdict = `⚠️ الأسعار ارتفعت — الإجمالي بأسعار اليوم أعلى بـ ${qpFmt(fdiff)} ﷼ (${(fdiff/tf*100).toFixed(1)}%). السعر القديم هيقلّل هامشك: قرّر تكمل بالسعر القديم أو تعيد التسعير.`; vColor = '#B0432C'; }
+  else { verdict = `ℹ️ الأسعار انخفضت — الإجمالي بأسعار اليوم أقل بـ ${qpFmt(-fdiff)} ﷼ (${(-fdiff/tf*100).toFixed(1)}%). ممكن تعيد التسعير لو عايز تنافس.`; vColor = '#155E85'; }
+  const costNow = cur ? num(cur.totalCost) : null, costThen = then ? num(then.totalCost) : null;
+  let costNote = '';
+  if(thenIsFull && costNow != null && costThen != null && Math.abs(costNow - costThen) >= 1)
+    costNote = `<div style="margin-top:6px;font-size:12.5px;">تكلفة العرض اتغيرت من ${qpFmt(costThen)} إلى ${qpFmt(costNow)} ﷼ (${costNow>costThen?'+':''}${qpFmt(costNow-costThen)}).</div>`;
+  const box = (title, o, full) => `<div style="flex:1;min-width:240px;border:1px solid #dde3e8;border-radius:10px;padding:10px 12px;${full?'':'background:#fafbfc;'}">
+      <div style="font-weight:800;margin-bottom:6px;">${title}</div>
+      ${!o ? '<div style="color:#8a5a00;font-size:12.5px;">غير متاح</div>' : `
+      <div style="display:flex;justify-content:space-between;font-size:13px;"><span>إجمالي التكلفة</span><b>${m(num(o.totalCost))} ﷼</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;"><span>البيع قبل الخصم</span><b>${m(num(o.sellTotal))} ﷼</b></div>
+      ${num(o.discountTotal) ? `<div style="display:flex;justify-content:space-between;font-size:13px;"><span>خصم المستويات</span><b>- ${qpFmt(o.discountTotal)} ﷼</b></div>` : ''}
+      ${num(o.manualDiscountAmt) ? `<div style="display:flex;justify-content:space-between;font-size:13px;"><span>خصم خاص</span><b>- ${qpFmt(o.manualDiscountAmt)} ﷼</b></div>` : ''}
+      <div style="display:flex;justify-content:space-between;font-size:13px;"><span>الصافي قبل الضريبة</span><b>${m(num(o.netAfterManual))} ﷼</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;"><span>الضريبة</span><b>${m(num(o.vat))} ﷼</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;border-top:1px solid #dde3e8;margin-top:4px;padding-top:4px;"><span>الإجمالي بعد الضريبة</span><b>${m(num(o.finalTotal))} ﷼</b></div>
+      <div style="display:flex;justify-content:space-between;font-size:14px;margin-top:6px;color:#0b6b3a;"><span>الربح</span><b>${m(num(o.profit))} ﷼ ${o.profit!=null?'('+(num(o.profitPct)||0).toFixed(1)+'%)':''}</b></div>`}
+    </div>`;
+  ov.firstElementChild.style.cssText = 'background:#fff;border-radius:14px;max-width:1100px;width:100%;padding:18px 20px;font-family:Cairo,sans-serif;direction:rtl;';
+  ov.firstElementChild.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+      <div><div style="font-size:18px;font-weight:800;">💰 التكاليف والهامش — ${escapeHtml(sn.refCode||('#'+q.id))}</div>
+        <div style="font-size:12.5px;color:#555;margin-top:3px;">${escapeHtml(c&&c.name||'')} · ${escapeHtml(c&&c.phone||'')} · قُدِّم في ${qpDateGB(q.created_at)} · ${escapeHtml(q.rep_display_name||'')}</div>
+        <div style="font-size:12.5px;margin-top:3px;">${expTxt}</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        ${qpEditable(q) ? '<button type="button" class="btn small" id="qfReprice" title="يفتح الحاسبة بالعرض محمّل بأسعار اليوم لإعادة التسعير">🔄 إعادة التسعير في الحاسبة</button>' : ''}
+        <button type="button" class="btn ghost small" id="qfClose">✖ إغلاق</button>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:${vColor}14;border:1px solid ${vColor}55;color:${vColor};font-weight:700;font-size:13.5px;line-height:1.8;">${verdict}${costNote}</div>
+    ${thenIsFull ? '' : '<div style="margin-top:8px;padding:8px 12px;border-radius:8px;background:#FFF6E0;border:1px solid #F0D58C;font-size:12.5px;line-height:1.8;">التكاليف وقت التسعير غير محفوظة لهذا العرض (اتقدّم قبل تفعيل حفظ التكاليف) — الأسعار اللي اتقدمت للعميل متاحة للمقارنة، والتكلفة والهامش المعروضة هي <b>بأسعار اليوم فقط</b>.</div>'}
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">${box(thenIsFull?'📌 وقت العرض (محفوظ)':'📌 وقت العرض (الأسعار المقدَّمة فقط)', then, thenIsFull)}${box('🔄 بأسعار وتكاليف اليوم (نفس المواصفات)', cur, true)}</div>
+    <div style="overflow:auto;margin-top:12px;"><table style="width:100%;border-collapse:collapse;min-width:760px;">
+      <thead><tr><th style="${th}" rowspan="2">#</th><th style="${th}" rowspan="2">البند</th><th style="${th}" rowspan="2">الكمية</th>
+        <th style="${th}text-align:center;background:#fafbfc;" colspan="3">وقت العرض</th><th style="${th}text-align:center;" colspan="3">اليوم</th><th style="${th}" rowspan="2">فرق البيع</th></tr>
+        <tr><th style="${th}background:#fafbfc;">التكلفة</th><th style="${th}background:#fafbfc;">البيع</th><th style="${th}background:#fafbfc;">هامش</th><th style="${th}">التكلفة</th><th style="${th}">البيع</th><th style="${th}">هامش</th></tr></thead>
+      <tbody>${bodyRows || '<tr><td colspan="10" style="padding:14px;text-align:center;color:#888;">مفيش بنود</td></tr>'}</tbody></table></div>
+    <div style="font-size:11.5px;color:#777;margin-top:10px;line-height:1.8;">الهامش = (سعر البيع بعد خصم المستويات − التكلفة) ÷ سعر البيع بعد الخصم. الخصم الخاص بيتخصم من الإجمالي مش من البنود، فهو ظاهر في الملخّص فوق ومحسوب في الربح.${cur && cur.note ? '<br>'+escapeHtml(cur.note) : ''}</div>`;
+  ov.querySelector('#qfClose').addEventListener('click', ()=>ov.remove());
+  const rb = ov.querySelector('#qfReprice');
+  if(rb) rb.addEventListener('click', ()=>{ ov.remove(); editQuoteInCalculator(q, c); });
+}
+
 function openQuoteDetail(q, c, all){
   const fq = qpFrozen(q);
   const frozenItems = q.snapshot && Array.isArray(q.snapshot.frozenItems) ? q.snapshot.frozenItems : null;
@@ -1352,6 +1463,7 @@ function openQuoteDetail(q, c, all){
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn small" id="qdPrintBtn" ${fq?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>🖨️ طباعة بشكل العميل</button>
           <button type="button" class="btn small" id="qdEditBtn" title="يفتح الحاسبة بالعرض ده محمّل، وأي طباعة بعد التعديل بتتحفظ كمراجعة جديدة (R1, R2...)" ${qpEditable(q)?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>✏️ تعديل (مراجعة جديدة)</button>
+          ${SESSION && SESSION.role === 'admin' ? '<button type="button" class="btn small" id="qdFinBtn" style="background:#0b6b3a;">💰 التكاليف والهامش</button>' : ''}
           ${c && c.id && c.phone ? '<button type="button" class="btn small" id="qdNewBtn">➕ عرض جديد لنفس العميل</button>' : ''}
           <button type="button" class="btn ghost small" id="qdCloseBtn">✖ إغلاق</button>
         </div>
@@ -1375,6 +1487,7 @@ function openQuoteDetail(q, c, all){
   ov.querySelectorAll('.qdRev').forEach(b=>b.addEventListener('click', ()=>{ const x = (all||[]).find(y=>String(y.id)===b.dataset.qid); if(x) openQuoteDetail(x, c, all); }));
   const pb = ov.querySelector('#qdPrintBtn');
   if(fq) pb.addEventListener('click', ()=>printCustomerQuote(q, c));
+  const fb = ov.querySelector('#qdFinBtn'); if(fb) fb.addEventListener('click', ()=>openQuoteFinancials(q, c));
   const nb = ov.querySelector('#qdNewBtn'); if(nb) nb.addEventListener('click', ()=>{ ov.remove(); newQuoteForCustomer(c, null); });
   const eb = ov.querySelector('#qdEditBtn');
   if(qpEditable(q)) eb.addEventListener('click', ()=>editQuoteInCalculator(q, c));

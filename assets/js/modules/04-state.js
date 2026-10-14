@@ -194,7 +194,6 @@ async function saveSystemQuote(kind){
   const notes = cleanNotes();
   const key = JSON.stringify([kind, Math.round(q.finalTotal), state.client, state.clientPhone, q.items.map(it=>[it.key||it.label, it.qty, it.on!==false]), notes]);
   if(savedSystemQuoteInfo && savedSystemQuoteInfo.key === key) return savedSystemQuoteInfo;
-  const sysInputs = kind === 'offgrid' ? state.offgrid : state.ongrid;
   const items = q.items.map(it=>({ key: it.key, label: it.label, on: it.on !== false, sell: it.sell == null ? null : it.sell, type: it.type, qty: it.qty, warranty: it.warranty }));
   const snapshot = {
     type: kind,
@@ -207,7 +206,7 @@ async function saveSystemQuote(kind){
       supplyOnlyTotal: q.supplyOnlyTotal, supplyPlusInstallTotal: q.supplyPlusInstallTotal,
       hp: null, panelLabel: '', invKW: q.invKW, invBrandName: q.invBrandName, totalPanels: q.totalPanels, calcKW: q.calcKW
     },
-    inputs: JSON.parse(JSON.stringify(sysInputs || {}))
+    engineInput: JSON.parse(JSON.stringify(kind === 'offgrid' ? buildOffgridInput() : buildOngridInput()))
   };
   if(Object.keys(notes).length) snapshot.itemNotes = notes;
   logLead({ name: state.client, phone: state.clientPhone, hp: null, total: Math.round(q.finalTotal), date: new Date().toISOString() });
