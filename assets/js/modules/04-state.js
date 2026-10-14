@@ -153,36 +153,68 @@ async function saveLead(q){
   // نفس العرض بالظبط (نفس البيانات) ما بيتحفظش مرتين — بنرجّع الرمز المرجعي اللي اتحفظ
   const key = currentQuoteKey(q);
   if(savedQuoteInfo && savedQuoteInfo.key === key) return savedQuoteInfo;
-  let res = null;
-  try{
-    if(typeof embedAdminToken !== 'undefined' && embedAdminToken){
-      // أدمن فاتح الحاسبة من الـ CRM: لو السيرفر لسه ما يعرفش adminToken في save-quote نرجع لحفظ كـ guest
-      try{
-        res = await callEngine('save-quote', { adminToken: embedAdminToken, clientName: state.client, clientPhone: state.clientPhone, hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot });
-      }catch(e){ res = null; }
-      if(!(res && res.ok)){
-        try{ res = await callEngine('save-quote', { guest: true, clientName: state.client, clientPhone: state.clientPhone, hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot }); }catch(e){ res = null; }
-      }
-    } else if(repUsername && repTokenMem){
-      res = await callEngine('save-quote', {
-        token: repTokenMem,
-        clientName: state.client, clientPhone: state.clientPhone,
-        hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot
-      });
-    } else if(guestMode){
-      res = await callEngine('save-quote', {
-        guest: true,
-        clientName: state.client, clientPhone: state.clientPhone,
-        hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot
-      });
-    }
-  }catch(e){ res = null; }
+  const res = await postSaveQuote({ clientName: state.client, clientPhone: state.clientPhone, hp: state.hp, finalTotal: Math.round(q.finalTotal), snapshot });
   if(res && res.ok){
     savedQuoteInfo = { key, ref: res.refCode || null, ql: res.qlCode || null };
-    try{ if(window.parent && window.parent !== window) window.parent.postMessage({ type:'holoul-quote-saved', ref: res.refCode || null, ql: res.qlCode || null, phone: state.clientPhone }, location.origin); }catch(e){}
+    notifyParentQuoteSaved(res, state.clientPhone);
     if(res.refCode) revisionParent = { ref: res.refCode, phone: phoneTail(state.clientPhone), hp: state.hp, explicit: false };
     refreshQlLines(q);
     return savedQuoteInfo;
+  }
+  return null;
+}
+
+/* حفظ عرض على السيرفر بحسب اللي فاتح: أدمن (من الـ CRM) / مندوب / عميل مباشر.
+   body: clientName, clientPhone, hp, finalTotal, snapshot */
+async function postSaveQuote(body){
+  try{
+    if(typeof embedAdminToken !== 'undefined' && embedAdminToken){
+      // أدمن فاتح الحاسبة من الـ CRM: لو السيرفر لسه ما يعرفش adminToken في save-quote نرجع لحفظ كـ guest
+      let res = null;
+      try{ res = await callEngine('save-quote', { adminToken: embedAdminToken, ...body }); }catch(e){ res = null; }
+      if(!(res && res.ok)){
+        try{ res = await callEngine('save-quote', { guest: true, ...body }); }catch(e){ res = null; }
+      }
+      return res;
+    }
+    if(repUsername && repTokenMem) return await callEngine('save-quote', { token: repTokenMem, ...body });
+    if(guestMode) return await callEngine('save-quote', { guest: true, ...body });
+  }catch(e){}
+  return null;
+}
+function notifyParentQuoteSaved(res, phone){
+  try{ if(window.parent && window.parent !== window) window.parent.postMessage({ type:'holoul-quote-saved', ref: (res && res.refCode) || null, ql: (res && res.qlCode) || null, phone: phone || '' }, location.origin); }catch(e){}
+}
+/* حفظ عرض أوف-جريد / أون-جريد (قبل كده الطباعة كانت بتحفظ عرض ضخ بالغلط) */
+let savedSystemQuoteInfo = null;
+function systemQuoteOf(kind){ return kind === 'offgrid' ? cachedOffgridQuote : (kind === 'ongrid' ? cachedOngridQuote : null); }
+async function saveSystemQuote(kind){
+  const q = systemQuoteOf(kind);
+  if(!q || !Array.isArray(q.items)) return null;
+  const notes = cleanNotes();
+  const key = JSON.stringify([kind, Math.round(q.finalTotal), state.client, state.clientPhone, q.items.map(it=>[it.key||it.label, it.qty, it.on!==false]), notes]);
+  if(savedSystemQuoteInfo && savedSystemQuoteInfo.key === key) return savedSystemQuoteInfo;
+  const items = q.items.map(it=>({ key: it.key, label: it.label, on: it.on !== false, sell: it.sell == null ? null : it.sell, type: it.type, qty: it.qty, warranty: it.warranty }));
+  const snapshot = {
+    type: kind,
+    frozenAt: new Date().toISOString(),
+    frozenTotal: q.finalTotal,
+    frozenItems: items.filter(it=>it.on).map(it=>({ label: it.label, sell: it.sell, qty: it.qty })),
+    frozenQuote: {
+      items, sellTotal: q.sellTotal, discountTotal: q.discountTotal, manualDiscountAmt: q.manualDiscountAmt,
+      netAfterManual: q.netAfterManual, vat: q.vat, finalTotal: q.finalTotal,
+      supplyOnlyTotal: q.supplyOnlyTotal, supplyPlusInstallTotal: q.supplyPlusInstallTotal,
+      hp: null, panelLabel: '', invKW: q.invKW, invBrandName: q.invBrandName, totalPanels: q.totalPanels, calcKW: q.calcKW
+    },
+    engineInput: JSON.parse(JSON.stringify(kind === 'offgrid' ? buildOffgridInput() : buildOngridInput()))
+  };
+  if(Object.keys(notes).length) snapshot.itemNotes = notes;
+  logLead({ name: state.client, phone: state.clientPhone, hp: null, total: Math.round(q.finalTotal), date: new Date().toISOString() });
+  const res = await postSaveQuote({ clientName: state.client, clientPhone: state.clientPhone, hp: null, finalTotal: Math.round(q.finalTotal), snapshot });
+  if(res && res.ok){
+    savedSystemQuoteInfo = { key, ref: res.refCode || null };
+    notifyParentQuoteSaved(res, state.clientPhone);
+    return savedSystemQuoteInfo;
   }
   return null;
 }
@@ -297,11 +329,13 @@ function validateClient(){
 }
 async function handlePrint(){
   if(!validateClient()) return;
-  const q = currentQuote();
+  const sys = (currentView === 'calc' && (state.calcSystem === 'offgrid' || state.calcSystem === 'ongrid')) ? state.calcSystem : null;
+  const q = sys ? systemQuoteOf(sys) : currentQuote();
+  if(!q){ alert('العرض لسه بيتحسب — جرّب بعد ثانية'); return; }
   // ننتظر الحفظ (بحد أقصى 3 ثواني) علشان الرمز المرجعي يظهر على العرض المطبوع
-  await Promise.race([saveLead(q), new Promise(r=>setTimeout(()=>r(null), 3000))]);
+  await Promise.race([sys ? saveSystemQuote(sys) : saveLead(q), new Promise(r=>setTimeout(()=>r(null), 3000))]);
   const originalTitle = document.title;
-  document.title = qlFileBase(q).replace(/[\/\\?%*:|"<>]/g,'-');
+  document.title = (sys ? ('عرض-سعر-'+(sys==='offgrid'?'اوف-جريد':'اون-جريد')+'-'+(state.client||state.clientPhone)) : qlFileBase(q)).replace(/[\/\\?%*:|"<>]/g,'-');
   window.print();
   setTimeout(()=>{ document.title = originalTitle; }, 1000);
 }

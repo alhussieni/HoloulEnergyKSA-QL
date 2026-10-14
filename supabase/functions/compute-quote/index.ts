@@ -303,6 +303,76 @@ function adminView(q: any) {
   return { ...q, totalCost, profit, profitPct };
 }
 
+
+/* ===== التكاليف والهامش الفعلي لكل عرض (للأدمن فقط) =====
+   بنحفظ نسخة "وقت العرض" في جدول quote_financials (RLS مقفول، مفيش وصول غير من الـ Edge Function)،
+   وبنعيد حساب نفس العرض بأسعار وتكاليف اليوم علشان الأدمن يقارن ويقرر يكمل ولا يعيد التسعير. */
+function financialsFromQuote(kind: string, q: any) {
+  const a = adminView(q);
+  const items = q.items.filter((it: any) => it.on).map((it: any) => {
+    const net = it.net != null ? it.net : it.sell;
+    return { key: it.key, label: it.label, qty: it.qty, costBasis: it.costBasis, sell: it.sell, discount: it.discount || 0, net, margin: net - it.costBasis };
+  });
+  return {
+    kind, capturedAt: new Date().toISOString(), items,
+    totalCost: a.totalCost, sellTotal: q.sellTotal, discountTotal: q.discountTotal, manualDiscountAmt: q.manualDiscountAmt,
+    netAfterManual: q.netAfterManual, vat: q.vat, finalTotal: q.finalTotal, profit: a.profit, profitPct: a.profitPct,
+  };
+}
+function cartFinancials(D: any, snap: any) {
+  const items: any[] = [];
+  let totalCost = 0, itemsSell = 0, unknownCost = 0;
+  for (const it of (snap.items || [])) {
+    const qty = Number(it.qty) || 0;
+    const cat = (D.productCatalog || []).find((c: any) => c.category === it.category);
+    let idx = -1;
+    if (cat) idx = (cat.rows || []).findIndex((r: any) => r[0] === it.name);
+    // سعر الكتالوج الحالي بعد البرومو (نفس منطق get-product-catalog) وتكلفته من خصم المورد
+    let curPrice: number | null = null, unitCost: number | null = null;
+    if (cat && idx >= 0) {
+      const r = cat.rows[idx];
+      const brand = rowBrand(cat, idx);
+      let list = parseFloat(r[r.length - 2]);
+      const d = findDiscount(D, cat.category, brand);
+      if (isFinite(list)) {
+        if (d && d.promoActive && d.promoDiscountPct) list = list * (1 - (Number(d.promoDiscountPct) || 0) / 100);
+        curPrice = list;
+        unitCost = resolveCatalogPricing(D, cat.category, brand, parseFloat(r[r.length - 2]), 0).costBasis;
+      }
+    }
+    const sell = (Number(it.price) || 0) * qty;
+    itemsSell += sell;
+    const cost = unitCost != null ? unitCost * qty : null;
+    if (cost != null) totalCost += cost; else unknownCost++;
+    items.push({ key: "p:" + it.name, label: it.name, qty, unitSell: Number(it.price) || 0, curUnitSell: curPrice, costBasis: cost, sell, net: sell, margin: cost != null ? sell - cost : null });
+  }
+  const extras = (snap.extras || []).reduce((a: number, l: any) => a + (Number(l.amount) || 0), 0);
+  return {
+    kind: "product-cart", capturedAt: new Date().toISOString(), items,
+    totalCost, sellTotal: itemsSell, extrasTotal: extras, discountTotal: 0, manualDiscountAmt: Number(snap.specialDiscountAmt) || 0,
+    netAfterManual: Number(snap.subtotal) || 0, vat: Number(snap.vat) || 0, finalTotal: Number(snap.total) || 0,
+    profit: itemsSell - totalCost, profitPct: itemsSell ? ((itemsSell - totalCost) / itemsSell) * 100 : 0,
+    unknownCostItems: unknownCost,
+    note: "هامش البنود محسوب على أصناف السلة فقط؛ التركيب والنقل (الإضافات) غير مُدرجة في التكلفة.",
+  };
+}
+function computeFinancialsFromSnapshot(D: any, snap: any): any | null {
+  if (!snap) return null;
+  try {
+    if (snap.type === "product-cart") return cartFinancials(D, snap);
+    if (snap.type === "offgrid" || snap.type === "ongrid") {
+      if (!snap.engineInput) return null;
+      const inp = resolveOffgridOngridInput(D, snap.engineInput);
+      return financialsFromQuote(snap.type, snap.type === "offgrid" ? computeOffgridQuote(D, inp) : computeOngridQuote(D, inp));
+    }
+    if (snap.hp != null && snap.panelIdx != null) {
+      const inp = resolveInput(D, { ...snap, discountTierIdx: snap.discountOverrideIdx ?? undefined });
+      return financialsFromQuote("pump", computeQuote(D, inp));
+    }
+  } catch (_e) { /* fail-open */ }
+  return null;
+}
+
 function resolveInput(D: any, rawInput: any) {
   const panel = D.panels[rawInput.panelIdx];
   if (!panel) throw new Error("invalid panelIdx");
@@ -1302,9 +1372,33 @@ Deno.serve(async (req: Request) => {
       final_total: body.finalTotal || null,
       snapshot: snapshotToSave,
       customer_id: customerId,
-    }).select("ref_code, ql_code").single();
+    }).select("id, ref_code, ql_code").single();
     if (error) return json({ error: error.message }, 500);
+    // نسخة التكاليف والهامش وقت العرض (للأدمن فقط) — ما بتعطّلش الحفظ لو فشلت
+    try {
+      const fin = computeFinancialsFromSnapshot(D, snapshotToSave);
+      if (fin && saved?.id) {
+        const { error: fe } = await supabase.from("quote_financials").insert({ quote_id: saved.id, financials: fin });
+        if (fe) console.error("quote_financials insert:", fe.message);
+      }
+    } catch (e) { console.error("quote_financials:", (e as Error).message); }
     return json({ ok: true, refCode: saved?.ref_code || null, qlCode: saved?.ql_code || null });
+  }
+
+  if (body.action === "admin-quote-financials") {
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
+    if (!body.quoteId) return json({ error: "quoteId required" }, 400);
+    const { data: qrow, error: qe } = await supabase.from("quotes")
+      .select("id, ref_code, created_at, final_total, hp, snapshot, client_name, client_phone, rep_display_name")
+      .eq("id", body.quoteId).single();
+    if (qe || !qrow) return json({ error: "quote not found" }, 404);
+    let frozen: any = null;
+    try {
+      const { data: fr } = await supabase.from("quote_financials").select("financials, captured_at").eq("quote_id", body.quoteId).maybeSingle();
+      if (fr) frozen = fr.financials;
+    } catch (_e) { /* الجدول لسه ما اتعملش */ }
+    const current = computeFinancialsFromSnapshot(D, qrow.snapshot);
+    return json({ quote: { id: qrow.id, ref: qrow.ref_code, createdAt: qrow.created_at, finalTotal: qrow.final_total, type: qrow.snapshot?.type || "pump" }, frozen, current });
   }
 
   if (body.action === "admin-list-customers") {
