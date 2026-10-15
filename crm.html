@@ -627,6 +627,18 @@ body.printing-cert #certPrintArea{display:block!important;}
     </section>
 
     <section id="view-invoices" class="view">
+      <div class="card" id="invReportCard" style="display:none;margin-bottom:12px;">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px;">
+          <b style="font-size:14px;">📊 حصر الفواتير (الإقرار الضريبي)</b>
+          <select id="invRepYear" style="width:auto;"></select>
+          <span id="invRepQBtns" style="display:flex;gap:4px;flex-wrap:wrap;"></span>
+          <input type="date" id="invRepFrom" style="width:auto;"><span>→</span><input type="date" id="invRepTo" style="width:auto;">
+          <button class="btn" id="invRepGo" type="button">عرض</button>
+          <button class="btn" id="invRepXlsx" type="button">⬇️ Excel</button>
+          <button class="btn" id="invRepPdf" type="button">🖨️ PDF</button>
+        </div>
+        <div id="invRepBody"><div class="loadingNote">بيحمّل...</div></div>
+      </div>
       <div class="filterBar">
         <input type="text" id="invoiceSearchInput" placeholder="دور برقم الفاتورة أو اسم العميل أو رقم الجوال...">
         <button class="btn" id="newInvoiceBtn" type="button">+ فاتورة جديدة</button>
@@ -703,6 +715,7 @@ body.printing-cert #certPrintArea{display:block!important;}
 <div id="invoicePrintArea"></div>
 <div id="certPrintArea"></div>
 
+<script src="assets/js/invoices-report.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js" onerror="window.__qrLibFailed=true;"></script>
 
 <script>
@@ -717,7 +730,7 @@ const WARRANTY_ACTIONS = new Set(['crm-warranty-config','crm-warranty-list','crm
 const PIPELINE_FN = SUPABASE_URL + '/functions/v1/crm-pipeline'; // pipeline board/table/alerts/bulk (server-side)
 const QUOTES_FN = SUPABASE_URL + '/functions/v1/crm-quotes'; // كل العروض (حتى غير المربوطة بعميل)
 const QUOTES_ACTIONS = new Set(['admin-crm-list-quotes']);
-const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live','crm-list-customer-quotations','seller-info']);
+const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live','crm-list-customer-quotations','crm-invoices-report','seller-info']);
 
 let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[],
   customerTypes:[], classifications:[], regions:[], energySources:[], contactMethods:[], decisionPowerLevels:[],
@@ -909,7 +922,7 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='warranty') loadWarranty();
   if(tab==='projects') loadProjects();
   if(tab==='maintenance') loadMaintenance();
-  if(tab==='invoices') loadInvoices();
+  if(tab==='invoices'){ loadInvoices(); loadInvReport(); }
   if(tab==='settings') loadSettingsScreen();
   if(tab==='audit') loadAuditLog();
   if(tab==='segments') loadSegments();
@@ -5578,6 +5591,75 @@ function previewInvoice(inv){
   if(inv.approval_status !== 'approved') toast('👁️ معاينة فقط — الفاتورة دي لسه بانتظار الاعتماد ومينفعش تتطبع للعميل.');
   else if(!inv.qr_base64) toast('👁️ معاينة فقط — الفاتورة دي مفيهاش QR ومينفعش تتطبع.');
   openInvoiceViewer(inv, false);
+}
+
+
+// ===== حصر الفواتير (لوحة الإقرار الضريبي) — admin فقط =====
+let INV_REP = {model:null, rows:[]};
+function invRepInit(){
+  if(invRepInit.done) return; invRepInit.done=true;
+  const R=window.InvReport, now=R.quarterOf(R.riyadhDate());
+  const ys=document.getElementById('invRepYear');
+  for(let y=now.year;y>=now.year-4;y--) ys.insertAdjacentHTML('beforeend',`<option value="${y}">${y}</option>`);
+  document.getElementById('invRepQBtns').innerHTML=[1,2,3,4].map(q=>`<button class="btn ghost" type="button" data-q="${q}">${R.Q_NAMES[q-1]}</button>`).join('')+`<button class="btn ghost" type="button" data-q="0">السنة كاملة</button>`;
+  const setQ=(q)=>{ const y=+ys.value, r=q? R.quarterRange(y,q):{from:y+'-01-01',to:y+'-12-31'};
+    document.getElementById('invRepFrom').value=r.from; document.getElementById('invRepTo').value=r.to; loadInvReport(); };
+  document.getElementById('invRepQBtns').addEventListener('click',e=>{const b=e.target.closest('button[data-q]'); if(b) setQ(+b.dataset.q);});
+  ys.addEventListener('change',()=>{ const f=document.getElementById('invRepFrom').value; const q=f?R.quarterOf(f).q:now.q; setQ(q); });
+  document.getElementById('invRepGo').addEventListener('click',loadInvReport);
+  document.getElementById('invRepXlsx').addEventListener('click',exportInvReportXlsx);
+  document.getElementById('invRepPdf').addEventListener('click',exportInvReportPdf);
+  const r=R.quarterRange(now.year,now.q);
+  document.getElementById('invRepFrom').value=r.from; document.getElementById('invRepTo').value=r.to;
+}
+function loadInvReport(){
+  const card=document.getElementById('invReportCard'); if(!card) return;
+  if(SESSION.role!=='admin'){ card.style.display='none'; return; }
+  card.style.display='';
+  invRepInit();
+  const from=document.getElementById('invRepFrom').value, to=document.getElementById('invRepTo').value;
+  const body=document.getElementById('invRepBody');
+  if(!window.InvReport.validPeriod(from,to)){ body.innerHTML='<div class="loadingNote">اختار فترة صحيحة (من ≤ إلى).</div>'; return; }
+  body.innerHTML='<div class="loadingNote">بيحمّل...</div>';
+  crmApi('crm-invoices-report',{from,to}).then(rep=>{
+    if(rep && rep.seller && typeof applySeller==='function'){ try{applySeller(rep.seller);}catch(_){} }
+    const m=window.InvReport.buildModel({report:rep,seller:rep.seller||SELLER,payLabels:PAY_METHOD_LABELS});
+    m.payLabelOf=k=>PAY_METHOD_LABELS[k]||k;
+    INV_REP={model:m,rows:rep.invoices||[]}; renderInvReport();
+  }).catch(e=>{ body.innerHTML='<div class="loadingNote">تعذّر تحميل التقرير: '+escapeHtml(e&&e.message||'')+'</div>'; });
+}
+function renderInvReport(){
+  const m=INV_REP.model, s=m.summary, body=document.getElementById('invRepBody'), M=window.InvReport.money;
+  const kpi=(v,l,sub,cls)=>`<div class="stat ${cls||''}"><div class="v">${v}</div><div class="l">${l}</div>${sub?`<div class="s">${sub}</div>`:''}</div>`;
+  let h='';
+  if(m.trial) h+='<div style="margin-bottom:8px;padding:8px 12px;border:1px dashed #c0392b;background:#FDECEA;border-radius:10px;font-size:12.5px;">⚠️ النظام في الوضع التجريبي — الفواتير دي تجريبية ومش للإقرار الضريبي الفعلي.</div>';
+  h+='<div class="kpiGrid">'+
+    kpi(s.invoices.count,'فواتير صادرة',`مبسطة ${s.simplified.count} · ضريبية ${s.standard.count}`)+
+    kpi(M(s.invoices.subtotal),'قبل الضريبة (﷼)')+kpi(M(s.invoices.vat),'ضريبة القيمة المضافة (﷼)')+kpi(M(s.invoices.total),'الإجمالي شامل (﷼)','','sun')+
+    kpi(s.credits.count,'إشعارات دائنة',M(s.credits.total)+' ﷼',s.credits.count?'bad':'')+
+    kpi(M(s.net.vat),'صافي الضريبة (﷼)')+kpi(M(s.net.total),'الصافي شامل (﷼)','','sun')+'</div>';
+  if(m.pendingCount) h+=`<div style="margin:8px 0;font-size:12.5px;color:#a66a00;">⏳ ${m.pendingCount} فاتورة بانتظار الاعتماد — غير محسوبة في الأرقام.</div>`;
+  if(m.gaps.length) h+=`<div style="margin:6px 0;font-size:12px;color:var(--muted);">ℹ️ أرقام ICV غير ظاهرة في الفترة: ${m.gaps.join('، ')}</div>`;
+  h+='<div style="overflow:auto;margin-top:8px;"><table class="admtable"><thead><tr><th>#</th><th>رقم المستند</th><th>التاريخ</th><th>النوع</th><th>العميل</th><th>الرقم الضريبي</th><th>قبل الضريبة</th><th>الضريبة</th><th>الإجمالي</th><th></th></tr></thead><tbody>'+
+    (m.rows.map((r,i)=>`<tr style="${r.credit?'color:#b00020;':''}"><td>${r.no}</td><td dir="ltr">${escapeHtml(r.number)}</td><td dir="ltr">${escapeHtml(r.date)}</td><td>${escapeHtml(r.typeLabel)}${r.statusLabel==='ملغاة بإشعار دائن'?'<div class="muted" style="font-size:11px">ملغاة بإشعار دائن</div>':''}</td><td>${escapeHtml(r.customer)||'—'}</td><td dir="ltr">${escapeHtml(r.customerVat)||'—'}</td><td>${M(r.subtotal)}</td><td>${M(r.vat)}</td><td><b>${M(r.total)}</b></td><td><button class="btn ghost" type="button" data-invrep="${i}">👁️ عرض</button></td></tr>`).join('')||'<tr><td colspan="10" style="text-align:center;padding:14px">لا توجد مستندات صادرة في الفترة دي</td></tr>')+
+    `</tbody><tfoot><tr style="font-weight:800;"><td colspan="6">الصافي بعد الإشعارات الدائنة</td><td>${M(s.net.subtotal)}</td><td>${M(s.net.vat)}</td><td>${M(s.net.total)}</td><td></td></tr></tfoot></table></div>`;
+  body.innerHTML=h;
+  body.querySelectorAll('button[data-invrep]').forEach(b=>b.addEventListener('click',()=>previewInvoice(INV_REP.rows[+b.dataset.invrep])));
+}
+function invRepFile(ext){ const m=INV_REP.model; return `invoices-${m.from}_to_${m.to}.${ext}`; }
+function exportInvReportXlsx(){
+  if(!INV_REP.model) return toast('اعرض التقرير الأول.');
+  const bytes=window.InvReport.buildReportWorkbook(INV_REP.model);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  a.download=invRepFile('xlsx'); document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+function exportInvReportPdf(){
+  if(!INV_REP.model) return toast('اعرض التقرير الأول.');
+  const w=window.open('','_blank'); if(!w) return toast('المتصفح منع النافذة — اسمح بالـ popups.');
+  w.document.open(); w.document.write(window.InvReport.reportHtml(INV_REP.model)); w.document.close();
+  w.focus(); setTimeout(()=>{ try{w.print();}catch(_){} },400);
 }
 
 
