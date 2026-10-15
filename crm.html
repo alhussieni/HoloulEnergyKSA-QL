@@ -922,7 +922,7 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='warranty') loadWarranty();
   if(tab==='projects') loadProjects();
   if(tab==='maintenance') loadMaintenance();
-  if(tab==='invoices'){ loadInvoices(); loadInvReport(); }
+  if(tab==='invoices'){ if(SESSION.role==='admin') loadInvReport(); else loadInvoices(); }
   if(tab==='settings') loadSettingsScreen();
   if(tab==='audit') loadAuditLog();
   if(tab==='segments') loadSegments();
@@ -5066,10 +5066,13 @@ async function loadInvoices(){
     const search = document.getElementById('invoiceSearchInput').value.trim();
     const d = await crmApi('crm-list-pos-invoices', {search});
     const isAdmin = SESSION.role === 'admin';
+    // الأدمن: الجدول بيتفلتر بالفترة المختارة في لوحة الحصر
+    const per = isAdmin ? window.__invPeriod : null;
+    if(per && window.InvReport){ d.invoices = (d.invoices||[]).filter(x=>{ const dt=window.InvReport.docDate(x); return dt>=per.from && dt<=per.to; }); }
     window.__invList = d.invoices;
     window.__einvoiceTrial = !!d.trialMode;
     renderTrialBanner(isAdmin);
-    if(!d.invoices.length){ wrap.innerHTML = '<div class="loadingNote">مفيش فواتير لسه</div>'; return; }
+    if(!d.invoices.length){ wrap.innerHTML = `<div class="loadingNote">${per?'مفيش فواتير في الفترة دي':'مفيش فواتير لسه'}</div>`; return; }
     wrap.innerHTML = `<table class="admtable"><thead><tr>
       <th>رقم الفاتورة</th><th>العميل</th><th>الهاتف</th><th>الإجمالي</th><th>طريقة السداد</th><th>المندوب</th><th>الحالة</th><th>التاريخ</th><th></th>
       </tr></thead><tbody>
@@ -5620,6 +5623,7 @@ function loadInvReport(){
   const from=document.getElementById('invRepFrom').value, to=document.getElementById('invRepTo').value;
   const body=document.getElementById('invRepBody');
   if(!window.InvReport.validPeriod(from,to)){ body.innerHTML='<div class="loadingNote">اختار فترة صحيحة (من ≤ إلى).</div>'; return; }
+  window.__invPeriod={from,to}; loadInvoices();
   body.innerHTML='<div class="loadingNote">بيحمّل...</div>';
   crmApi('crm-invoices-report',{from,to}).then(rep=>{
     if(rep && rep.seller && typeof applySeller==='function'){ try{applySeller(rep.seller);}catch(_){} }
@@ -5640,11 +5644,7 @@ function renderInvReport(){
     kpi(M(s.net.vat),'صافي الضريبة (﷼)')+kpi(M(s.net.total),'الصافي شامل (﷼)','','sun')+'</div>';
   if(m.pendingCount) h+=`<div style="margin:8px 0;font-size:12.5px;color:#a66a00;">⏳ ${m.pendingCount} فاتورة بانتظار الاعتماد — غير محسوبة في الأرقام.</div>`;
   if(m.gaps.length) h+=`<div style="margin:6px 0;font-size:12px;color:var(--muted);">ℹ️ أرقام ICV غير ظاهرة في الفترة: ${m.gaps.join('، ')}</div>`;
-  h+='<div style="overflow:auto;margin-top:8px;"><table class="admtable"><thead><tr><th>#</th><th>رقم المستند</th><th>التاريخ</th><th>النوع</th><th>العميل</th><th>الرقم الضريبي</th><th>قبل الضريبة</th><th>الضريبة</th><th>الإجمالي</th><th></th></tr></thead><tbody>'+
-    (m.rows.map((r,i)=>`<tr style="${r.credit?'color:#b00020;':''}"><td>${r.no}</td><td dir="ltr">${escapeHtml(r.number)}</td><td dir="ltr">${escapeHtml(r.date)}</td><td>${escapeHtml(r.typeLabel)}${r.statusLabel==='ملغاة بإشعار دائن'?'<div class="muted" style="font-size:11px">ملغاة بإشعار دائن</div>':''}</td><td>${escapeHtml(r.customer)||'—'}</td><td dir="ltr">${escapeHtml(r.customerVat)||'—'}</td><td>${M(r.subtotal)}</td><td>${M(r.vat)}</td><td><b>${M(r.total)}</b></td><td><button class="btn ghost" type="button" data-invrep="${i}">👁️ عرض</button></td></tr>`).join('')||'<tr><td colspan="10" style="text-align:center;padding:14px">لا توجد مستندات صادرة في الفترة دي</td></tr>')+
-    `</tbody><tfoot><tr style="font-weight:800;"><td colspan="6">الصافي بعد الإشعارات الدائنة</td><td>${M(s.net.subtotal)}</td><td>${M(s.net.vat)}</td><td>${M(s.net.total)}</td><td></td></tr></tfoot></table></div>`;
   body.innerHTML=h;
-  body.querySelectorAll('button[data-invrep]').forEach(b=>b.addEventListener('click',()=>previewInvoice(INV_REP.rows[+b.dataset.invrep])));
 }
 function invRepFile(ext){ const m=INV_REP.model; return `invoices-${m.from}_to_${m.to}.${ext}`; }
 function exportInvReportXlsx(){
