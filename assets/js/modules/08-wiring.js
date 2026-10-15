@@ -1442,7 +1442,7 @@ function scheduleRefreshOngrid(delay = 220){
    الـ CRM بيكتب مفتاح مؤقت (دقيقتين) فيه اسم/جوال العميل + جلسة اللي فاتح (أدمن أو مندوب).
    الجوال بيتقفل لأن ربط العرض بالعميل بيتم بالجوال. */
 const CRM_NEWQUOTE_KEY = 'holoul_crm_newquote_v1';
-let embedLockPhone = false, embedAdminToken = null;
+let embedLockPhone = false, embedLockName = false, embedAdminToken = null;
 function applyCrmNewQuoteHandoff(){
   let h = null;
   try{
@@ -1453,6 +1453,7 @@ function applyCrmNewQuoteHandoff(){
   state.client = h.name || '';
   state.clientPhone = h.phone || '';
   embedLockPhone = !!h.phone;
+  embedLockName = h.kind === 'cart' && !!h.name;
   if(h.role === 'admin' && h.token){
     embedAdminToken = h.token;
     repUsername = 'admin'; repTokenMem = null; repDisplayName = 'الأدمن'; repAuthed = true;
@@ -1464,10 +1465,15 @@ function applyCrmNewQuoteHandoff(){
     if(/[?&]embed=1/.test(location.search)) document.documentElement.classList.add('embed-mode');
     const lock = ()=>{
       if(!embedLockPhone) return;
-      ['in_phone','og_phone','ng_phone'].forEach(id=>{
+      ['in_phone','og_phone','ng_phone','cartQuoteClientPhone'].forEach(id=>{
         const el = document.getElementById(id);
         if(el){ el.readOnly = true; el.title = 'رقم العميل مقفول — العرض بيتربط بالعميل برقمه'; el.style.background = '#f1f3f5'; }
       });
+      // اسم العميل في عرض السلة: مقفول لو جاي من الـ CRM (الحفظ بيحدّث اسم العميل في القاعدة)
+      if(embedLockName){
+        const nm = document.getElementById('cartQuoteClientName');
+        if(nm){ nm.readOnly = true; nm.title = 'اسم العميل مقفول — جاي من الـ CRM'; nm.style.background = '#f1f3f5'; }
+      }
     };
     const w0 = wire; wire = function(){ w0(); lock(); };
   }catch(e){}
