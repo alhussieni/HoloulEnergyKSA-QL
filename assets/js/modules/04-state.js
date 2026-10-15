@@ -103,11 +103,11 @@ document.addEventListener('input', e=>{
 });
 function inputSig(o){
   const notes = (o === state) ? cleanNotes() : (o && o.itemNotes) || {};
-  return JSON.stringify([o.hp, o.panelIdx, o.structureType || 'FIXED', o.toggles || {}, o.specialDiscountAmt || 0, o.discountOverrideIdx == null ? null : o.discountOverrideIdx, notes]);
+  return JSON.stringify([o.hp, o.panelIdx, o.structureType || 'FIXED', o.toggles || {}, o.specialDiscountAmt || 0, o.discountOverrideIdx == null ? null : o.discountOverrideIdx, notes, o.panelsPerStringAdjust || 0, o.stringsAdjust || 0, o.inverterPowerIncrease || 0]);
 }
 function phoneTail(v){ return String(v||'').replace(/\D/g,'').slice(-9); }
 function currentQuoteKey(q){
-  return JSON.stringify([state.hp, state.panelIdx, state.structureType, state.toggles, state.specialDiscountAmt, state.discountOverrideIdx, state.client, state.clientPhone, Math.round(q.finalTotal), cleanNotes()]);
+  return JSON.stringify([state.hp, state.panelIdx, state.structureType, state.toggles, state.specialDiscountAmt, state.discountOverrideIdx, state.client, state.clientPhone, Math.round(q.finalTotal), cleanNotes(), state.panelsPerStringAdjust || 0, state.stringsAdjust || 0, state.inverterPowerIncrease || 0]);
 }
 function qlDisplay(q){
   if(savedQuoteInfo && savedQuoteInfo.key === currentQuoteKey(q)){
@@ -139,7 +139,11 @@ async function saveLead(q){
   const snapshot = {
     hp: state.hp, panelIdx: state.panelIdx,
     structureType: state.structureType, toggles: {...state.toggles}, specialDiscountAmt: state.specialDiscountAmt,
-    discountOverrideIdx: state.discountOverrideIdx
+    discountOverrideIdx: state.discountOverrideIdx,
+    // تعديلات الاسترنج/الانفرتر بتأثر على السعر — لازم تتحفظ عشان إعادة الحساب والتعديل من الـ CRM يطلعوا نفس السعر
+    panelsPerStringAdjust: state.panelsPerStringAdjust || 0,
+    stringsAdjust: state.stringsAdjust || 0,
+    inverterPowerIncrease: state.inverterPowerIncrease || 0
   };
   { const n = cleanNotes(); if(Object.keys(n).length) snapshot.itemNotes = n; }
   if(revisionParent && revisionParent.phone === phoneTail(state.clientPhone) && (revisionParent.explicit || revisionParent.hp === state.hp)){
@@ -278,6 +282,9 @@ function loadPrevLead(lead){
   state.structureType = s.structureType || 'FIXED';
   state.toggles = {...s.toggles};
   state.specialDiscountAmt = s.specialDiscountAmt || 0;
+  state.panelsPerStringAdjust = s.panelsPerStringAdjust || 0;
+  state.stringsAdjust = s.stringsAdjust || 0;
+  state.inverterPowerIncrease = s.inverterPowerIncrease || 0;
   setQuoteNotes(s.itemNotes);
   if(discountUnlocked) state.discountOverrideIdx = s.discountOverrideIdx ?? null;
   refresh();
@@ -300,6 +307,9 @@ function applyCrmEditHandoff(){
   state.structureType = s.structureType || 'FIXED';
   state.toggles = {...s.toggles};
   state.specialDiscountAmt = s.specialDiscountAmt || 0;
+  state.panelsPerStringAdjust = s.panelsPerStringAdjust || 0;
+  state.stringsAdjust = s.stringsAdjust || 0;
+  state.inverterPowerIncrease = s.inverterPowerIncrease || 0;
   setQuoteNotes(s.itemNotes);
   if(typeof discountUnlocked !== 'undefined' && discountUnlocked) state.discountOverrideIdx = s.discountOverrideIdx ?? null;
   revisionParent = h.refCode ? { ref: h.refCode, phone: phoneTail(state.clientPhone), hp: s.hp, explicit: true, sig: inputSig(s), ql: h.qlCode || null, total: (h.total != null ? Math.round(Number(h.total)) : null) } : null;

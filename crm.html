@@ -1202,7 +1202,11 @@ function editQuoteInCalculator(q, c){
     snapshot: {
       hp: s.hp, panelIdx: s.panelIdx, structureType: s.structureType || 'FIXED',
       toggles: s.toggles, specialDiscountAmt: s.specialDiscountAmt || 0,
-      discountOverrideIdx: s.discountOverrideIdx == null ? null : s.discountOverrideIdx
+      discountOverrideIdx: s.discountOverrideIdx == null ? null : s.discountOverrideIdx,
+      panelsPerStringAdjust: s.panelsPerStringAdjust || 0,
+      stringsAdjust: s.stringsAdjust || 0,
+      inverterPowerIncrease: s.inverterPowerIncrease || 0,
+      itemNotes: s.itemNotes || undefined
     }
   };
   try{ localStorage.setItem(CRM_EDIT_HANDOFF_KEY, JSON.stringify(payload)); }

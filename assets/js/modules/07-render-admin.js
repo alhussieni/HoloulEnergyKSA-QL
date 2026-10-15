@@ -649,7 +649,8 @@ function validateCartClient(){
 }
 async function saveCartQuote(){
   const asRep = !!(repUsername && repTokenMem);
-  if(!asRep && !guestMode) return null;
+  const asEmbedAdmin = (typeof embedAdminToken !== 'undefined' && !!embedAdminToken);
+  if(!asRep && !asEmbedAdmin && !guestMode) return null;
   const sig = cartQuoteSig();
   // نفس العرض بالظبط (نفس البنود/الشكل/العميل) ما بيتحفظش مرتين — نرجّع الرمز المرجعي اللي اتحفظ
   if(cartSavedInfo && cartSavedInfo.sig === sig) return cartSavedInfo;
@@ -691,6 +692,8 @@ async function saveCartQuote(){
   try{
     res = await callEngine('save-quote', asRep
       ? { token: repTokenMem, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot }
+      : asEmbedAdmin
+      ? { adminToken: embedAdminToken, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot }
       : { guest: true, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot });
   }catch(e){ res = null; }
   if(res && res.ok){

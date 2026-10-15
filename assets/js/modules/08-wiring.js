@@ -1471,6 +1471,14 @@ function applyCrmNewQuoteHandoff(){
     };
     const w0 = wire; wire = function(){ w0(); lock(); };
   }catch(e){}
+  // سلة منتجات: افتح قائمة المنتجات (مش حاسبة الضخ) وجهّز بيانات العميل لصفحة عرض السلة
+  if(h.kind === 'cart'){
+    cartClientName = h.name || '';
+    cartClientPhone = h.phone || '';
+    productsNav = 'categories';
+    currentView = 'products';
+    document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === 'products'));
+  }
   showRepBadge();
   return true;
 }

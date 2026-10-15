@@ -1360,6 +1360,12 @@ Deno.serve(async (req: Request) => {
             totalPanels: qF.totalPanels, calcKW: qF.calcKW, hp: inpF.hp,
           },
         };
+        // حماية: لو إجمالي المتصفح مختلف عن إعادة الحساب من الـ snapshot، نعلّم العرض (بدون ما نمنع الحفظ)
+        const sent = Math.round(Number(body.finalTotal) || 0);
+        if (sent && Math.abs(sent - Math.round(qF.finalTotal)) > 1) {
+          snapshotToSave.priceMismatch = { browserTotal: sent, serverTotal: Math.round(qF.finalTotal) };
+          console.warn("save-quote price mismatch", sent, Math.round(qF.finalTotal));
+        }
       }
     } catch (_e) { /* keep the original snapshot */ }
 
