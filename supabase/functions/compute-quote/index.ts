@@ -124,7 +124,7 @@ function computeQuote(D: any, inp: any) {
   // is registered for that (category, brand) in الخصومات. reactorMarkupPct
   // stays only as the fallback markup if no discount row is registered yet.
   const reactorRow = findExactCatalogRow(D, "الريأكتور", `VEICHI Reactor ${reactorModel}A`);
-  const reactorPricing = resolveCatalogPricing(D, reactorRow.category, reactorRow.brand, reactorRow.listPrice, D.reactorMarkupPct || 0);
+  const reactorPricing = resolveCatalogPricing(D, reactorRow.category, reactorRow.brand, reactorRow.listPrice, D.reactorMarkupPct || 0, reactorRow.model);
   const reactorPrice = reactorRow.listPrice;
   const cbSize = pickLadder(D.cbLadder, IscCalc);
   const combiner = inp.combinerOverride || pickCombiner(arrays, D.combinerBoxes, D.combinerHeadroom, D.combinerMinSpareStrings);
@@ -397,10 +397,14 @@ function findDiscount(D: any, category: string, brand: string) {
 }
 function resolveCatalogPricing(
   D: any, category: string, brand: string, listPrice: number, fallbackMarkupPct: number,
+  itemName?: string,
 ): { costBasis: number; sell: number } {
   const d = findDiscount(D, category, brand);
   if (d) {
-    const supplierPct = Number(d.supplierDiscountPct) || 0;
+    // Product-level importer discount (products.supplier_discount_pct, keyed by catalog_name) wins over
+    // the (category, brand) supplierDiscountPct. Internal only; loaded per request, never serialized.
+    const itemPct = itemName != null && D.__supplierOverrides ? D.__supplierOverrides[itemName] : undefined;
+    const supplierPct = itemPct != null ? itemPct : (Number(d.supplierDiscountPct) || 0);
     const sellPct = Number(d.sellDiscountPct) || 0;
     return {
       costBasis: listPrice * (1 - supplierPct / 100),
@@ -1069,6 +1073,13 @@ Deno.serve(async (req: Request) => {
     .from("pricing_config").select("data").eq("id", 1).single();
   if (cfgErr || !cfgRow) return json({ error: "pricing config not found" }, 500);
   const D = cfgRow.data;
+  {
+    const { data: ovRows } = await supabase.from("products")
+      .select("catalog_name, supplier_discount_pct").not("supplier_discount_pct", "is", null).not("catalog_name", "is", null);
+    const overrides: Record<string, number> = {};
+    for (const r of ovRows || []) overrides[r.catalog_name] = Number(r.supplier_discount_pct);
+    Object.defineProperty(D, "__supplierOverrides", { value: overrides, enumerable: false, configurable: true });
+  }
 
   // Internal, server-to-server ONLY (never reachable from a browser): lets
   // invoice-api turn a customer's raw calculator quote back into real,
