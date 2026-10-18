@@ -2226,6 +2226,11 @@ ${(function(){
   <div class="card">
     <h3>منظومات أوف-جريد جاهزة <span class="tag">مراجعة كاملة + تغيير المعدات من قائمة المنتجات</span></h3>
     <div class="note">لكل منظومة: عدّل الاسم/السعر/الحالة، وغيّر موديل الإنفرتر أو البطارية من نفس قائمة المنتجات الحقيقية، واضغط "🔄 إعادة حساب السعر" لتحديث السعر بناءً على أسعار الكتالوج الحالية وهوامش الربح في إعدادات الأوف-جريد بالأعلى. السعر المحسوب هو توريد خامات فقط (بدون تركيب أو شاسيه).</div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
+      <button class="btn" id="readysys-refresh-all">🔄 إعادة تسعير كل الباقات (حسب اللوح الافتراضي)</button>
+      <span class="note">اللوح الافتراضي الحالي: <b>${(()=>{ const dp = (adminConfig.panels||[]).find(p=>`${p.brand}|${p.power}`===adminConfig.defaultPanelKey); return dp ? `${dp.brand} ${dp.power}W` : 'غير محدد'; })()}</b> — القدرة الكلية للباقة تُحفظ ويُقرَّب عدد الألواح لأعلى.</span>
+    </div>
+    <div id="readysys-refresh-preview" style="margin-top:10px"></div>
     ${adminConfig.readyOffgridSystems.map((s,i)=>{
       const invOptions = getReadyInverterModelOptions(adminConfig);
       const batOptions = getReadyBatteryModelOptions(adminConfig);

@@ -812,11 +812,18 @@ function wire(){
         try{
           const res = await callEngine('recompute-ready-system-price', {
             adminToken: adminTokenMem,
-            input: { panelCount: sys.panelCount, inverterModel: sys.inverterModel, batteryModel: sys.batteryModel, batteryCount: sys.batteryCount },
+            input: { panelCount: sys.panelCount, panelIdx: readyDefaultPanelIdx() >= 0 ? readyDefaultPanelIdx() : undefined, inverterModel: sys.inverterModel, batteryModel: sys.batteryModel, batteryCount: sys.batteryCount },
           });
           if(res.error){ if(noteEl) noteEl.textContent = 'خطأ: '+res.error; }
           else{
             sys.priceSar = res.priceSar;
+            const dpIdx = readyDefaultPanelIdx();
+            if(dpIdx >= 0){
+              const dp = adminConfig.panels[dpIdx];
+              sys.panelBrand = dp.brand; sys.panelPowerW = +dp.power;
+              sys.designPowerW = (+sys.panelCount||0) * (+dp.power);
+              sys.pricedAt = new Date().toISOString();
+            }
             const priceInput = document.querySelector(`input[data-readysys="${i}"][data-rf="priceSar"]`);
             if(priceInput) priceInput.value = res.priceSar;
             if(noteEl) noteEl.textContent = `تم — السعر الجديد ${fmt(res.priceSar)} ﷼ (لسه لازم تضغط "حفظ التعديلات" عشان يتفعّل)`;
@@ -825,6 +832,101 @@ function wire(){
         btn.disabled = false;
       };
     });
+
+    function readyDefaultPanelIdx(){
+      return (adminConfig.panels||[]).findIndex(p=>`${p.brand}|${p.power}`===adminConfig.defaultPanelKey);
+    }
+    function readyModelAvailability(catIncludes, model){
+      if(!model) return 'ok';
+      const cat = (adminConfig.productCatalog||[]).find(c=>(c.category||'').includes(catIncludes));
+      if(!cat) return 'missing';
+      const idx = cat.rows.findIndex(r=>r[0]===model);
+      if(idx < 0) return 'missing';
+      const d = cat.productDetails && cat.productDetails[String(idx)];
+      return (d && d.available === false) ? 'unavailable' : 'ok';
+    }
+    function escHtml(x){ return String(x==null?'':x).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    const refreshAllBtn = document.getElementById('readysys-refresh-all');
+    if(refreshAllBtn){
+      refreshAllBtn.onclick = async ()=>{
+        harvestAdminInputs();
+        const box = document.getElementById('readysys-refresh-preview');
+        const panelIdx = readyDefaultPanelIdx();
+        if(panelIdx < 0){ box.innerHTML = '<div class="note">حدد اللوح الافتراضي أولًا من جدول الألواح (الأسعار والهوامش).</div>'; return; }
+        const panel = adminConfig.panels[panelIdx];
+        const panelKey = adminConfig.defaultPanelKey;
+        refreshAllBtn.disabled = true;
+        box.innerHTML = '<div class="note">جارِ إعادة التسعير بنفس محرك الحاسبة...</div>';
+        const disc = (adminConfig.discounts||[]).find(x=>x.category==='الألواح الشمسية' && x.brand===panel.brand);
+        const costPerW = (+panel.priceW||0) * (1 - ((disc && Number(disc.supplierDiscountPct)) || 0)/100);
+        const rows = [];
+        for(const [i, s] of adminConfig.readyOffgridSystems.entries()){
+          const designW = Number(s.designPowerW) || ((+s.panelCount||0) * (+s.panelPowerW||0));
+          const newCount = Math.max(1, Math.ceil(designW / Number(panel.power)));
+          const newW = newCount * Number(panel.power);
+          const row = { i, name:s.name, oldPrice:+s.priceSar||0, oldCount:+s.panelCount||0, oldW:(+s.panelCount||0)*(+s.panelPowerW||0),
+                        newCount, newW, designW, warnings:[], error:null, newPrice:null };
+          const powerDeltaPct = designW > 0 ? Math.round((newW - designW) / designW * 1000) / 10 : 0;
+          if(panel.visible === false) row.warnings.push('اللوح الافتراضي مخفي');
+          if(powerDeltaPct > 10) row.warnings.push('القدرة تزيد '+powerDeltaPct+'% عن التصميم — راجع عدد الألواح');
+          const invA = readyModelAvailability('انفرتر', s.inverterModel);
+          const batA = readyModelAvailability('بطاريات ليثيوم', s.batteryModel);
+          if(invA === 'missing') row.error = 'الإنفرتر "'+s.inverterModel+'" غير موجود في الكتالوج';
+          if(batA === 'missing') row.error = 'البطارية "'+s.batteryModel+'" غير موجودة في الكتالوج';
+          if(invA === 'unavailable') row.warnings.push('الإنفرتر معلّم غير متاح في الكتالوج');
+          if(batA === 'unavailable') row.warnings.push('البطارية معلّمة غير متاحة في الكتالوج');
+          if(!row.error){
+            try{
+              const res = await callEngine('recompute-ready-system-price', {
+                adminToken: adminTokenMem,
+                input: { panelCount:newCount, panelIdx, inverterModel:s.inverterModel||null, batteryModel:s.batteryModel, batteryCount:s.batteryCount },
+              });
+              if(res.error){ row.error = res.error; }
+              else{
+                row.newPrice = res.priceSar;
+                // Guard: make sure the server really priced the SELECTED panel (not its own offgrid default).
+                const expectedCost = Math.round(newCount * Number(panel.power) * costPerW);
+                if(!res.breakdown || typeof res.breakdown.panelCost !== 'number' || Math.abs(res.breakdown.panelCost - expectedCost) > 1){
+                  row.error = 'تعذر التحقق من أن الخادم سعّر اللوح المختار (تكلفة الألواح '+(res.breakdown ? res.breakdown.panelCost : 'غير متاحة')+' بدل '+expectedCost+') — لن يُطبَّق';
+                  row.newPrice = null;
+                }
+              }
+            }catch(e){ row.error = 'تعذر الاتصال بالخادم'; }
+          }
+          rows.push(row);
+        }
+        refreshAllBtn.disabled = false;
+        const okRows = rows.filter(r=>!r.error && r.newPrice!=null);
+        const trs = rows.map(r=>{
+          const delta = r.newPrice!=null ? r.newPrice - r.oldPrice : null;
+          const note = (r.error ? '<span style="color:#b00020">'+escHtml(r.error)+'</span>' : '') + (r.warnings.length ? '<br><span style="color:#8a5a00">'+r.warnings.map(escHtml).join('<br>')+'</span>' : '');
+          return '<tr><td>'+escHtml(r.name)+'</td>'
+            +'<td class="num">'+r.oldCount+' → '+r.newCount+'</td>'
+            +'<td class="num">'+fmt(r.oldW)+' → '+fmt(r.newW)+' W</td>'
+            +'<td class="num">'+fmt(r.oldPrice)+'</td>'
+            +'<td class="num">'+(r.newPrice!=null?fmt(r.newPrice):'-')+'</td>'
+            +'<td class="num" style="color:'+(delta>0?'#b00020':'#0a7a3d')+'">'+(delta!=null?(delta>0?'+':'')+fmt(delta):'-')+'</td>'
+            +'<td>'+note+'</td></tr>';
+        }).join('');
+        box.innerHTML = '<div style="overflow-x:auto"><table class="tbl" style="width:100%"><thead><tr><th>الباقة</th><th>عدد الألواح</th><th>القدرة</th><th>السعر الحالي ﷼</th><th>السعر الجديد ﷼</th><th>الفرق</th><th>ملاحظات</th></tr></thead><tbody>'+trs+'</tbody></table></div>'
+          +'<div class="note" style="margin-top:6px">اللوح: <b>'+escHtml(panel.brand)+' '+escHtml(panel.power)+'W</b> — '+okRows.length+' من '+rows.length+' باقة جاهزة للتطبيق. التطبيق هنا على النموذج فقط؛ لازم تضغط "💾 حفظ التعديلات" عشان يتفعّل.</div>'
+          +'<div style="display:flex;gap:10px;margin-top:8px"><button class="btn" id="readysys-refresh-apply" '+(okRows.length?'':'disabled')+'>✅ تطبيق على النموذج</button><button class="btn ghost" id="readysys-refresh-cancel">إلغاء</button></div>';
+        document.getElementById('readysys-refresh-cancel').onclick = ()=>{ box.innerHTML = ''; };
+        document.getElementById('readysys-refresh-apply').onclick = ()=>{
+          const stamp = new Date().toISOString();
+          okRows.forEach(r=>{
+            const s = adminConfig.readyOffgridSystems[r.i];
+            s.designPowerW = r.designW;
+            s.panelBrand = panel.brand; s.panelPowerW = +panel.power; s.panelCount = r.newCount;
+            s.priceSar = r.newPrice; s.pricedAt = stamp; s.pricedBasis = { panelKey };
+          });
+          render();
+          const b2 = document.getElementById('readysys-refresh-preview');
+          if(b2) b2.innerHTML = '<div class="note" style="color:#0a7a3d">تم تطبيق '+okRows.length+' باقة على النموذج — اضغط "💾 حفظ التعديلات" بالأسفل عشان تتفعّل.</div>';
+        };
+      };
+    }
 
     document.querySelectorAll('[data-deloga]').forEach(b=>b.onclick=()=>{
       harvestAdminInputs();
