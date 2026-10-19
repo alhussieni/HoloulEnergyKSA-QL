@@ -10,6 +10,9 @@
 // admin-save-company-profile, admin-upload-logo, crm-invoices-report (v11: period report for VAT returns, admin only).
 // (crm-approve-pos-invoice stays in crm-api — approval only flips approval flags.)
 //
+// v13: the calculator never saved the brand in the quote, so the brand/model is
+// now looked up from the pricing engine at invoice time (see fetchEngineSpecs).
+//
 // v12: invoice lines built from a calculator quote now carry the brand/model
 // (the quote item's `type`, e.g. "Jinko 645W") for panels, inverters and
 // batteries — previously only the generic label ("ألواح الطاقة الشمسية") was
@@ -329,6 +332,30 @@ function calcItemToInvoiceLine(it: any) {
   return calcLineToInvoiceLine(String(it.label || "بند"), it.qty, Number(it.sell), spec);
 }
 
+// v13: the calculator only freezes label/sell/qty per line (no brand), so the
+// brand/model is looked up from the pricing engine (public quote action) using
+// the quote's own saved inputs. ONLY the `key` and `type` text are used from the
+// result — prices always come from the frozen quote, so totals never change.
+async function fetchEngineSpecs(snap: any): Promise<Map<string, { key: string; type: string }>> {
+  const map = new Map<string, { key: string; type: string }>();
+  try {
+    const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/compute-quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+      body: JSON.stringify({ action: "quote", input: { ...snap, discountTierIdx: snap?.discountOverrideIdx ?? undefined } }),
+    });
+    const rd = await res.json();
+    for (const it of (rd?.quote?.items || [])) {
+      if (it && it.on && it.label) map.set(String(it.label), { key: String(it.key || ""), type: String(it.type || "") });
+    }
+  } catch { /* brand is optional — never block issuing an invoice over it */ }
+  return map;
+}
+function withSpec(it: any, specs: Map<string, { key: string; type: string }>) {
+  const e = specs.get(String(it.label));
+  return calcItemToInvoiceLine({ ...it, key: it.key ?? e?.key, type: it.type ?? e?.type });
+}
+
 // ---------------------------------------------------------------------
 // Product catalog + ready-made packages, sourced from pricing_config.
 // pricing_config also holds the full pricing ENGINE (margins, markups,
@@ -641,9 +668,10 @@ Deno.serve(async (req: Request) => {
           if (Array.isArray(snap.frozenItems) && snap.frozenItems.length) {
             // Line items frozen by compute-quote when the quote was SAVED — immune
             // to any catalog price change since then.
+            const specs = snap.frozenItems.some((it: any) => !it.type) ? await fetchEngineSpecs(snap) : new Map();
             itemized = snap.frozenItems
               .filter((it: any) => Number(it.sell) > 0)
-              .map((it: any) => calcItemToInvoiceLine(it));
+              .map((it: any) => withSpec(it, specs));
           } else {
             // Older quote (saved before items were frozen): rebuild by re-running
             // the SAME pricing engine on the saved inputs (hp/panel/toggles).
@@ -655,9 +683,10 @@ Deno.serve(async (req: Request) => {
               });
               const rd = await res.json();
               if (rd.error) throw new Error(rd.error);
+              const specs = await fetchEngineSpecs(snap);
               itemized = (rd.items || [])
                 .filter((it: any) => Number(it.sell) > 0)
-                .map((it: any) => calcItemToInvoiceLine(it));
+                .map((it: any) => withSpec(it, specs));
             } catch {
               itemized = null; // pricing engine couldn't reproduce this quote (e.g. a discontinued panel/catalog change) — fall back below
             }
