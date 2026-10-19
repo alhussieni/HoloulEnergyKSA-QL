@@ -5,8 +5,49 @@
 // session tokens issued by `compute-quote`. Kept as its own function so the
 // invoice rules can change without touching the live CRM function.
 // Actions handled here: crm-create-pos-invoice, crm-list-pos-invoices,
-// crm-create-credit-note, crm-delete-trial-invoice, crm-einvoice-go-live.
+// crm-create-credit-note, crm-delete-trial-invoice, crm-einvoice-go-live,
+// seller-info, company-public (no auth), admin-get-company-profile,
+// admin-save-company-profile, admin-upload-logo, crm-invoices-report (v11: period report for VAT returns, admin only).
 // (crm-approve-pos-invoice stays in crm-api — approval only flips approval flags.)
+//
+// v12: invoice lines built from a calculator quote now carry the brand/model
+// (the quote item's `type`, e.g. "Jinko 645W") for panels, inverters and
+// batteries — previously only the generic label ("ألواح الطاقة الشمسية") was
+// printed. The "أو ما يعادلها" (or equivalent) wording is stripped because an
+// invoice documents what was actually supplied.
+//
+// NUMBERING (v5): invoice numbers look like HEWDS-INV-202609-0001 and credit
+// notes HEWDS-CN-202609-0001 (monthly sequence, Asia/Riyadh). Alongside the
+// number every document gets a global, never-resetting ICV (invoice counter
+// value, Phase-2 ready) and a UUID. Number + ICV + INSERT happen atomically
+// inside the Postgres function issue_document(), so a failed insert can never
+// leave a gap in either sequence. (v10: the "HEWDS" prefix now comes from
+// company_profile.invoice_prefix.)
+//
+// SUPPLY DATE (v6): the issue date/time (issued_at, also in the QR) is always
+// the real moment of issuing and can never be back-dated. The actual sale /
+// delivery date is stored separately as supply_date (defaults to the issue
+// day, may be earlier, never later) — warranty starts from it.
+//
+// QUOTE TOTAL (v7): an invoice built from a saved calculator quote must land
+// on EXACTLY the total the customer was quoted. If the line items are HIGHER
+// than the quote, the gap is shown as a document discount. If LOWER, the line
+// prices are scaled up proportionally so the invoice total still equals the
+// quoted total.
+//
+// FROZEN ITEMS (v8): compute-quote now stores the priced line items inside the
+// quote snapshot (snapshot.frozenItems) at the moment the quote is saved, so
+// later catalog price changes no longer affect the invoice. Quotes saved before
+// that have no frozenItems and fall back to re-running the engine (v7 logic).
+//
+// COMPANY PROFILE — SINGLE SOURCE OF TRUTH (v10, white-label): the seller's
+// name, VAT number, CR numbers, national address, contacts, logo and invoice
+// prefix live in the `company_profile` table (one row per deployment) and are
+// edited by the admin from the control panel. The QR, the invoices, and
+// crm.html / the calculator all read them from here. Every invoice stores a
+// `seller_snapshot` at issue time so later profile changes never alter an
+// already-issued invoice. DEFAULT_SELLER below is only a fallback if the table
+// is empty/unreachable.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -139,19 +180,60 @@ async function logAudit(
 // stamp, no CSID onboarding, no clearance/reporting to Fatoora, and QR tags
 // 6-9 are not produced. That needs a separate ZATCA integration.
 // ---------------------------------------------------------------------
-// SELLER_NAME must equal the name registered with ZATCA (it is printed on the
-// invoice AND encoded in QR tag 1). Legal trade name since 18/04/2026 per the
-// Ministry of Commerce letter no. 553833. The VAT certificate dated 22/12/2025
-// still shows the OLD name — update the ZATCA registration, then re-check this.
-const SELLER_NAME = "مؤسسة حلول الطاقة المتجددة والمقاولات";
-const SELLER_VAT_NUMBER = "311386341200003";
-const SELLER_CR_NUMBER = "7037810988";          // الرقم الوطني الموحد (as shown on the VAT certificate)
-const SELLER_COMMERCIAL_REG = "1010970687";     // رقم السجل التجاري
-const SELLER_NATIONAL_ADDRESS = "RDMC8001"; // short national address code
-// Source: National Address proof no. 1077132936 (SPL). NOTE: the ZATCA VAT certificate shows a
-// different street/postal code (علي القفطي / 13754) — align the ZATCA record with this address.
-const SELLER_ADDRESS = { buildingNo: "8001", street: "أحمد الكازروني", district: "حي المهدية", city: "الرياض", postalCode: "13752", additionalNo: "2343", country: "المملكة العربية السعودية" };
-const SELLER_INFO = { name: SELLER_NAME, vatNumber: SELLER_VAT_NUMBER, crNumber: SELLER_CR_NUMBER, commercialReg: SELLER_COMMERCIAL_REG, nationalAddress: SELLER_NATIONAL_ADDRESS, address: SELLER_ADDRESS };
+// The seller name must equal the name registered with ZATCA (it is printed on
+// the invoice AND encoded in QR tag 1).
+
+// Fallback only — the real values come from the company_profile table.
+const DEFAULT_SELLER = {
+  name: "مؤسسة حلول الطاقة المتجددة والمقاولات",
+  shortName: "حلول الطاقة المتجددة والمقاولات",
+  nameEn: "HoloulEnergy",
+  phone: "966561274344+",
+  whatsapp: "966561274344",
+  email: "",
+  website: "",
+  logoUrl: "",
+  vatNumber: "311386341200003",
+  crNumber: "7037810988",
+  commercialReg: "1010970687",
+  nationalAddress: "RDMC8001",
+  address: { buildingNo: "8001", street: "أحمد الكازروني", district: "حي المهدية", city: "الرياض", postalCode: "13752", additionalNo: "2343", country: "المملكة العربية السعودية" },
+  invoicePrefix: "HEWDS",
+};
+
+function profileToSeller(p: any) {
+  return {
+    name: p.name_ar || DEFAULT_SELLER.name,
+    shortName: p.short_name_ar || p.name_ar || DEFAULT_SELLER.shortName,
+    nameEn: p.name_en || "",
+    phone: p.phone || "",
+    whatsapp: p.whatsapp || "",
+    email: p.email || "",
+    website: p.website || "",
+    logoUrl: p.logo_url || "",
+    vatNumber: p.vat_number || "",
+    crNumber: p.cr_number || "",
+    commercialReg: p.commercial_reg || "",
+    nationalAddress: p.national_address_code || "",
+    address: (p.address && typeof p.address === "object") ? p.address : {},
+    invoicePrefix: p.invoice_prefix || "HEWDS",
+  };
+}
+
+async function loadSeller(): Promise<any> {
+  try {
+    const { data, error } = await supabase.from("company_profile").select("*").eq("id", 1).maybeSingle();
+    if (error || !data) return DEFAULT_SELLER;
+    return profileToSeller(data);
+  } catch { return DEFAULT_SELLER; }
+}
+
+// What anyone (even a not-logged-in customer using the calculator) may see —
+// all of it already appears on every printed quote/invoice.
+function publicSeller(s: any) {
+  const { invoicePrefix: _ip, ...rest } = s;
+  return rest;
+}
 
 function tlvField(tag: number, value: string): Uint8Array {
   const valueBytes = new TextEncoder().encode(value);
@@ -194,6 +276,57 @@ function computeTotals(lineNets: number[], discountTotal: number, vatPercent: nu
   const vatAmount = round2(lineNets.reduce((s, n) => s + round2(n * rate), 0) - round2(discountTotal * rate));
   const total = round2(subtotal + vatAmount);
   return { gross, subtotal, vatAmount, total };
+}
+
+// Unit price for a line whose NET total is known. Keeps 2 dp when qty * price
+// rounds back exactly; otherwise 6 dp so the line total never drifts.
+function unitPriceFromLine(lineNet: number, qty: number): number {
+  if (qty <= 1) return lineNet;
+  const p2 = round2(lineNet / qty);
+  if (round2(p2 * qty) === lineNet) return p2;
+  return Math.round((lineNet / qty) * 1e6) / 1e6;
+}
+
+// Calculator line keys whose brand/model is printed on the invoice. Cables are
+// left out on purpose: the calculator lists several alternative brands for them
+// ("VEICHI / LEADER / SUNTREE"), which would be ambiguous on a tax invoice.
+const BRAND_LINE_KEYS = new Set(["panel", "inverter", "battery"]);
+
+// Turns the calculator's `type` text (e.g. "Jinko 645W أو ما يعادلها",
+// "VEICHI أو ما يعادلها 20 KW") into a plain spec for the invoice: drops the
+// "or equivalent" wording and ignores empty placeholders like "-".
+function cleanSpec(raw: unknown): string {
+  const s = String(raw ?? "")
+    .replace(/\s*أو\s+ما\s+يعادل(?:ها|ه|ة)\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!s || s === "-" || s === "---") return "";
+  return s;
+}
+
+// Turns a calculator line into a REAL invoice line (quantity + unit price).
+// compute-quote returns each item's quantity as a display string such as
+// "#34#" (panels), "#1#", or free text like "90 متر (تقريبي — ...)" /
+// "مطابق للمخطط" / "-". Only the "#n#" form is a countable quantity; free
+// text stays as a single line with the text appended to the name (as before).
+// `sell` is the line's TOTAL, so unitPrice = sell / qty. When that does not
+// divide to 2 decimals, the unit price keeps 6 decimals so qty * unitPrice
+// still rounds back to exactly `sell` — the invoice total never drifts.
+// v12: `spec` (brand/model) is appended to the name when provided.
+function calcLineToInvoiceLine(label: string, rawQty: unknown, sellTotal: number, spec = ""): { name: string; qty: number; unitPrice: number } {
+  const sell = round2(Number(sellTotal) || 0);
+  const txt = String(rawQty ?? "").trim();
+  const m = txt.match(/^#\s*(\d+)\s*#$/);
+  const qty = m ? Math.max(1, parseInt(m[1], 10)) : 1;
+  const suffix = m || !txt || txt === "-" ? "" : ` (${txt})`;
+  const specPart = spec ? ` — ${spec}` : "";
+  return { name: `${label}${specPart}${suffix}`, qty, unitPrice: unitPriceFromLine(sell, qty) };
+}
+
+// Builds the invoice line for one calculator item (frozen or recomputed).
+function calcItemToInvoiceLine(it: any) {
+  const spec = BRAND_LINE_KEYS.has(String(it.key || "")) ? cleanSpec(it.type) : "";
+  return calcLineToInvoiceLine(String(it.label || "بند"), it.qty, Number(it.sell), spec);
 }
 
 // ---------------------------------------------------------------------
@@ -267,34 +400,71 @@ function flattenPanelsAsProducts(panels: any, marginPerWatt: number): Array<{ co
 }
 
 // ---------------------------------------------------------------------
-// Invoice numbering: HEWDS + date (YYYYMMDD) + daily sequence.
-// HEWDS = HoloulEnergy Wadi Dawaser Solar (the issuing branch code).
-// The sequence resets every day and is shared by both invoice flows
-// (project-linked invoices and walk-in POS invoices) so numbers stay
-// globally sequential per day across the whole business, with no gaps
-// or collisions between the two flows.
+// Issuing: the document number (<PREFIX>-INV-YYYYMM-NNNN / <PREFIX>-CN-YYYYMM-NNNN),
+// the global ICV and the INSERT all run inside ONE Postgres transaction
+// (function issue_document). If anything fails, both counters roll back —
+// no gaps. The caller passes the row WITHOUT invoice_number / icv.
 // ---------------------------------------------------------------------
-const INVOICE_PREFIX = "HEWDS";
-const CREDIT_NOTE_PREFIX = "HEWCN";
-// Day boundaries follow Saudi time (UTC+3), not the server's UTC clock.
-function riyadhDateKey(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(d).replace(/-/g, "");
-}
-// Atomic per-day counter (Postgres function next_invoice_seq) — safe under
-// concurrent requests, never reuses a number.
-async function generateInvoiceNumber(prefix = INVOICE_PREFIX): Promise<string> {
-  const key = `${prefix}${riyadhDateKey(new Date())}`;
-  const { data, error } = await supabase.rpc("next_invoice_seq", { p_key: key });
+async function issueDocument(row: Record<string, unknown>, docType: "invoice" | "credit_note"): Promise<any> {
+  const { data, error } = await supabase.rpc("issue_document", { p_row: row, p_doc_type: docType });
   if (error) throw error;
-  return `${key}-${String(data).padStart(3, "0")}`;
+  if (!data) throw new Error("issue_document returned no row");
+  return data;
+}
+
+// Today's calendar date in Saudi time as YYYY-MM-DD.
+function riyadhIsoDate(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(d);
 }
 
 // Trial mode: while true, test invoices can be deleted and printouts carry a
 // "TEST" watermark. `crm-einvoice-go-live` wipes the test data, resets the
-// numbering and switches it off for good.
+// numbering (and ICV) and switches it off for good.
 async function isTrialMode(): Promise<boolean> {
   const { data } = await supabase.from("einvoice_config").select("trial_mode").eq("id", 1).maybeSingle();
   return data ? !!data.trial_mode : false;
+}
+
+// ---- company profile validation (admin save) ----
+const clip = (v: unknown, n: number) => String(v ?? "").trim().slice(0, n);
+function cleanProfile(body: any, current: any, trial: boolean): { row?: Record<string, unknown>; error?: string } {
+  const name_ar = clip(body.name, 120);
+  if (!name_ar) return { error: "اسم المؤسسة مطلوب" };
+  // QR tag 1 is capped at 255 UTF-8 bytes
+  if (new TextEncoder().encode(name_ar).length > 255) return { error: "اسم المؤسسة طويل جدًا" };
+  const vat = clip(body.vatNumber, 20).replace(/\s/g, "");
+  if (vat && !/^3\d{13}3$/.test(vat)) return { error: "الرقم الضريبي لازم يكون 15 رقم يبدأ وينتهي بـ 3" };
+  const cr = clip(body.crNumber, 20).replace(/\s/g, "");
+  if (cr && !/^\d{6,15}$/.test(cr)) return { error: "الرقم الوطني الموحد لازم يكون أرقام فقط" };
+  const reg = clip(body.commercialReg, 20).replace(/\s/g, "");
+  if (reg && !/^\d{6,15}$/.test(reg)) return { error: "رقم السجل التجاري لازم يكون أرقام فقط" };
+  const email = clip(body.email, 120);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "البريد الإلكتروني غير صحيح" };
+  const website = clip(body.website, 200);
+  if (website && !/^https?:\/\/[^\s]+$/i.test(website)) return { error: "رابط الموقع لازم يبدأ بـ http:// أو https://" };
+  const whatsapp = clip(body.whatsapp, 20).replace(/\D/g, "");
+  const phone = clip(body.phone, 40);
+  let prefix = clip(body.invoicePrefix, 10).toUpperCase();
+  if (!prefix) prefix = current?.invoice_prefix || "HEWDS";
+  if (!/^[A-Z0-9]{2,10}$/.test(prefix)) return { error: "بادئة ترقيم الفواتير: حروف إنجليزية وأرقام فقط (من 2 إلى 10)" };
+  if (!trial && current && prefix !== current.invoice_prefix) {
+    return { error: "بادئة الترقيم لا تتغير بعد التشغيل الفعلي (GO LIVE) علشان تسلسل الفواتير يفضل سليم" };
+  }
+  const a = (body.address && typeof body.address === "object") ? body.address : {};
+  const address = {
+    buildingNo: clip(a.buildingNo, 10), street: clip(a.street, 120), district: clip(a.district, 80),
+    city: clip(a.city, 80), postalCode: clip(a.postalCode, 10), additionalNo: clip(a.additionalNo, 10),
+    country: clip(a.country, 80),
+  };
+  return {
+    row: {
+      id: 1, name_ar, short_name_ar: clip(body.shortName, 120) || null, name_en: clip(body.nameEn, 120) || null,
+      vat_number: vat || null, cr_number: cr || null, commercial_reg: reg || null,
+      national_address_code: clip(body.nationalAddress, 20) || null, address,
+      phone: phone || null, whatsapp: whatsapp || null, email: email || null, website: website || null,
+      invoice_prefix: prefix, updated_at: new Date().toISOString(),
+    },
+  };
 }
 
 Deno.serve(async (req: Request) => {
@@ -305,12 +475,78 @@ Deno.serve(async (req: Request) => {
   try { body = await req.json(); } catch { return json({ error: "invalid JSON body" }, 400); }
 
   const action = body.action;
+
+  // Public: company identity for the customer-facing calculator (no login needed).
+  if (action === "company-public") {
+    return json({ ok: true, company: publicSeller(await loadSeller()) });
+  }
+
   const auth = await authenticate(body);
   if (!auth) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
 
   try {
+    // Current seller details (company profile) — read fresh on every request.
+    const SELLER_INFO = await loadSeller();
+
+    // Seller details for crm.html (invoice print, warranty certificates, quote print).
+    if (action === "seller-info") {
+      return json({ ok: true, seller: SELLER_INFO });
+    }
+
+    // ---- Admin: company profile (white-label settings) ----
+    if (action === "admin-get-company-profile") {
+      if (!auth.isAdmin) return json({ error: "متاح للأدمن بس" }, 403);
+      const { data } = await supabase.from("company_profile").select("*").eq("id", 1).maybeSingle();
+      return json({ ok: true, company: SELLER_INFO, updatedAt: data?.updated_at || null, trialMode: await isTrialMode() });
+    }
+    if (action === "admin-save-company-profile") {
+      if (!auth.isAdmin) return json({ error: "متاح للأدمن بس" }, 403);
+      const { data: current } = await supabase.from("company_profile").select("*").eq("id", 1).maybeSingle();
+      const trial = await isTrialMode();
+      const cleaned = cleanProfile(body, current, trial);
+      if (cleaned.error) return json({ error: cleaned.error }, 400);
+      const row = { ...cleaned.row, updated_by: "admin", logo_url: current?.logo_url || null } as Record<string, unknown>;
+      if (body.logoUrl === "") row.logo_url = null; // admin asked to go back to the default logo
+      const { error } = await supabase.from("company_profile").upsert(row, { onConflict: "id" });
+      if (error) throw error;
+      await logAudit(auth, "update", "company_profile", 1, String(row.name_ar), current ? profileToSeller(current) : null, { name: row.name_ar, vat: row.vat_number, prefix: row.invoice_prefix });
+      return json({ ok: true, company: await loadSeller(), trialMode: trial });
+    }
+    if (action === "admin-upload-logo") {
+      if (!auth.isAdmin) return json({ error: "متاح للأدمن بس" }, 403);
+      const m = String(body.imageBase64 || "").match(/^data:(image\/(png|jpeg|webp));base64,([A-Za-z0-9+\/=]+)$/);
+      if (!m) return json({ error: "الصورة لازم تكون PNG أو JPG أو WEBP" }, 400);
+      const bin = atob(m[3]);
+      if (bin.length > 2 * 1024 * 1024) return json({ error: "حجم اللوجو أكبر من 2 ميجا" }, 400);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const ext = m[2] === "jpeg" ? "jpg" : m[2];
+      const path = `logo-${Date.now()}.${ext}`;
+      const up = await supabase.storage.from("company-assets").upload(path, bytes, { contentType: m[1], upsert: false });
+      if (up.error) throw up.error;
+      const url = supabase.storage.from("company-assets").getPublicUrl(path).data.publicUrl;
+      const { error } = await supabase.from("company_profile").update({ logo_url: url, updated_at: new Date().toISOString(), updated_by: "admin" }).eq("id", 1);
+      if (error) throw error;
+      await logAudit(auth, "update", "company_profile", 1, "logo", null, { logo: url });
+      return json({ ok: true, url });
+    }
+
     if (action === "crm-create-pos-invoice") {
       const rawItems = Array.isArray(body.items) ? body.items : [];
+
+      // --- Supply date (actual sale / delivery date). Empty = the issue day.
+      // Can be in the past, never in the future. The ISSUE date stays real. ---
+      const issueDay = riyadhIsoDate(new Date());
+      let supplyDate = issueDay;
+      if (body.supplyDate) {
+        const sd = String(body.supplyDate).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(sd) || isNaN(Date.parse(sd + "T00:00:00Z"))) {
+          return json({ error: "تاريخ التوريد غير صحيح" }, 400);
+        }
+        if (sd > issueDay) return json({ error: "تاريخ التوريد لا يمكن أن يكون في المستقبل" }, 400);
+        if (sd < "2018-01-01") return json({ error: "تاريخ التوريد غير صحيح" }, 400);
+        supplyDate = sd;
+      }
 
       // --- Customer must already be registered — no create-on-the-fly. ---
       let customer: any = null;
@@ -375,9 +611,10 @@ Deno.serve(async (req: Request) => {
       // prices may have moved since, and the point is to honor what they
       // were told, not silently reprice it).
       let sourceCalcQuoteId: number | null = null;
+      let calcQuoteDiscount = 0; // added into discountTotal below, so the invoice lands on EXACTLY what the customer was already quoted
       if (body.calcQuoteId) {
         const { data: cq, error: cqErr } = await supabase.from("quotes")
-          .select("id, customer_id, hp, final_total, created_at").eq("id", body.calcQuoteId).maybeSingle();
+          .select("id, customer_id, hp, final_total, snapshot, created_at").eq("id", body.calcQuoteId).maybeSingle();
         if (cqErr) throw cqErr;
         if (!cq || Number(cq.customer_id) !== Number(customerId)) {
           return json({ error: "عرض سعر الحاسبة المحدد غير مرتبط بهذا العميل" }, 400);
@@ -386,13 +623,91 @@ Deno.serve(async (req: Request) => {
         if (total <= 0) return json({ error: "عرض سعر الحاسبة ده مفيهوش سعر إجمالي محفوظ" }, 400);
         sourceCalcQuoteId = cq.id;
         const CALC_QUOTE_VAT_RATE = 0.15; // matches the rate this whole system prices at
-        const preVat = round2(total / (1 + CALC_QUOTE_VAT_RATE));
-        const dateLabel = new Date(cq.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" });
-        quotationItems.push({
-          type: "quotation", code: null,
-          name: `نظام طاقة شمسية (${cq.hp || "-"} حصان) — حسب عرض سعر الحاسبة بتاريخ ${dateLabel}`.slice(0, 300),
-          qty: 1, unitPrice: preVat, discount: 0, lineTotal: preVat,
-        });
+        const storedPreVat = round2(total / (1 + CALC_QUOTE_VAT_RATE));
+        const dateLabel = new Date(cq.created_at).toLocaleDateString("ar-SA", { day: "2-digit", month: "2-digit", year: "numeric" });
+        const snap: any = cq.snapshot || {};
+
+        let itemized: Array<{ name: string; qty: number; unitPrice: number }> | null = null;
+        if (snap.type === "product-cart" && Array.isArray(snap.items)) {
+          // Manually built in the admin product-cart screen — already itemized, nothing to recompute.
+          // Keeps the real quantity + unit price (qty is no longer folded into one lump-sum line).
+          itemized = snap.items
+            .map((it: any) => {
+              const q = Math.max(1, Number(it.qty) || 1);
+              return { name: String(it.name || "بند"), qty: q, unitPrice: round2(Number(it.price) || 0) };
+            })
+            .filter((it) => it.unitPrice > 0);
+        } else if (snap.hp != null && snap.panelIdx != null) {
+          if (Array.isArray(snap.frozenItems) && snap.frozenItems.length) {
+            // Line items frozen by compute-quote when the quote was SAVED — immune
+            // to any catalog price change since then.
+            itemized = snap.frozenItems
+              .filter((it: any) => Number(it.sell) > 0)
+              .map((it: any) => calcItemToInvoiceLine(it));
+          } else {
+            // Older quote (saved before items were frozen): rebuild by re-running
+            // the SAME pricing engine on the saved inputs (hp/panel/toggles).
+            try {
+              const res = await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/compute-quote`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+                body: JSON.stringify({ action: "internal-recompute-quote-items", internalSecret: sessionSecret(), snapshot: snap }),
+              });
+              const rd = await res.json();
+              if (rd.error) throw new Error(rd.error);
+              itemized = (rd.items || [])
+                .filter((it: any) => Number(it.sell) > 0)
+                .map((it: any) => calcItemToInvoiceLine(it));
+            } catch {
+              itemized = null; // pricing engine couldn't reproduce this quote (e.g. a discontinued panel/catalog change) — fall back below
+            }
+          }
+        }
+
+        if (itemized && itemized.length) {
+          // Net of each line as derived from the items above.
+          let lineNets: number[] = itemized.map((it) => round2(it.qty * it.unitPrice));
+          const itemsPreVatSum = round2(lineNets.reduce((s, n) => s + n, 0));
+
+          if (itemsPreVatSum < storedPreVat - 0.004) {
+            // The derived items total LESS than the quote (catalog prices dropped,
+            // or a manual markup was added on top). The customer was promised the
+            // quoted total, so scale every line up proportionally until the
+            // invoice lands on EXACTLY that total.
+            const factor = storedPreVat / itemsPreVatSum;
+            lineNets = lineNets.map((n) => round2(n * factor));
+            const maxIdx = lineNets.indexOf(Math.max(...lineNets));
+            const remainder = round2(storedPreVat - lineNets.reduce((s, n) => s + n, 0));
+            lineNets[maxIdx] = round2(lineNets[maxIdx] + remainder);
+            // Per-line VAT rounding can leave the grand total a cent off the
+            // quoted figure — nudge the largest line by a few cents to hit it.
+            const targetTotal = round2(total);
+            for (const k of [0, 1, -1, 2, -2, 3, -3]) {
+              const trial = lineNets.slice();
+              trial[maxIdx] = round2(trial[maxIdx] + k / 100);
+              if (computeTotals(trial, 0, 15).total === targetTotal) { lineNets = trial; break; }
+            }
+            calcQuoteDiscount = 0;
+          } else {
+            // Items are equal/higher (or a tier discount applied): show the gap
+            // as a document discount, exactly as before.
+            calcQuoteDiscount = Math.max(0, round2(itemsPreVatSum - storedPreVat));
+          }
+
+          itemized.forEach((it, i) => {
+            const lineNet = lineNets[i];
+            const unitPrice = unitPriceFromLine(lineNet, it.qty);
+            quotationItems.push({ type: "quotation", code: null, name: it.name.slice(0, 300), qty: it.qty, unitPrice, discount: 0, lineTotal: lineNet });
+          });
+        } else {
+          // Couldn't reconstruct real line items — safe fallback: one summary
+          // line at exactly the quoted total, same as before.
+          quotationItems.push({
+            type: "quotation", code: null,
+            name: `نظام طاقة شمسية (${cq.hp || "-"} حصان) — حسب عرض سعر الحاسبة بتاريخ ${dateLabel}`.slice(0, 300),
+            qty: 1, unitPrice: storedPreVat, discount: 0, lineTotal: storedPreVat,
+          });
+        }
       }
 
       if (!rawItems.length && !quotationItems.length) {
@@ -460,7 +775,7 @@ Deno.serve(async (req: Request) => {
         return cleanItem;
       });
       const items = [...quotationItems, ...cleanItems];
-      const discountTotal = round2(Number(body.discountTotal) || 0);
+      const discountTotal = round2((Number(body.discountTotal) || 0) + calcQuoteDiscount);
       const vatPercent = body.vatPercent != null ? Number(body.vatPercent) : 15;
       const lineNets = items.map((it: any) => round2(Number(it.qty) * Number(it.unitPrice) - (Number(it.discount) || 0)));
       if (lineNets.some((n) => !isFinite(n) || n < 0)) return json({ error: "قيمة أحد البنود غير صحيحة" }, 400);
@@ -485,17 +800,22 @@ Deno.serve(async (req: Request) => {
       }
       const invoiceType = isStandard ? "standard" : "simplified";
 
-      const invoiceNumber = await generateInvoiceNumber();
+      // The seller must have a valid VAT number on file before any invoice is issued.
+      if (!/^3\d{13}3$/.test(String(SELLER_INFO.vatNumber || ""))) {
+        return json({ error: "الرقم الضريبي للمؤسسة غير مسجّل أو غير صحيح — أكمله من لوحة التحكم (بيانات الشركة) قبل إصدار فاتورة" }, 400);
+      }
+
       const issuedAt = new Date();
       const nowIso = issuedAt.toISOString();
-      const qrBase64 = buildZatcaQrBase64(SELLER_NAME, SELLER_VAT_NUMBER, qrTimestamp(issuedAt), total, vatAmount);
+      const qrBase64 = buildZatcaQrBase64(SELLER_INFO.name, SELLER_INFO.vatNumber, qrTimestamp(issuedAt), total, vatAmount);
 
       const row = {
         project_id: null, customer_id: customerId, milestone_id: null,
         source_quotation_id: sourceQuotationId,
         source_calc_quote_id: sourceCalcQuoteId,
-        invoice_number: invoiceNumber, invoice_type: invoiceType, document_type: "invoice",
+        invoice_type: invoiceType, document_type: "invoice",
         issued_at: nowIso,
+        supply_date: supplyDate,
         due_date: null,
         customer_name: body.customerName || customer.name || null, customer_phone: customer.phone,
         customer_address: buyerAddress || null,
@@ -511,10 +831,10 @@ Deno.serve(async (req: Request) => {
         approval_status: auth.isAdmin ? "approved" : "pending",
         approved_by: auth.isAdmin ? "admin" : null,
         approved_at: auth.isAdmin ? nowIso : null,
+        seller_snapshot: SELLER_INFO,
       };
-      const { data, error } = await supabase.from("invoices").insert(row).select().maybeSingle();
-      if (error) throw error;
-      await logAudit(auth, "create", "invoice", data.id, invoiceNumber, null, { total: data.total, status: data.status, type: invoiceType, approval: row.approval_status });
+      const data = await issueDocument(row, "invoice");
+      await logAudit(auth, "create", "invoice", data.id, data.invoice_number, null, { total: data.total, status: data.status, type: invoiceType, approval: row.approval_status, icv: data.icv, supply_date: data.supply_date });
       return json({ ok: true, invoice: data, seller: SELLER_INFO, trialMode: await isTrialMode() });
     }
 
@@ -548,6 +868,32 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, invoices: data || [], seller: SELLER_INFO, trialMode: await isTrialMode() });
     }
 
+    // تقرير حصر الفواتير لفترة (الإقرار الضريبي / المراجعة) — أدمن فقط.
+    // بيرجّع كل المستندات الصادرة (فواتير + إشعارات دائنة) بغض النظر عن نوعها (مشروع أو بيع مباشر)،
+    // وعدّاد منفصل للفواتير اللي لسه بانتظار الاعتماد (مش داخلة في الأرقام).
+    if (action === "crm-invoices-report") {
+      if (!auth.isAdmin) return json({ error: "تقرير الفواتير متاح للأدمن بس" }, 403);
+      const re = /^\d{4}-\d{2}-\d{2}$/;
+      const from = String(body.from || ""), to = String(body.to || "");
+      if (!re.test(from) || !re.test(to) || from > to) return json({ error: "الفترة غير صحيحة (from/to بصيغة YYYY-MM-DD)" }, 400);
+      // تاريخ الفاتورة (invoice_date) هو الأساس، ولو فاضي نستخدم وقت الإصدار بتوقيت السعودية
+      const fromTs = new Date(`${from}T00:00:00+03:00`).toISOString(), toTs = new Date(`${to}T23:59:59.999+03:00`).toISOString();
+      const inRange = `and(invoice_date.gte.${from},invoice_date.lte.${to}),and(invoice_date.is.null,issued_at.gte.${fromTs},issued_at.lte.${toTs})`;
+      const rows: any[] = [];
+      for (let off = 0; off < 20000; off += 1000) {
+        const { data, error } = await supabase.from("invoices").select("*")
+          .or(inRange).in("document_type", ["invoice", "credit_note"])
+          .order("invoice_date", { ascending: true, nullsFirst: false }).order("id", { ascending: true })
+          .range(off, off + 999);
+        if (error) throw error;
+        rows.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+      const issued = rows.filter((r) => r.approval_status === "approved");
+      const pending = rows.filter((r) => r.approval_status !== "approved" && r.document_type === "invoice");
+      return json({ ok: true, from, to, invoices: issued, pendingCount: pending.length, seller: SELLER_INFO, trialMode: await isTrialMode() });
+    }
+
     // Credit note (إشعار دائن): the only legal way to cancel / reverse an issued
     // invoice. v1 = full reversal, admin only, mandatory reason. It gets its own
     // sequential number and its own QR (same 5 TLV fields, new timestamp).
@@ -564,14 +910,16 @@ Deno.serve(async (req: Request) => {
       const { data: existing } = await supabase.from("invoices").select("id").eq("related_invoice_id", orig.id).eq("document_type", "credit_note").maybeSingle();
       if (existing) return json({ error: "تم إصدار إشعار دائن لهذه الفاتورة من قبل" }, 409);
 
-      const number = await generateInvoiceNumber(CREDIT_NOTE_PREFIX);
+      // A credit note reverses the ORIGINAL invoice, so it carries the seller identity
+      // that invoice was issued under (even if the company profile changed since).
+      const snap = (orig.seller_snapshot && orig.seller_snapshot.name && orig.seller_snapshot.vatNumber) ? orig.seller_snapshot : SELLER_INFO;
       const issuedAt = new Date();
       const nowIso = issuedAt.toISOString();
-      const qr = buildZatcaQrBase64(SELLER_NAME, SELLER_VAT_NUMBER, qrTimestamp(issuedAt), Number(orig.total), Number(orig.vat_amount));
+      const qr = buildZatcaQrBase64(snap.name, snap.vatNumber, qrTimestamp(issuedAt), Number(orig.total), Number(orig.vat_amount));
       const row = {
         project_id: null, customer_id: orig.customer_id, milestone_id: null, source_quotation_id: null,
-        invoice_number: number, invoice_type: orig.invoice_type, document_type: "credit_note",
-        related_invoice_id: orig.id, reason, issued_at: nowIso, due_date: null,
+        invoice_type: orig.invoice_type, document_type: "credit_note",
+        related_invoice_id: orig.id, reason, issued_at: nowIso, supply_date: orig.supply_date || null, due_date: null,
         customer_name: orig.customer_name, customer_phone: orig.customer_phone, customer_address: orig.customer_address,
         customer_vat_number: orig.customer_vat_number, customer_cr_number: orig.customer_cr_number,
         items: orig.items, discount_total: orig.discount_total, vat_percent: orig.vat_percent,
@@ -579,11 +927,11 @@ Deno.serve(async (req: Request) => {
         status: "issued", payment_method: orig.payment_method, paid_at: null,
         rep_username: "admin", qr_base64: qr, notes: null, created_by: "admin",
         approval_status: "approved", approved_by: "admin", approved_at: nowIso,
+        seller_snapshot: snap,
       };
-      const { data, error } = await supabase.from("invoices").insert(row).select().maybeSingle();
-      if (error) throw error;
+      const data = await issueDocument(row, "credit_note");
       await supabase.from("invoices").update({ status: "cancelled", updated_at: nowIso }).eq("id", orig.id);
-      await logAudit(auth, "credit_note", "invoice", data.id, number, { invoice: orig.invoice_number }, { total: data.total, reason });
+      await logAudit(auth, "credit_note", "invoice", data.id, data.invoice_number, { invoice: orig.invoice_number }, { total: data.total, reason, icv: data.icv });
       return json({ ok: true, invoice: data, original: orig.invoice_number, seller: SELLER_INFO, trialMode: await isTrialMode() });
     }
 
@@ -605,7 +953,7 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
-    // One-way switch: wipe ALL test invoices, restart numbering at 001, leave trial mode.
+    // One-way switch: wipe ALL test invoices, restart numbering at 0001 and ICV at 1, leave trial mode.
     if (action === "crm-einvoice-go-live") {
       if (!auth.isAdmin) return json({ error: "متاح للأدمن بس" }, 403);
       if (body.confirm !== "GO-LIVE") return json({ error: "التأكيد مطلوب" }, 400);
