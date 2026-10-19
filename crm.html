@@ -726,7 +726,7 @@ const ENGINE_FN = SUPABASE_URL + '/functions/v1/compute-quote'; // login only
 const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything else
 const INVOICE_FN = SUPABASE_URL + '/functions/v1/invoice-api';  // e-invoices (QR, credit notes, numbering)
 const WARRANTY_FN = SUPABASE_URL + '/functions/v1/warranty-api'; // شهادات الضمان: إصدار مرة واحدة من فاتورة مسددة، طباعة اختيارية
-const WARRANTY_ACTIONS = new Set(['crm-warranty-config','crm-warranty-list','crm-issue-warranties','crm-print-warranty','crm-void-warranty']);
+const WARRANTY_ACTIONS = new Set(['crm-warranty-config','crm-warranty-list','crm-customer-warranties','crm-issue-warranties','crm-print-warranty','crm-void-warranty']);
 const PIPELINE_FN = SUPABASE_URL + '/functions/v1/crm-pipeline'; // pipeline board/table/alerts/bulk (server-side)
 const QUOTES_FN = SUPABASE_URL + '/functions/v1/crm-quotes'; // كل العروض (حتى غير المربوطة بعميل)
 const QUOTES_ACTIONS = new Set(['admin-crm-list-quotes']);
@@ -1649,6 +1649,12 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       </div>
     </div>
 
+    <div class="section" id="custWarrantySection">
+      <h4>🛡️ شهادات الضمان</h4>
+      <div class="emptyNote" style="margin-bottom:8px;">الضمانات الجديدة بتتصدر من هنا (من بنود فواتير العميل المسددة والمعتمدة) — مش بالتسجيل اليدوي. الرقم التسلسلي والمدة بيتسحبوا من الفاتورة والكتالوج.</div>
+      <div id="custWarrantyBox"><div class="loadingNote">بيحمّل الضمانات...</div></div>
+    </div>
+
     <div class="section">
       <h4>سجل عروض الأسعار (${quotes.length})</h4>
       ${quotes.length ? quotes.map(q=>`
@@ -1788,6 +1794,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     });
   });
   m.querySelector('#addAssetBtn').addEventListener('click', ()=>openAssetEditor(null, c.id));
+  loadCustomerWarranties(c.id);
   m.querySelectorAll('#assetsMiniList [data-asset-id]').forEach(row=>{
     row.addEventListener('click', ()=>openAssetEditor(row.dataset.assetId, c.id));
   });
@@ -5141,6 +5148,66 @@ function warrTypeLabel(cls){ return (SETTINGS.assetTypes||[]).find(t=>t.value===
 function warrFmtDate(v){ return v ? new Date(String(v).slice(0,10)+'T00:00:00').toLocaleDateString('en-GB',{day:'2-digit',month:'long',year:'numeric'}) : '-'; }
 function riyadhToday(){ return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh'}).format(new Date()); }
 
+/* ===== BEGIN customer-file warranties ===== */
+const WARR_CLASS_AR = { inverter:'إنفرتر', solar_panel:'لوح شمسي', combiner_box:'صندوق تجميع', hv_inverter:'إنفرتر جهد عالي', hv_battery:'بطارية جهد عالي', battery:'بطارية', reactor:'ريأكتور', dc_protection:'قواطع وفيوزات DC', cables:'كابلات ووصلات' };
+function warrClassLabel(cls){ return WARR_CLASS_AR[cls] || warrTypeLabel(cls); }
+function warrChanged(){ if(typeof window.__onWarrantyChanged === 'function') window.__onWarrantyChanged(); }
+
+async function loadCustomerWarranties(customerId){
+  const box = document.getElementById('custWarrantyBox');
+  if(!box) return;
+  window.__onWarrantyChanged = ()=> loadCustomerWarranties(customerId);
+  box.innerHTML = '<div class="loadingNote">بيحمّل الضمانات...</div>';
+  try{
+    const d = await crmApi('crm-customer-warranties', {customerId});
+    if(!document.getElementById('custWarrantyBox')) return; // اتقفلت نافذة العميل
+    if(!d.invoices.length){
+      box.innerHTML = '<div class="emptyNote">مفيش فواتير فيها بنود مؤهلة للضمان لهذا العميل.</div>';
+      return;
+    }
+    const summary = '<div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'
+      + (d.pending_lines ? '<span class="tag warn">⏳ '+d.pending_lines+' بند جاهز لإصدار الشهادة</span>' : '')
+      + '<span class="tag good">✅ '+d.issued_lines+' شهادة سارية</span>'
+      + '<button type="button" class="btn ghost small" id="custWarrReload">⟳ تحديث</button></div>';
+    const blocks = d.invoices.map(p=>{
+      const certs = p.certificates || [];
+      const active = {};
+      certs.filter(c=>c.status==='active').forEach(c=>{ active[c.line_index] = c; });
+      const pending = (p.lines||[]).filter(l=>!active[l.line_index]).length;
+      const rows = (p.lines||[]).map(l=>{
+        const c = active[l.line_index];
+        const what = escapeHtml(l.model || l.name || '-') + (l.serial ? ' <span style="color:var(--muted);font-size:11.5px;" dir="ltr">SN: '+escapeHtml(l.serial)+'</span>' : '');
+        const state = c
+          ? '<b class="num">'+escapeHtml(c.certificate_number)+'</b><div style="font-size:11.5px;color:var(--muted);">من '+warrFmtDate(c.warranty_start)+' إلى '+warrFmtDate(c.warranty_end)+(c.print_count ? ' · اتطبعت '+c.print_count+' مرة' : '')+'</div>'
+          : '<span class="tag warn">لم تُصدر بعد</span>';
+        const act = c ? '<button type="button" class="btn ghost small custWarrPrint" data-id="'+c.id+'">🖨️ طباعة</button>' : '';
+        return '<tr><td>'+escapeHtml(warrClassLabel(l.warranty_class))+'</td><td>'+what+'</td><td class="num">'+l.qty+'</td><td class="num">'+(l.warranty_years||'-')+' سنة</td><td>'+state+'</td><td style="white-space:nowrap;">'+act+'</td></tr>';
+      }).join('');
+      const inv = p.invoice;
+      const status = pending
+        ? (inv.canIssue ? '<span class="tag warn">جاهزة للإصدار ('+pending+')</span>' : '<span class="tag warn">غير مؤهلة للإصدار: لازم تكون مسددة ومعتمدة وغير ملغاة</span>')
+        : '<span class="tag good">كل الشهادات صادرة</span>';
+      const btn = '<button type="button" class="btn '+(pending && inv.canIssue ? 'teal' : 'ghost')+' small custWarrManage" data-id="'+inv.id+'">'+(pending && inv.canIssue ? '🛡️ إصدار الشهادات' : 'إدارة / إلغاء')+'</button>';
+      return '<div class="quoteRow" style="margin-bottom:10px;"><div class="top"><span><b>فاتورة '+escapeHtml(inv.invoice_number||'-')+'</b></span><span>'+status+'</span></div>'
+        + '<div style="overflow-x:auto;"><table class="admtable"><thead><tr><th>النوع</th><th>الصنف</th><th>الكمية</th><th>المدة</th><th>الشهادة</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+        + '<div class="saveBar" style="margin-top:6px;"><div></div><div class="right">'+btn+'</div></div></div>';
+    }).join('');
+    box.innerHTML = summary + blocks;
+    const rl = box.querySelector('#custWarrReload'); if(rl) rl.onclick = ()=> loadCustomerWarranties(customerId);
+    box.querySelectorAll('.custWarrManage').forEach(b=> b.addEventListener('click', ()=> openWarrantyModal({id: Number(b.dataset.id)})));
+    box.querySelectorAll('.custWarrPrint').forEach(b=> b.addEventListener('click', async ()=>{
+      try{
+        const r = await crmApi('crm-print-warranty', {certificateId: b.dataset.id});
+        printCertificateSnapshot(r.certificate.snapshot);
+        loadCustomerWarranties(customerId);
+      }catch(err){ toast('تعذر الطباعة: '+err.message); }
+    }));
+  }catch(err){
+    if(document.getElementById('custWarrantyBox')) document.getElementById('custWarrantyBox').innerHTML = '<div class="loadingNote">تعذر التحميل: '+escapeHtml(err.message)+'</div>';
+  }
+}
+/* ===== END customer-file warranties ===== */
+
 async function openWarrantyModal(inv){
   let ov = document.getElementById('warrOverlay');
   if(!ov){
@@ -5203,7 +5270,7 @@ async function openWarrantyModal(inv){
       if(rd > riyadhToday()){ errEl.textContent = 'تاريخ الاستلام لا يمكن أن يكون في المستقبل'; return; }
       if(!confirm('هتتصدر الشهادات بتاريخ بداية ضمان '+warrFmtDate(rd)+' — ومبتتعدّلش بعد الإصدار. تأكيد؟')) return;
       issueBtn.disabled = true; issueBtn.textContent = 'بيصدّر...';
-      try{ render(await crmApi('crm-issue-warranties', {invoiceId: inv.id, receiptDate: rd})); toast('✅ اتصدرت شهادات الضمان'); }
+      try{ render(await crmApi('crm-issue-warranties', {invoiceId: inv.id, receiptDate: rd})); toast('✅ اتصدرت شهادات الضمان'); warrChanged(); }
       catch(err){ errEl.textContent = 'تعذر الإصدار: '+err.message; issueBtn.disabled = false; issueBtn.textContent = '🛡️ إصدار الشهادات ('+pending.length+')'; }
     });
     inner.querySelectorAll('.warrPrintBtn').forEach(b=> b.addEventListener('click', async ()=>{
@@ -5211,13 +5278,14 @@ async function openWarrantyModal(inv){
         const r = await crmApi('crm-print-warranty', {certificateId: b.dataset.id});
         printCertificateSnapshot(r.certificate.snapshot);
         render(await crmApi('crm-warranty-list', {invoiceId: inv.id}));
+        warrChanged();
       }catch(err){ errEl.textContent = 'تعذر الطباعة: '+err.message; }
     }));
     inner.querySelectorAll('.warrVoidBtn').forEach(b=> b.addEventListener('click', async ()=>{
       const reason = (prompt('سبب إلغاء الشهادة (مطلوب):') || '').trim();
       if(reason.length < 3) return;
       if(!confirm('هتتلغي الشهادة نهائيًا (وتقدر تصدر بديلة بتاريخ صحيح). متأكد؟')) return;
-      try{ render(await crmApi('crm-void-warranty', {certificateId: b.dataset.id, reason})); toast('اتلغت الشهادة'); }
+      try{ render(await crmApi('crm-void-warranty', {certificateId: b.dataset.id, reason})); toast('اتلغت الشهادة'); warrChanged(); }
       catch(err){ errEl.textContent = 'تعذر الإلغاء: '+err.message; }
     }));
   }

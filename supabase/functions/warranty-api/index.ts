@@ -5,7 +5,7 @@
 // authenticated wrapper). A certificate is a frozen snapshot: it is issued once per invoice line,
 // can be printed any number of times (printing is optional and only logged), and never changes.
 //
-// Actions: crm-warranty-config, crm-warranty-list, crm-issue-warranties,
+// Actions: crm-warranty-config, crm-warranty-list, crm-customer-warranties, crm-issue-warranties,
 //          crm-print-warranty, crm-void-warranty (admin only)
 // Auth: same signed session tokens as crm-api / invoice-api (SESSION_SECRET).
 // A rep can only touch the invoices that rep created; the admin can touch all of them.
@@ -193,6 +193,35 @@ Deno.serve(async (req: Request) => {
       const r = await loadInvoice(auth, body.invoiceId);
       if (r.err) return r.err;
       return json(await listPayload(r.inv));
+    }
+
+    // Customer file: every invoice of this customer that has warranty-eligible lines, with the state of each line
+    // (not issued yet / active certificate / voided). A rep only sees the invoices that rep created.
+    if (action === "crm-customer-warranties") {
+      const cid = Number(body.customerId);
+      if (!cid) return json({ error: "customerId required" }, 400);
+      const { data: cu } = await supabase.from("customers").select("phone").eq("id", cid).maybeSingle();
+      let q = supabase.from("invoices")
+        .select("id, invoice_number, document_type, status, approval_status, supply_date, issued_at, rep_username, customer_name, items")
+        .eq("document_type", "invoice")
+        .order("issued_at", { ascending: false, nullsFirst: false });
+      const phone = cu && cu.phone ? String(cu.phone).replace(/[^0-9+]/g, "") : "";
+      q = phone ? q.or(`customer_id.eq.${cid},customer_phone.eq.${phone}`) : q.eq("customer_id", cid);
+      if (!auth.isAdmin && auth.rep) q = q.eq("rep_username", auth.rep.username);
+      const { data: invs, error } = await q;
+      if (error) throw error;
+      const withLines = (invs || []).filter((i: any) => Array.isArray(i.items) && i.items.some((it: any) => it && it.warranty_class));
+      const out: any[] = [];
+      let pending = 0, issued = 0;
+      for (const inv of withLines) {
+        const p = await listPayload(inv);
+        const active = new Set(p.certificates.filter((c: any) => c.status === "active").map((c: any) => c.line_index));
+        const n = p.lines.filter((l: any) => !active.has(l.line_index)).length;
+        if (p.invoice.canIssue) pending += n;
+        issued += active.size;
+        out.push(p);
+      }
+      return json({ ok: true, invoices: out, pending_lines: pending, issued_lines: issued });
     }
 
     if (action === "crm-issue-warranties") {
