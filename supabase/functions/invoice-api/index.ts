@@ -10,6 +10,10 @@
 // admin-save-company-profile, admin-upload-logo, crm-invoices-report (v11: period report for VAT returns, admin only).
 // (crm-approve-pos-invoice stays in crm-api — approval only flips approval flags.)
 //
+// v14: calculator lines for panels / inverter / combiner box are linked to real
+// catalog product codes (type "product"), so warranty certificates can be issued
+// from the invoice. The inverter serial number comes in body.calcSerials.inverter.
+//
 // v13: the calculator never saved the brand in the quote, so the brand/model is
 // now looked up from the pricing engine at invoice time (see fetchEngineSpecs).
 //
@@ -329,7 +333,32 @@ function calcLineToInvoiceLine(label: string, rawQty: unknown, sellTotal: number
 // Builds the invoice line for one calculator item (frozen or recomputed).
 function calcItemToInvoiceLine(it: any) {
   const spec = BRAND_LINE_KEYS.has(String(it.key || "")) ? cleanSpec(it.type) : "";
-  return calcLineToInvoiceLine(String(it.label || "بند"), it.qty, Number(it.sell), spec);
+  const line = calcLineToInvoiceLine(String(it.label || "بند"), it.qty, Number(it.sell), spec);
+  return { ...line, key: String(it.key || ""), spec, label: String(it.label || "") } as {
+    name: string; qty: number; unitPrice: number; key: string; spec: string; label: string;
+  };
+}
+
+// v14: map a calculator line to a REAL catalog product code, so the DB trigger
+// invoices_enrich_warranty_items can attach warranty_class / years to it and the
+// warranty certificate can be issued from the invoice. Returns null when the
+// line has no safe catalog match (it then stays a plain descriptive line).
+//   panel     "Aiko 660W"            -> PANEL-Aiko-660W
+//   inverter  "VEICHI 18.5 KW"       -> VEICHI Pump Inverter 18.5KW
+//   combiner  "VEICHI Combiner box 004" -> VEICHI Combiner BOX 04
+function catalogCodeFor(line: { key: string; spec: string; label: string }, codeSet: Set<string>): string | null {
+  let code: string | null = null;
+  if (line.key === "panel") {
+    const m = line.spec.match(/^(.+?)\s+(\d+)\s*W\b/i);
+    if (m) code = `PANEL-${m[1].trim()}-${m[2]}W`;
+  } else if (line.key === "inverter") {
+    const m = line.spec.match(/^VEICHI\b.*?([\d.]+)\s*KW/i);
+    if (m) code = `VEICHI Pump Inverter ${m[1]}KW`;
+  } else {
+    const m = line.label.match(/^VEICHI\s+Combiner\s*box\s*0*(\d+)$/i);
+    if (m) code = `VEICHI Combiner BOX ${m[1].padStart(2, "0")}`;
+  }
+  return code && codeSet.has(code) ? code : null;
 }
 
 // v13: the calculator only freezes label/sell/qty per line (no brand), so the
@@ -654,7 +683,7 @@ Deno.serve(async (req: Request) => {
         const dateLabel = new Date(cq.created_at).toLocaleDateString("ar-SA", { day: "2-digit", month: "2-digit", year: "numeric" });
         const snap: any = cq.snapshot || {};
 
-        let itemized: Array<{ name: string; qty: number; unitPrice: number }> | null = null;
+        let itemized: Array<{ name: string; qty: number; unitPrice: number; key?: string; spec?: string; label?: string }> | null = null;
         if (snap.type === "product-cart" && Array.isArray(snap.items)) {
           // Manually built in the admin product-cart screen — already itemized, nothing to recompute.
           // Keeps the real quantity + unit price (qty is no longer folded into one lump-sum line).
@@ -723,10 +752,32 @@ Deno.serve(async (req: Request) => {
             calcQuoteDiscount = Math.max(0, round2(itemsPreVatSum - storedPreVat));
           }
 
-          itemized.forEach((it, i) => {
+          // v14: link lines to real catalog products (so warranty certificates can be
+          // issued). The inverter needs its serial number up-front — the DB trigger
+          // enforces that for every serial-tracked catalog product.
+          const { data: pcx } = await supabase.from("pricing_config").select("data").limit(1).maybeSingle();
+          const codeSet = new Set<string>([
+            ...flattenPanelsAsProducts(pcx?.data?.panels, pcx?.data?.panelMarginPerWatt).map((p) => p.code),
+            ...flattenProductCatalog(pcx?.data?.productCatalog).map((p) => p.code),
+          ]);
+          const invSerial = clip(body.calcSerials?.inverter, 100);
+          const linked = itemized.map((it) => {
+            const code = it.key !== undefined ? catalogCodeFor({ key: it.key || "", spec: it.spec || "", label: it.label || "" }, codeSet) : null;
+            const needsSerial = !!code && code.startsWith("VEICHI Pump Inverter") && it.qty === 1;
+            return { it, code: needsSerial || (code && !code.startsWith("VEICHI Pump Inverter")) ? code : null, needsSerial };
+          });
+          if (linked.some((l) => l.needsSerial) && !invSerial) {
+            return json({ error: "اكتب الرقم التسلسلي للانفرتر (مطلوب لإصدار شهادة الضمان) في خانة \"الرقم التسلسلي للانفرتر\"" }, 400);
+          }
+          linked.forEach((l, i) => {
             const lineNet = lineNets[i];
-            const unitPrice = unitPriceFromLine(lineNet, it.qty);
-            quotationItems.push({ type: "quotation", code: null, name: it.name.slice(0, 300), qty: it.qty, unitPrice, discount: 0, lineTotal: lineNet });
+            const unitPrice = unitPriceFromLine(lineNet, l.it.qty);
+            const row: Record<string, unknown> = {
+              type: l.code ? "product" : "quotation", code: l.code, name: l.it.name.slice(0, 300),
+              qty: l.it.qty, unitPrice, discount: 0, lineTotal: lineNet,
+            };
+            if (l.needsSerial) row.serial = invSerial;
+            quotationItems.push(row);
           });
         } else {
           // Couldn't reconstruct real line items — safe fallback: one summary

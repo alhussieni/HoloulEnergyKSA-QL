@@ -1,5 +1,6 @@
-ارفع المجلد supabase/ كما هو على جذر الريبو HoloulEnergyKSA-QL (branch: main):
+ارفع الملفات دي على جذر الريبو HoloulEnergyKSA-QL (branch: main) في نفس المسارات:
 
-  supabase/functions/invoice-api/index.ts   <-- ملف جديد (invoice-api النسخة 12، منشورة بالفعل على Supabase)
+  crm.html                                   <-- يستبدل الملف الموجود (خانة الرقم التسلسلي للانفرتر)
+  supabase/functions/invoice-api/index.ts    <-- ملف جديد (النسخة 14، منشورة بالفعل على Supabase)
 
-ملاحظة: مفيش ملفات SQL جديدة في التعديل ده (مفيش تغيير في قاعدة البيانات).
+مفيش تغييرات في قاعدة البيانات.

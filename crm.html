@@ -4674,10 +4674,14 @@ function openInvoiceModal(prefill){
             <button type="button" class="btn ghost small" id="invUnlinkQuotationBtn" style="padding:3px 8px;margin-inline-start:8px;">إلغاء الربط</button>`;
           document.getElementById('invQuotationItemsPreview').innerHTML = `
             <div style="background:var(--sand);border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px;font-size:12.5px;">
-              <b>بند من تقدير الحاسبة:</b>
+              <b>بنود من تقدير الحاسبة:</b>
               <ul style="margin:6px 0 0;padding-inline-start:18px;">
-                <li>نظام طاقة شمسية (${picked.ref.hp||'-'} حصان) — ${fmtMoney(currentQuotationItemsTotal)} ﷼ (قبل الضريبة)</li>
+                <li>نظام طاقة شمسية (${picked.ref.hp||'-'} حصان) — ${fmtMoney(currentQuotationItemsTotal)} ﷼ (قبل الضريبة) — هيتوزع على الألواح والانفرتر والباقي</li>
               </ul>
+              <div style="margin-top:8px;">
+                <label style="font-size:12px;font-weight:700;display:block;margin-bottom:3px;">الرقم التسلسلي للانفرتر (مطلوب لإصدار شهادة الضمان)</label>
+                <input type="text" id="invCalcInvSerial" placeholder="S/N" autocomplete="off" style="width:100%;">
+              </div>
             </div>`;
           document.getElementById('invUnlinkQuotationBtn').addEventListener('click', ()=>{
             invSelectedCalcQuote = null; currentQuotationItemsTotal = 0;
@@ -4993,6 +4997,7 @@ document.addEventListener('click', async (e)=>{
       items,
       quotationId: invSelectedQuotation ? invSelectedQuotation.id : null,
       calcQuoteId: invSelectedCalcQuote ? invSelectedCalcQuote.id : null,
+      calcSerials: invSelectedCalcQuote ? { inverter: (document.getElementById('invCalcInvSerial')?.value || '').trim() } : null,
       discountTotal: Number(document.getElementById('invDiscountTotal').value)||0,
       supplyDate: document.getElementById('invSupplyDate').value || '',
       paymentMethod: document.getElementById('invPayMethod').value,
