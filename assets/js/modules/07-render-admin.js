@@ -2078,6 +2078,7 @@ ${(function(){
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='catalog'?'active':''}" data-admsubparent="products" data-admsub="catalog" type="button"><span class="ic">📋</span><span class="lbl">قائمة المنتجات</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='panels'?'active':''}" data-admsubparent="products" data-admsub="panels" type="button"><span class="ic">☀️</span><span class="lbl">الألواح الشمسية</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='bomimages'?'active':''}" data-admsubparent="products" data-admsub="bomimages" type="button"><span class="ic">🖼️</span><span class="lbl">صور عناصر العرض</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.products==='items'?'active':''}" data-admsubparent="products" data-admsub="items" type="button"><span class="ic">🏷️</span><span class="lbl">الأصناف والضمان</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='ready'?'active':''}" data-admsubparent="products" data-admsub="ready" type="button"><span class="ic">🧰</span><span class="lbl">منظومات جاهزة</span></button>
   </aside>
   <div class="admsub-main">
@@ -2222,7 +2223,14 @@ ${(function(){
   </div>
   </div>
 
-  <div class="admsubsec ${currentAdminSubSection.products==='ready'?'active':''}" data-admsub="ready">
+  <div class="admsubsec ${currentAdminSubSection.products==='items'?'active':''}" data-admsub="items">
+  <div class="card">
+    <h3>🏷️ الأصناف والضمان</h3>
+    <div class="note">كل صنف له رمز دائم (INV / PNL / BAT ...) بيتولّد تلقائيًا من تصنيفه. الضمان بيتحدد لكل <b>ماركة داخل الفئة</b>.</div>
+    <div id="prodadm-root" style="margin-top:12px"></div>
+  </div>
+</div>
+<div class="admsubsec ${currentAdminSubSection.products==='ready'?'active':''}" data-admsub="ready">
   <div class="card">
     <h3>منظومات أوف-جريد جاهزة <span class="tag">مراجعة كاملة + تغيير المعدات من قائمة المنتجات</span></h3>
     <div class="note">لكل منظومة: عدّل الاسم/السعر/الحالة، وغيّر موديل الإنفرتر أو البطارية من نفس قائمة المنتجات الحقيقية، واضغط "🔄 إعادة حساب السعر" لتحديث السعر بناءً على أسعار الكتالوج الحالية وهوامش الربح في إعدادات الأوف-جريد بالأعلى. السعر المحسوب هو توريد خامات فقط (بدون تركيب أو شاسيه).</div>

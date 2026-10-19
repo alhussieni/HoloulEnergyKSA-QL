@@ -548,6 +548,7 @@ function wire(){
       b.onclick = ()=>{
         const parent = b.dataset.admsubparent, sub = b.dataset.admsub;
         currentAdminSubSection[parent] = sub;
+        if(parent === 'products' && sub === 'items' && typeof prodAdmMount === 'function') prodAdmMount();
         const shell = b.closest('.admsub-shell');
         if(shell){
           shell.querySelectorAll('.admsub-nav-btn').forEach(x=>x.classList.toggle('active', x.dataset.admsub===sub));
@@ -556,6 +557,7 @@ function wire(){
       };
     });
     wireCompanySection();
+    if(typeof prodAdmMount === 'function') prodAdmMount();
     const admLogoutSide = document.getElementById('adm_logout_side');
     if(admLogoutSide) admLogoutSide.onclick = ()=>document.getElementById('adm_logout').click();
     const admSaveTop = document.getElementById('admSaveTop');
@@ -892,7 +894,7 @@ function wire(){
                   row.newPrice = null;
                 }
               }
-            }catch(e){ row.error = 'تعذر الاتصال بالخادم'; }
+            }catch(e){ row.error = (e && e.message) || 'تعذر الاتصال بالخادم'; }
           }
           rows.push(row);
         }
