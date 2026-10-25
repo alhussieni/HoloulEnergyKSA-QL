@@ -427,6 +427,8 @@ body.printing-cert #certPrintArea{display:block!important;}
 .invSheet2 .printQr{width:100px;height:100px;}  /* the JS above also forces this after QRCode.toCanvas runs — kept here too so it is correct even before that JS fires */
 .invSheet2 .legal2{font-size:10px;color:var(--muted);}
 .invSheet2 #invQrCanvas{border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff;}
+.finForm{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end;}
+.finForm label{margin:0 0 4px;}
 </style>
 </head>
 <body>
@@ -475,6 +477,7 @@ body.printing-cert #certPrintArea{display:block!important;}
         <button data-tab="settings" id="settingsTabBtn" class="hidden">الإعدادات</button>
         <button data-tab="segments" id="segmentsTabBtn" class="hidden">📊 الشرائح</button>
         <button data-tab="audit" id="auditTabBtn" class="hidden">سجل التغييرات</button>
+        <button data-tab="finance" id="financeTabBtn" class="hidden">💰 المالية</button>
       </nav>
       <div class="userChip">
         <div class="gSearchWrap">
@@ -666,6 +669,11 @@ body.printing-cert #certPrintArea{display:block!important;}
       <div class="emptyNote" style="margin-top:8px;">ملحوظة: العميل اللي عنده عروض في أكتر من شريحة بيتحسب في كل شريحة منها، فمجموع العملاء قد يزيد عن العدد الفعلي.</div>
     </section>
 
+    <section id="view-finance" class="view">
+      <div class="filterBar" id="finSubnav"></div>
+      <div id="finBody"><div class="loadingNote">بيحمّل...</div></div>
+    </section>
+
     <section id="view-audit" class="view">
       <div class="filterBar">
         <input type="text" id="auditSearchInput" placeholder="دور باسم المستخدم أو اسم العنصر...">
@@ -707,6 +715,7 @@ body.printing-cert #certPrintArea{display:block!important;}
 <div class="overlay" id="maintOverlay"><div class="modal" id="maintModal" style="max-width:520px;"></div></div>
 
 <div class="overlay" id="invoiceOverlay"><div class="modal" id="invoiceModal" style="max-width:760px;"></div></div>
+<div class="overlay" id="finOverlay"><div class="modal" id="finModal" style="max-width:820px;"></div></div>
 
 <div class="toast" id="toast"></div>
 
@@ -730,6 +739,8 @@ const WARRANTY_ACTIONS = new Set(['crm-warranty-config','crm-warranty-list','crm
 const PIPELINE_FN = SUPABASE_URL + '/functions/v1/crm-pipeline'; // pipeline board/table/alerts/bulk (server-side)
 const QUOTES_FN = SUPABASE_URL + '/functions/v1/crm-quotes'; // كل العروض (حتى غير المربوطة بعميل)
 const QUOTES_ACTIONS = new Set(['admin-crm-list-quotes']);
+const TREASURY_FN = SUPABASE_URL + '/functions/v1/finance-treasury'; // الخزنة والموردين (أدمن فقط) — actions بتبدأ بـ treasury-
+const FINANCE_FN = SUPABASE_URL + '/functions/v1/finance-api'; // المالية والمحاسبة (أدمن فقط) — كل actions بتبدأ بـ finance-
 const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live','crm-list-customer-quotations','crm-invoices-report','seller-info']);
 
 let SETTINGS = { statuses:[], blockerReasons:[], priceFeedback:[], priorities:[], interactionTypes:[],
@@ -782,7 +793,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch(WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
+  const res = await fetch(action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -860,6 +871,7 @@ async function enterApp(){
     document.getElementById('settingsTabBtn').classList.remove('hidden');
     document.getElementById('auditTabBtn').classList.remove('hidden');
     document.getElementById('segmentsTabBtn').classList.remove('hidden');
+    document.getElementById('financeTabBtn').classList.remove('hidden');
   }
   try{
     const s = await crmApi('admin-crm-settings');
@@ -926,7 +938,308 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='settings') loadSettingsScreen();
   if(tab==='audit') loadAuditLog();
   if(tab==='segments') loadSegments();
+  if(tab==='finance') loadFinance();
 });
+
+/* ============ FINANCE (admin only) ============ */
+/* كل المبالغ بتتسجل زي ما اتدفعت (شامل الضريبة)، والسيرفر بيفصل الصافي والضريبة. */
+let finTab = 'treasury', finMonth = todayStr().slice(0,7);
+const FIN_TABS = { treasury:'الخزنة', suppliers:'الموردون', overview:'نظرة عامة', projects:'المشاريع', expenses:'المصاريف', partners:'الشركاء', vat:'الضريبة' };
+const FIN_CAT = { salary:'رواتب', rent:'إيجار', utilities:'كهرباء/اتصالات', fuel:'وقود ونقل', marketing:'تسويق', government:'رسوم حكومية', other:'أخرى' };
+const FIN_TAX = { recoverable:'فاتورة ضريبية صالحة', none:'بدون ضريبة قابلة للاسترداد' };
+const FIN_KIND = { profit:'توزيع أرباح', draw:'سحب', advance:'سلفة' };
+const finN = v => Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const finS = v => Number(v)<0 ? `<span class="od">${finN(v)}</span>` : finN(v);
+const finOpt = (m,sel) => Object.entries(m).map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v}</option>`).join('');
+const finBody = () => document.getElementById('finBody');
+const finFd = e => { e.preventDefault(); return Object.fromEntries(new FormData(e.target)); };
+async function finRun(f){ try{ await f(); }catch(e){ toast(e.message||'حصل خطأ'); } }
+function finDone(msg){ toast(msg); finLoad(); }
+
+function loadFinance(){
+  if(SESSION.role !== 'admin') return;
+  const nav = document.getElementById('finSubnav');
+  if(!nav.dataset.ready){
+    nav.dataset.ready = '1';
+    nav.innerHTML = Object.entries(FIN_TABS).map(([k,v])=>`<button class="btn small" data-fin="${k}" type="button">${v}</button>`).join('');
+    nav.addEventListener('click', e=>{ const b=e.target.closest('button[data-fin]'); if(!b) return; finTab=b.dataset.fin; finLoad(); });
+  }
+  finLoad();
+}
+function finLoad(){
+  document.querySelectorAll('#finSubnav button').forEach(b=>b.classList.toggle('ghost', b.dataset.fin!==finTab));
+  finBody().innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  finRun(()=>FIN_VIEWS[finTab]());
+}
+
+const FIN_VIEWS = {
+async overview(){
+  const o = await crmApi('finance-overview'), t = o.totals;
+  const rows = o.monthly.filter(r=>r.projects_completed>0 || +r.expenses_net>0).reverse();
+  finBody().innerHTML = `
+  <div class="kpiGrid">
+    <div class="stat sun"><div class="v">${finS(t.net_profit)}</div><div class="l">صافي الربح بعد المصاريف (بدون ضريبة)</div></div>
+    <div class="stat"><div class="v">${finS(t.project_profit)}</div><div class="l">أرباح المشاريع المنتهية (${t.completed_projects})</div></div>
+    <div class="stat"><div class="v">${finN(t.expenses_net)}</div><div class="l">المصاريف الشهرية (صافي)</div></div>
+    <div class="stat"><div class="v">${finN(t.remaining_all)}</div><div class="l">المتبقي للتحصيل (شامل الضريبة)</div></div>
+  </div>
+  ${o.warnings.length ? `<div class="card" style="background:var(--sun-tint);border-color:var(--sun-2)"><h3><span class="lbl">محتاجة مراجعة قبل الاعتماد على الأرباح</span></h3>${o.warnings.map(w=>`<div class="emptyNote" style="color:var(--ink)">${escapeHtml(w.project)} — ${escapeHtml(w.message)}</div>`).join('')}</div>` : ''}
+  <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">الأرباح الشهرية</span></h3></div>
+  ${rows.length ? `<table class="admtable"><thead><tr><th>الشهر</th><th>مشاريع منتهية</th><th>الإيراد (صافي)</th><th>تكاليف المشاريع</th><th>ربح المشاريع</th><th>المصاريف</th><th>صافي الربح</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr style="cursor:default"><td>${r.month.slice(0,7)}</td><td>${r.projects_completed}</td><td>${finN(r.revenue_net)}</td><td>${finN(r.project_costs_net)}</td><td>${finS(r.project_profit)}</td><td>${finN(r.expenses_net)}</td><td><b>${finS(r.net_profit)}</b></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">لسه مفيش بيانات</div>'}</div>
+  <div class="card"><h3><span class="lbl">أرصدة الشركاء</span></h3><div class="kpiGrid">
+  ${o.partners.map(p=>`<div class="stat"><div class="v">${finS(p.balance)}</div><div class="l">${escapeHtml(p.partner_name)}</div><div class="s">نصيبه ${finN(p.earned)} − مسحوب ${finN(p.distributed)}</div></div>`).join('')}</div></div>
+  <div class="card"><h3><span class="lbl">احتياطي قبل توزيع الأرباح</span></h3>
+  <form class="finForm" onsubmit="finSaveReserve(event)"><div><label>النسبة % (زكاة / ضريبة دخل — حسب محاسبك القانوني)</label><input name="r" type="number" step="0.1" min="0" max="99" value="${o.settings.reserve_pct}"></div><div><button class="btn small teal">حفظ</button></div></form></div>`;
+},
+async projects(){
+  const { projects:p } = await crmApi('finance-projects');
+  finBody().innerHTML = `<div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>المشروع</th><th>العميل</th><th>الحالة</th><th>التعاقد (صافي)</th><th>التكاليف (صافي)</th><th>الربح الفعلي</th><th>%</th><th>المحصّل</th><th>المتبقي</th></tr></thead><tbody>
+  ${p.map(x=>`<tr onclick="finOpenProject(${x.project_id})"><td>${escapeHtml(x.project_number)}</td><td>${escapeHtml(x.customer_name)}</td><td>${escapeHtml(labelOf(SETTINGS.projectStatuses,x.status))}${x.is_completed?'':' <span class="tag warn">غير منتهٍ</span>'}</td><td>${finN(x.contract_net)}</td><td>${finN(x.cost_net)}</td><td><b>${finS(x.actual_profit)}</b></td><td>${x.margin_pct ?? '-'}</td><td>${finN(x.collected)}</td><td>${finN(x.remaining)}</td></tr>`).join('')}</tbody></table></div>
+  <div class="emptyNote">اضغط على مشروع لإضافة التكاليف أو ضبط الضريبة وتاريخ الانتهاء.</div>`;
+},
+async expenses(){
+  const [e,r] = await Promise.all([ crmApi('finance-list-expenses',{month:finMonth}), crmApi('finance-list-recurring') ]);
+  finBody().innerHTML = `
+  <div class="card"><h3><span class="lbl">إضافة مصروف</span></h3><form class="finForm" onsubmit="finAddExp(event)">
+    <div><label>التاريخ</label><input name="expenseDate" type="date" value="${todayStr()}" required></div>
+    <div><label>النوع</label><select name="category">${finOpt(FIN_CAT)}</select></div>
+    <div><label>المبلغ (كما دفعته)</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div><label>الضريبة</label><select name="taxTreatment"><option value="">تلقائي (الرواتب بدون ضريبة)</option>${finOpt(FIN_TAX)}</select></div>
+    <div><label>البيان</label><input name="description"></div>
+    <div><button class="btn small teal">إضافة</button></div></form></div>
+  <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">مصاريف شهر</span><input type="month" value="${finMonth}" style="max-width:170px" onchange="finMonth=this.value;finLoad()"></h3></div>
+  ${e.expenses.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>المبلغ</th><th>الضريبة</th><th></th></tr></thead><tbody>
+  ${e.expenses.map(x=>`<tr style="cursor:default"><td>${fmtDate(x.expense_date)}</td><td>${escapeHtml(FIN_CAT[x.category]||x.category)}</td><td>${escapeHtml(x.description||'')}</td><td>${finN(x.amount)}</td><td>${FIN_TAX[x.tax_treatment]}</td><td><button class="btn danger small" onclick="finDelExp(${x.id})">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش مصاريف في الشهر ده</div>'}</div>
+  <div class="card"><h3><span class="lbl">مصاريف شهرية ثابتة (رواتب، إيجارات)</span></h3><form class="finForm" onsubmit="finAddRec(event)">
+    <div><label>النوع</label><select name="category">${finOpt(FIN_CAT)}</select></div>
+    <div><label>المبلغ الشهري</label><input name="amount" type="number" step="0.01" min="0" required></div>
+    <div><label>الضريبة</label><select name="tax_treatment"><option value="">تلقائي</option>${finOpt(FIN_TAX)}</select></div>
+    <div><label>من شهر</label><input name="start_month" type="month" value="${todayStr().slice(0,7)}" required></div>
+    <div><label>البيان</label><input name="description"></div>
+    <div><button class="btn small teal">حفظ</button></div></form></div>
+  <div class="card" style="padding:0;overflow:auto">${r.recurring.length ? `<table class="admtable"><thead><tr><th>النوع</th><th>البيان</th><th>المبلغ</th><th>من</th><th>الحالة</th><th></th></tr></thead><tbody>
+  ${r.recurring.map(x=>`<tr style="cursor:default"><td>${escapeHtml(FIN_CAT[x.category]||x.category)}</td><td>${escapeHtml(x.description||'')}</td><td>${finN(x.amount)}</td><td>${x.start_month.slice(0,7)}</td><td>${x.active?'فعّال':'موقوف'}</td><td><button class="btn ghost small" onclick="finTogRec(${x.id},${!x.active})">${x.active?'إيقاف':'تفعيل'}</button> <button class="btn danger small" onclick="finDelRec(${x.id})">حذف</button></td></tr>`).join('')}</tbody></table>
+  <div style="padding:12px 18px"><button class="btn small teal" onclick="finGenRec()">إنشاء مصاريف ${finMonth} من الثوابت</button> <span class="emptyNote">آمن للتكرار، مش بيضيف نفس المصروف مرتين.</span></div>` : '<div class="loadingNote">ضيف الرواتب والإيجارات مرة واحدة وبعدها بتتولّد كل شهر بضغطة</div>'}</div>`;
+},
+async partners(){
+  const p = await crmApi('finance-partners');
+  const cur = Object.fromEntries(p.currentShares.map(s=>[s.partner_id,s.share_pct]));
+  const act = p.partners.filter(x=>x.active), by = Object.fromEntries(p.partners.map(x=>[x.id,x.name]));
+  finBody().innerHTML = `
+  <div class="card"><h3><span class="lbl">النسب الحالية (المجموع ${p.currentTotalPct}%)</span></h3><form onsubmit="finSaveShares(event)">
+  <table class="admtable"><thead><tr><th>الشريك</th><th style="width:140px">النسبة %</th></tr></thead><tbody>
+  ${act.map(x=>`<tr style="cursor:default"><td><input value="${escapeHtml(x.name)}" onchange="finRenPartner(${x.id},this.value)"></td><td><input data-p="${x.id}" type="number" step="0.01" min="0.01" max="100" value="${cur[x.id] ?? ''}" required></td></tr>`).join('')}</tbody></table>
+  <div class="finForm" style="margin-top:12px"><div><label>تسري من تاريخ</label><input id="finEff" type="date" value="${todayStr()}"></div><div><button class="btn small teal">حفظ النسب</button></div></div>
+  <div class="emptyNote">المجموع لازم يبقى 100%. تغيير النسبة بيسري من التاريخ ده بس، ومبيغيّرش حسابات الشهور اللي فاتت.</div></form>
+  <form class="finForm" style="margin-top:10px" onsubmit="finAddPartner(event)"><div><label>شريك جديد</label><input name="name" required></div><div><button class="btn ghost small">إضافة شريك</button></div></form></div>
+  <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">أرصدة الشركاء</span></h3></div><table class="admtable"><thead><tr><th>الشريك</th><th>نصيبه من الأرباح</th><th>المسحوب</th><th>الرصيد</th></tr></thead><tbody>
+  ${p.balances.map(b=>`<tr style="cursor:default"><td>${escapeHtml(b.partner_name)}</td><td>${finS(b.earned)}</td><td>${finN(b.distributed)}</td><td><b>${finS(b.balance)}</b></td></tr>`).join('')}</tbody></table></div>
+  <div class="card"><h3><span class="lbl">تسجيل سحب / توزيع</span></h3><form class="finForm" onsubmit="finAddDist(event)">
+    <div><label>الشريك</label><select name="partnerId">${act.map(x=>`<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('')}</select></div>
+    <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div><label>النوع</label><select name="kind">${finOpt(FIN_KIND)}</select></div>
+    <div><label>التاريخ</label><input name="distributionDate" type="date" value="${todayStr()}"></div>
+    <div><label>ملاحظات</label><input name="notes"></div><div><button class="btn small teal">تسجيل</button></div></form></div>
+  <div class="card" style="padding:0;overflow:auto">${p.distributions.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>الشريك</th><th>النوع</th><th>المبلغ</th><th>ملاحظات</th><th></th></tr></thead><tbody>
+  ${p.distributions.map(d=>`<tr style="cursor:default"><td>${fmtDate(d.distribution_date)}</td><td>${escapeHtml(by[d.partner_id]||'')}</td><td>${FIN_KIND[d.kind]}</td><td>${finN(d.amount)}</td><td>${escapeHtml(d.notes||'')}</td><td><button class="btn danger small" onclick="finDelDist(${d.id})">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش سحوبات مسجلة</div>'}</div>`;
+},
+async vat(){
+  const v = await crmApi('finance-vat-report');
+  finBody().innerHTML = `<div class="card" style="padding:0;overflow:auto">${v.months.length ? `<table class="admtable"><thead><tr><th>الشهر</th><th>ضريبة المبيعات (من المحصّل)</th><th>ضريبة المشتريات</th><th>الصافي المستحق للهيئة</th></tr></thead><tbody>
+  ${v.months.map(m=>`<tr style="cursor:default"><td>${m.month.slice(0,7)}</td><td>${finN(m.output_vat)}</td><td>${finN(m.input_vat)}</td><td><b>${finS(m.net_vat_due)}</b></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش بيانات</div>'}</div>
+  <div class="emptyNote">${escapeHtml(v.note)} الرقم السالب معناه ضريبة مشتريات أكبر من المبيعات في الشهر ده.</div>`;
+}};
+
+/* ============ TREASURY (الخزنة) + SUPPLIERS — داخل تبويب المالية ============ */
+/* الخزنة = حركات فلوس فقط. فاتورة المورد التزام: بتدخل تكلفة مشروع (أو مصروف) من غير ما تحرّك الخزنة. */
+let finLK = null, trFilter = { accountId:'', month:'' };
+const TR_KIND = { customer_receipt:'قبض من عميل', supplier_payment:'دفع لمورد', expense:'مصروف', partner_draw:'سحب شريك', transfer:'تحويل', other:'أخرى' };
+const TR_ACC = { cash:'خزنة', bank:'بنك', custody:'عهدة' };
+const trAccOpts = sel => finLK.accounts.filter(a=>a.active).map(a=>`<option value="${a.account_id}"${String(a.account_id)===String(sel)?' selected':''}>${escapeHtml(a.name)}${a.holder?' — '+escapeHtml(a.holder):''} (${finN(a.balance)})</option>`).join('');
+const trProjOpts = (sel,blank) => (blank?`<option value="">${blank}</option>`:'<option value="">-- اختر المشروع --</option>') + finLK.projects.map(p=>`<option value="${p.project_id}"${String(p.project_id)===String(sel)?' selected':''}>${escapeHtml(p.project_number)} — ${escapeHtml(p.customer_name||'')}</option>`).join('');
+const trSupOpts = sel => '<option value="">-- اختر المورد --</option>' + finLK.suppliers.filter(s=>s.active).map(s=>`<option value="${s.supplier_id}"${String(s.supplier_id)===String(sel)?' selected':''}>${escapeHtml(s.name)}${Number(s.balance)>0?' (عليك '+finN(s.balance)+')':''}</option>`).join('');
+const trMonthEnd = m => { const d=new Date(m+'-01T00:00:00Z'); d.setUTCMonth(d.getUTCMonth()+1); d.setUTCDate(0); return d.toISOString().slice(0,10); };
+
+FIN_VIEWS.treasury = async function(){
+  const q = {};
+  if(trFilter.accountId) q.accountId = +trFilter.accountId;
+  if(trFilter.month){ q.from = trFilter.month+'-01'; q.to = trMonthEnd(trFilter.month); }
+  const [lk, o, l] = await Promise.all([ crmApi('treasury-lookups'), crmApi('treasury-overview'), crmApi('treasury-ledger', q) ]);
+  finLK = lk;
+  const accs = o.accounts;
+  finBody().innerHTML = `
+  <div class="kpiGrid">
+    <div class="stat sun"><div class="v">${finS(o.totalBalance)}</div><div class="l">إجمالي السيولة (كل الحسابات النشطة)</div></div>
+    ${accs.filter(a=>a.active).map(a=>`<div class="stat"><div class="v">${finS(a.balance)}</div><div class="l">${escapeHtml(a.name)}${a.holder?' — '+escapeHtml(a.holder):''} · ${TR_ACC[a.kind]}</div></div>`).join('')}
+    <div class="stat bad"><div class="v">${finN(o.totalPayable)}</div><div class="l">مستحق للموردين</div></div>
+  </div>
+  <div class="card"><h3><span class="lbl">تسجيل حركة</span></h3><div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn teal small" onclick="trOpen('customer_receipt')">+ قبض من عميل</button>
+    <button class="btn small" onclick="trOpen('supplier_payment')">+ دفع لمورد</button>
+    <button class="btn ghost small" onclick="trOpen('bill')">+ فاتورة مورد (التزام)</button>
+    <button class="btn ghost small" onclick="trOpen('expense')">+ مصروف</button>
+    <button class="btn ghost small" onclick="trOpen('partner_draw')">+ سحب شريك</button>
+    <button class="btn ghost small" onclick="trOpen('transfer')">⇄ تحويل / عهدة</button></div>
+  <div class="emptyNote" style="margin-top:8px">فاتورة المورد مبتحرّكش الخزنة؛ هي بتزوّد تكلفة المشروع والمستحق للمورد. الفلوس بتخرج لما تسجّل "دفع لمورد".</div></div>
+  ${o.unassigned.length ? `<div class="card" style="background:var(--sun-tint);border-color:var(--sun-2)"><h3><span class="lbl">دفعات عملاء مش مربوطة بحساب (${o.unassigned.length})</span></h3>
+    <div class="emptyNote" style="color:var(--ink)">دي دفعات اتسجلت من شاشة المشروع. اختار الحساب اللي استلمها عشان تتحسب في رصيده.</div>
+    <table class="admtable"><tbody>${o.unassigned.map(u=>`<tr style="cursor:default"><td>${fmtDate(u.payment_date)}</td><td>${escapeHtml(u.project_number||'')} — ${escapeHtml(u.customer_name||'')}</td><td>${finN(u.amount)}</td><td>${escapeHtml(labelOf(SETTINGS.paymentMethods,u.method,u.method||''))}</td>
+    <td style="width:230px"><select id="asg${u.payment_id}">${trAccOpts('')}</select></td><td><button class="btn small teal" onclick="trAssign(${u.payment_id})">ربط</button></td></tr>`).join('')}</tbody></table></div>` : ''}
+  <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">سجل الحركات</span>
+    <span style="display:flex;gap:8px"><select style="max-width:220px" onchange="trFilter.accountId=this.value;finLoad()"><option value="">كل الحسابات</option>${accs.map(a=>`<option value="${a.account_id}"${String(a.account_id)===String(trFilter.accountId)?' selected':''}>${escapeHtml(a.name)}${a.holder?' — '+escapeHtml(a.holder):''}</option>`).join('')}</select>
+    <input type="month" value="${trFilter.month}" style="max-width:160px" onchange="trFilter.month=this.value;finLoad()"></span></h3></div>
+  ${l.rows.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>الحساب</th><th>البيان</th><th>الطريقة</th><th>وارد</th><th>صادر</th><th>الرصيد</th><th></th></tr></thead><tbody>
+  ${l.rows.map(r=>`<tr style="cursor:default"><td>${fmtDate(r.entry_date)}</td><td>${escapeHtml(r.account_name)}</td>
+   <td><b>${TR_KIND[r.kind]||r.kind}</b> ${escapeHtml([r.customer_name,r.supplier_name,r.project_number,r.reference,r.notes].filter(Boolean).join(' · '))}</td>
+   <td>${escapeHtml(labelOf(SETTINGS.paymentMethods,r.method,r.method||''))}</td>
+   <td class="num">${r.direction==='in'?finN(r.amount):''}</td><td class="num">${r.direction==='out'?finN(r.amount):''}</td><td class="num">${finS(r.running_balance)}</td>
+   <td><button class="btn danger small" onclick="trDelEntry(${r.id},'${r.kind}')">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش حركات لسه</div>'}</div>
+  <div class="card"><h3><span class="lbl">الحسابات (خزنة / بنك / عهد شخصية)</span></h3>
+  <table class="admtable"><thead><tr><th>الاسم</th><th>النوع</th><th>صاحب العهدة</th><th>رصيد افتتاحي</th><th>من تاريخ</th><th>الرصيد الحالي</th><th></th></tr></thead><tbody>
+  ${accs.map(a=>`<tr style="cursor:default"><td>${escapeHtml(a.name)}${a.active?'':' <span class="tag warn">موقوف</span>'}</td><td>${TR_ACC[a.kind]}</td><td>${escapeHtml(a.holder||'')}</td><td>${finN(a.opening_balance)}</td><td>${fmtDate(a.opening_date)}</td><td><b>${finS(a.balance)}</b></td>
+  <td><button class="btn ghost small" onclick="trEditAcc(${a.account_id})">تعديل</button> <button class="btn ghost small" onclick="trToggleAcc(${a.account_id},${!a.active})">${a.active?'إيقاف':'تفعيل'}</button></td></tr>`).join('')}</tbody></table>
+  <form class="finForm" style="margin-top:12px" onsubmit="trAddAcc(event)">
+    <div><label>حساب جديد</label><input name="name" placeholder="مثال: عهدة أحمد" required></div>
+    <div><label>النوع</label><select name="kind"><option value="custody">عهدة شخصية</option><option value="cash">خزنة</option><option value="bank">بنك</option></select></div>
+    <div><label>صاحب العهدة</label><input name="holder"></div>
+    <div><label>رصيد افتتاحي</label><input name="opening_balance" type="number" step="0.01" value="0"></div>
+    <div><label>من تاريخ</label><input name="opening_date" type="date" value="${todayStr()}"></div>
+    <div><button class="btn small teal">إضافة حساب</button></div></form>
+  <div class="emptyNote">الحركات قبل "من تاريخ" مش بتدخل في رصيد الحساب. حط الرصيد الفعلي وقت البداية وسجّل من بعده.</div></div>`;
+};
+
+FIN_VIEWS.suppliers = async function(){
+  const lk = await crmApi('treasury-lookups'); finLK = lk;
+  finBody().innerHTML = `<div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>المورد</th><th>الرقم الضريبي</th><th>إجمالي الفواتير</th><th>المدفوع</th><th>المتبقي علينا</th></tr></thead><tbody>
+  ${lk.suppliers.map(s=>`<tr onclick="trSupplier(${s.supplier_id})"><td>${escapeHtml(s.name)}${s.active?'':' <span class="tag warn">موقوف</span>'}</td><td>${escapeHtml(s.vat_number||'')}</td><td>${finN(s.total_bills)}</td><td>${finN(s.total_paid)}</td><td><b>${finS(s.balance)}</b></td></tr>`).join('') || '<tr><td colspan="5" class="loadingNote">لسه مفيش موردين — بيتضافوا تلقائيًا من أول فاتورة</td></tr>'}</tbody></table></div>
+  <div class="card"><h3><span class="lbl">مورد جديد</span></h3><form class="finForm" onsubmit="trAddSupplier(event)">
+    <div><label>الاسم</label><input name="name" required></div><div><label>الرقم الضريبي</label><input name="vat_number"></div><div><label>الجوال</label><input name="phone"></div><div><button class="btn small teal">إضافة</button></div></form></div>`;
+};
+
+/* --- forms --- */
+function trShow(html){ document.getElementById('finModal').innerHTML = html; finOverlay.classList.add('show'); }
+const trHead = t => `<div class="mhead"><h2>${t}</h2><button class="closeX" type="button" onclick="finOverlay.classList.remove('show')">✕</button></div>`;
+const trPM = () => `<div><label>طريقة الدفع</label><select name="method">${optHtml(SETTINGS.paymentMethods,'')}</select></div>`;
+function trOpen(kind, pre={}){ finRun(async()=>{
+  if(!finLK) finLK = await crmApi('treasury-lookups');
+  const dt = `<div><label>التاريخ</label><input name="entryDate" type="date" value="${todayStr()}"></div>`;
+  const ref = `<div><label>رقم مرجع / إيصال</label><input name="reference"></div>`, notes = `<div><label>ملاحظات</label><input name="notes"></div>`;
+  const btn = `<div><button class="btn small teal">حفظ</button></div>`;
+  let h = '';
+  if(kind==='customer_receipt') h = trHead('قبض من عميل') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
+    <div style="grid-column:1/-1"><label>المشروع / العميل</label><select name="projectId" required onchange="trHint(this.value)">${trProjOpts('')}</select><div class="emptyNote" id="trHint"></div></div>
+    <div><label>المبلغ المستلم</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div><label>استلمه (الحساب)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}${dt}${ref}${notes}${btn}</form>`;
+  else if(kind==='supplier_payment') h = trHead('دفع لمورد') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
+    <div><label>المورد</label><select name="supplierId" required onchange="trSupChange(this.value)">${trSupOpts(pre.supplierId)}</select></div>
+    <div><label>على فاتورة</label><select name="billId" id="trBill" onchange="trBillChange()"></select></div>
+    <div><label>المبلغ المدفوع</label><input name="amount" id="trAmt" type="number" step="0.01" min="0.01" required></div>
+    <div><label>دفعه (الحساب)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}${dt}${ref}${notes}${btn}</form>`;
+  else if(kind==='bill') h = trHead('فاتورة مورد (التزام — مش حركة خزنة)') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
+    <div><label>المورد</label><select name="supplierId">${trSupOpts(pre.supplierId)}</select></div>
+    <div><label>أو مورد جديد (اكتب الاسم)</label><input name="supplierName"></div>
+    <div><label>المشروع</label><select name="projectId">${trProjOpts(pre.projectId,'مشتريات عامة (تتحسب مصروف)')}</select></div>
+    <div><label>نوع التكلفة (للمشروع)</label><select name="costType">${optHtml(SETTINGS.costTypes,'')}</select></div>
+    <div><label>قيمة الفاتورة (شامل الضريبة)</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div><label>رقم فاتورة المورد</label><input name="billNumber"></div><div><label>تاريخ الفاتورة</label><input name="billDate" type="date" value="${todayStr()}"></div>
+    <div><label>الضريبة</label><select name="taxTreatment">${finOpt(FIN_TAX)}</select></div><div><label>البيان</label><input name="description"></div>${btn}</form>`;
+  else if(kind==='expense') h = trHead('مصروف') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
+    <div><label>النوع</label><select name="category">${finOpt(FIN_CAT)}</select></div><div><label>البيان</label><input name="description"></div>
+    <div><label>المبلغ (كما دفعته)</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div><label>دفعه (الحساب)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}
+    <div><label>الضريبة</label><select name="taxTreatment"><option value="">تلقائي (الرواتب بدون ضريبة)</option>${finOpt(FIN_TAX)}</select></div>${dt}${ref}${btn}</form>`;
+  else if(kind==='partner_draw') h = trHead('سحب شريك') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
+    <div><label>الشريك</label><select name="partnerId" required>${finLK.partners.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select></div>
+    <div><label>النوع</label><select name="distKind">${finOpt(FIN_KIND,'draw')}</select></div>
+    <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div><label>من الحساب</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${dt}${notes}${btn}</form>`;
+  else if(kind==='transfer') h = trHead('تحويل بين الحسابات (إيداع / تسليم عهدة / تسوية)') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
+    <div><label>من حساب</label><select name="fromAccountId" required>${trAccOpts('')}</select></div>
+    <div><label>إلى حساب</label><select name="toAccountId" required>${trAccOpts('')}</select></div>
+    <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>${dt}${notes}${btn}</form>
+    <div class="emptyNote">أمثلة: تسليم عهدة = من الخزنة إلى حساب العهدة. إيداع نقدية في البنك = من الخزنة إلى البنك. رد باقي العهدة = من العهدة إلى الخزنة.</div>`;
+  trShow(h);
+  if(kind==='supplier_payment'){ trSupChange(pre.supplierId||'', pre.billId); }
+}); }
+function trHint(pid){ const p=finLK.projects.find(x=>String(x.project_id)===String(pid)); document.getElementById('trHint').textContent = p ? `التعاقد ${finN(p.contract_gross)} · المحصّل ${finN(p.collected)} · المتبقي ${finN(p.remaining)}` : ''; }
+function trSupChange(sid, billId){
+  const bills = finLK.openBills.filter(b=>String(b.supplier_id)===String(sid));
+  document.getElementById('trBill').innerHTML = '<option value="">دفعة على الحساب (بدون فاتورة)</option>' + bills.map(b=>`<option value="${b.bill_id}" data-rem="${b.remaining}"${String(b.bill_id)===String(billId)?' selected':''}>${escapeHtml(b.bill_number||('#'+b.bill_id))} — ${escapeHtml(b.project_number||'عام')} — متبقي ${finN(b.remaining)}</option>`).join('');
+  trBillChange();
+}
+function trBillChange(){ const o=document.getElementById('trBill'); const rem=o.selectedOptions[0]?.dataset.rem; if(rem) document.getElementById('trAmt').value=rem; }
+async function trSubmit(e, kind){ const d=finFd(e); finRun(async()=>{
+  if(kind==='transfer') await crmApi('treasury-record-transfer',d);
+  else if(kind==='bill') await crmApi('treasury-record-bill',d);
+  else { if(kind==='expense' && !d.taxTreatment) d.taxTreatment = d.category==='salary' ? 'none' : 'recoverable'; await crmApi('treasury-record-entry',{kind,...d}); }
+  finOverlay.classList.remove('show'); finLK=null; finDone('تم التسجيل');
+}); }
+const trAssign = pid => finRun(async()=>{ await crmApi('treasury-assign-payment',{paymentId:pid,accountId:document.getElementById('asg'+pid).value}); finDone('تم الربط'); });
+const trDelEntry = (id,kind) => confirm(kind==='customer_receipt' ? 'حذف الحركة هيحذف الدفعة المسجلة على المشروع كمان. متأكد؟' : kind==='transfer' ? 'هيتحذف طرفا التحويل معًا. متأكد؟' : 'حذف الحركة؟') && finRun(async()=>{ await crmApi('treasury-delete-entry',{entryId:id}); finDone('تم الحذف'); });
+const trAddAcc = e => finRun(async()=>{ const d=finFd(e); await crmApi('treasury-save-account',{fields:d}); finDone('تم إضافة الحساب'); });
+const trToggleAcc = (id,a) => finRun(async()=>{ await crmApi('treasury-save-account',{accountId:id,fields:{active:a}}); finLoad(); });
+const trEditAcc = id => finRun(async()=>{ const a=finLK.accounts.find(x=>x.account_id===id);
+  const name=prompt('اسم الحساب',a.name); if(name===null) return;
+  const ob=prompt('الرصيد الافتتاحي',a.opening_balance); if(ob===null) return;
+  const od=prompt('تاريخ الرصيد الافتتاحي (YYYY-MM-DD)',String(a.opening_date).slice(0,10)); if(od===null) return;
+  await crmApi('treasury-save-account',{accountId:id,fields:{name,opening_balance:ob,opening_date:od}}); finDone('تم التعديل'); });
+const trAddSupplier = e => finRun(async()=>{ const d=finFd(e); await crmApi('treasury-save-supplier',{fields:d}); finDone('تم إضافة المورد'); });
+const trDelBill = (id,sid) => confirm('حذف الفاتورة؟ هتتحذف تكلفتها من المشروع كمان.') && finRun(async()=>{ await crmApi('treasury-delete-bill',{billId:id}); await trSupplier(sid); finLoad(); });
+function trSupplier(sid){ return finRun(async()=>{
+  const d = await crmApi('treasury-supplier-statement',{supplierId:sid}), s = d.supplier;
+  trShow(`${trHead(escapeHtml(s.name))}
+  <div class="kpiGrid"><div class="stat"><div class="v">${finN(s.total_bills)}</div><div class="l">إجمالي الفواتير</div></div><div class="stat"><div class="v">${finN(s.total_paid)}</div><div class="l">المدفوع</div></div><div class="stat sun"><div class="v">${finS(s.balance)}</div><div class="l">المتبقي علينا</div></div></div>
+  <div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn small" onclick="trOpen('supplier_payment',{supplierId:${sid}})">+ دفع</button><button class="btn ghost small" onclick="trOpen('bill',{supplierId:${sid}})">+ فاتورة</button></div>
+  <h3 style="margin:10px 0 6px"><span class="lbl">الفواتير</span></h3>
+  ${d.bills.length ? `<table class="admtable"><thead><tr><th>الفاتورة</th><th>التاريخ</th><th>المشروع</th><th>القيمة</th><th>المدفوع</th><th>المتبقي</th><th></th></tr></thead><tbody>
+  ${d.bills.map(b=>`<tr style="cursor:default"><td>${escapeHtml(b.bill_number||('#'+b.bill_id))}</td><td>${fmtDate(b.bill_date)}</td><td>${escapeHtml(b.project_number||'عام')}</td><td>${finN(b.amount)}</td><td>${finN(b.paid)}</td><td><b>${finS(b.remaining)}</b></td>
+  <td>${Number(b.remaining)>0?`<button class="btn small" onclick="trOpen('supplier_payment',{supplierId:${sid},billId:${b.bill_id}})">دفع</button> `:''}${Number(b.paid)===0?`<button class="btn danger small" onclick="trDelBill(${b.bill_id},${sid})">حذف</button>`:''}</td></tr>`).join('')}</tbody></table>` : '<div class="emptyNote">مفيش فواتير</div>'}
+  <h3 style="margin:14px 0 6px"><span class="lbl">المدفوعات</span></h3>
+  ${d.payments.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>الحساب</th><th>المبلغ</th><th>المرجع</th></tr></thead><tbody>${d.payments.map(p=>`<tr style="cursor:default"><td>${fmtDate(p.entry_date)}</td><td>${escapeHtml(p.account_name)}</td><td>${finN(p.amount)}</td><td>${escapeHtml(p.reference||'')}</td></tr>`).join('')}</tbody></table>` : '<div class="emptyNote">مفيش مدفوعات</div>'}`);
+}); }
+
+/* --- actions --- */
+const finSaveReserve = e => finRun(async()=>{ const d=finFd(e); await crmApi('finance-update-settings',{fields:{reserve_pct:+d.r}}); finDone('تم الحفظ'); });
+const finAddExp = e => finRun(async()=>{ const d=finFd(e); await crmApi('finance-add-expense',d); finDone('تمت إضافة المصروف'); });
+const finDelExp = id => confirm('حذف المصروف؟') && finRun(async()=>{ await crmApi('finance-delete-expense',{expenseId:id}); finDone('تم الحذف'); });
+const finAddRec = e => finRun(async()=>{ const d=finFd(e); const f={category:d.category,amount:d.amount,start_month:d.start_month,description:d.description}; if(d.tax_treatment) f.tax_treatment=d.tax_treatment; await crmApi('finance-save-recurring',{fields:f}); finDone('تم الحفظ'); });
+const finTogRec = (id,a) => finRun(async()=>{ await crmApi('finance-save-recurring',{recurringId:id,fields:{active:a}}); finLoad(); });
+const finDelRec = id => confirm('حذف المصروف الثابت؟ المصاريف اللي اتولّدت قبل كده بتفضل.') && finRun(async()=>{ await crmApi('finance-delete-recurring',{recurringId:id}); finDone('تم الحذف'); });
+const finGenRec = () => finRun(async()=>{ const r=await crmApi('finance-generate-recurring',{month:finMonth}); finDone(r.created ? `اتضاف ${r.created} مصروف` : 'مفيش جديد، المصاريف موجودة بالفعل'); });
+const finSaveShares = e => finRun(async()=>{ e.preventDefault(); const shares=[...e.target.querySelectorAll('[data-p]')].map(i=>({partnerId:+i.dataset.p,sharePct:+i.value})); await crmApi('finance-save-shares',{shares,effectiveFrom:document.getElementById('finEff').value}); finDone('تم حفظ النسب'); });
+const finRenPartner = (id,name) => finRun(async()=>{ await crmApi('finance-save-partner',{partnerId:id,name}); toast('تم تغيير الاسم'); });
+const finAddPartner = e => finRun(async()=>{ const d=finFd(e); await crmApi('finance-save-partner',d); finDone('اتضاف الشريك — حدّد نسبته ليبقى المجموع 100%'); });
+const finAddDist = e => finRun(async()=>{ const d=finFd(e); await crmApi('finance-add-distribution',d); finDone('تم التسجيل'); });
+const finDelDist = id => confirm('حذف السجل؟') && finRun(async()=>{ await crmApi('finance-delete-distribution',{distributionId:id}); finDone('تم الحذف'); });
+
+const finOverlay = document.getElementById('finOverlay');
+finOverlay.addEventListener('click', e=>{ if(e.target===finOverlay) finOverlay.classList.remove('show'); });
+async function finOpenProject(id){ return finRun(async()=>{
+  const d = await crmApi('finance-project-detail',{projectId:id}), p = d.project, f = d.flags || {};
+  document.getElementById('finModal').innerHTML = `
+  <div class="mhead"><div><h2>${escapeHtml(p.project_number)}</h2><div class="phone">${escapeHtml(p.customer_name||'')}</div></div><button class="closeX" type="button" onclick="finOverlay.classList.remove('show')">✕</button></div>
+  <div class="kpiGrid">
+    <div class="stat"><div class="v">${finN(p.contract_net)}</div><div class="l">التعاقد صافي (شامل ${finN(p.contract_gross)})</div></div>
+    <div class="stat"><div class="v">${finN(p.cost_net)}</div><div class="l">التكاليف صافي (شامل ${finN(p.cost_gross)})</div></div>
+    <div class="stat sun"><div class="v">${finS(p.actual_profit)}</div><div class="l">الربح الفعلي ${p.margin_pct ?? '-'}%</div></div></div>
+  <form class="finForm" onsubmit="finSaveFlags(event,${id})"><div><label><input type="checkbox" name="inc"${f.contract_includes_vat===false?'':' checked'}> قيمة التعاقد شاملة الضريبة</label></div>
+    <div><label>تاريخ الانتهاء الفعلي</label><input type="date" name="cd" value="${f.completion_date || (p.is_completed ? (p.completion_date||'') : '')}"></div><div><button class="btn ghost small">حفظ</button></div></form>
+  <h3 style="margin:18px 0 8px"><span class="lbl">التكاليف</span></h3>
+  ${d.costs.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>النوع</th><th>المورد</th><th>البيان</th><th>المبلغ (شامل)</th><th>الضريبة</th></tr></thead><tbody>
+  ${d.costs.map(c=>`<tr style="cursor:default"><td>${fmtDate(c.cost_date||c.created_at)}</td><td>${escapeHtml(labelOf(SETTINGS.costTypes,c.cost_type))}</td><td>${escapeHtml(c.supplier||'')}</td><td>${escapeHtml(c.description||'')}</td><td>${finN(c.amount)}</td><td><select onchange="finSetTax(${c.id},this.value)">${finOpt(FIN_TAX,c.tax_treatment)}</select></td></tr>`).join('')}</tbody></table>` : '<div class="emptyNote">لسه مفيش تكاليف مسجلة للمشروع ده</div>'}
+  <h3 style="margin:18px 0 8px"><span class="lbl">إضافة تكلفة</span></h3>
+  <form class="finForm" onsubmit="finAddCost(event,${id})">
+    <div><label>النوع</label><select name="costType">${optHtml(SETTINGS.costTypes,'')}</select></div>
+    <div><label>المبلغ (شامل الضريبة)</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div><label>التاريخ</label><input name="costDate" type="date" value="${todayStr()}"></div>
+    <div><label>المورد</label><input name="supplier"></div><div><label>البيان</label><input name="description"></div>
+    <div><label>الضريبة</label><select name="taxTreatment">${finOpt(FIN_TAX)}</select></div><div><button class="btn small teal">إضافة</button></div></form>`;
+  finOverlay.classList.add('show');
+}); }
+const finAddCost = (e,id) => finRun(async()=>{ const d=finFd(e); await crmApi('finance-add-cost',{projectId:id,...d}); toast('تمت إضافة التكلفة'); await finOpenProject(id); finLoad(); });
+const finSetTax = (cid,v) => finRun(async()=>{ await crmApi('finance-update-cost',{costId:cid,fields:{tax_treatment:v}}); toast('تم التحديث'); finLoad(); });
+const finSaveFlags = (e,id) => finRun(async()=>{ e.preventDefault(); const f=e.target; await crmApi('finance-save-project-flags',{projectId:id,fields:{contract_includes_vat:f.inc.checked,completion_date:f.cd.value||null}}); toast('تم الحفظ'); await finOpenProject(id); finLoad(); });
 
 /* ============ SEGMENTS REPORT ============ */
 const SEG_LABELS = {
