@@ -34,10 +34,30 @@ header.top{background:rgba(255,255,255,.94);padding:14px 28px;position:sticky;to
 .mark.fallback{background:linear-gradient(135deg,var(--sun-2),var(--sun)) !important;}
 .brand .name{font-weight:800;font-size:18px;color:var(--night);}
 .brand .sub{font-size:11.5px;color:var(--muted);margin-top:1px;}
-nav.tabs{display:flex;gap:6px;background:var(--sand);padding:5px;border-radius:12px;border:1px solid var(--line);}
-nav.tabs button{background:transparent;border:0;color:var(--ink);padding:9px 16px;border-radius:9px;font-family:'Cairo';font-weight:600;font-size:13.5px;cursor:pointer;transition:.15s;}
-nav.tabs button.active{background:var(--sun);color:var(--night);}
-nav.tabs button:not(.active):hover{background:#fff;}
+/* ---------- sidebar layout ---------- */
+#app{display:grid;grid-template-columns:236px minmax(0,1fr);grid-template-rows:auto 1fr;align-items:start;}
+#app>header.top{grid-column:1/-1;}
+#app>main{width:100%;min-width:0;}
+aside.sidebar{position:sticky;top:var(--hdrH,72px);height:calc(100vh - var(--hdrH,72px));overflow-y:auto;background:#fff;border-inline-end:1px solid var(--line);padding:14px 12px 28px;z-index:40;}
+nav.side{display:flex;flex-direction:column;gap:2px;}
+nav.side .grp{display:flex;flex-direction:column;gap:2px;margin-top:14px;}
+nav.side .grp:first-child{margin-top:0;}
+nav.side .grp:not(:has(button:not(.hidden))){display:none;}
+nav.side .gt{font-size:11px;font-weight:700;color:var(--muted);padding:4px 12px 6px;letter-spacing:.2px;}
+nav.side button{display:flex;align-items:center;gap:10px;width:100%;text-align:start;background:transparent;border:0;color:var(--ink);padding:10px 12px;border-radius:9px;font-family:'Cairo';font-weight:600;font-size:13.5px;cursor:pointer;transition:background .15s;}
+nav.side button .ic{width:22px;text-align:center;font-size:16px;flex:none;}
+nav.side button.active{background:var(--sun);color:var(--night);}
+nav.side button:not(.active):hover{background:var(--sand);}
+.btn.menuBtn{display:none;padding:7px 12px;font-size:16px;line-height:1;}
+.sideBackdrop{display:none;}
+@media(max-width:900px){
+  #app{grid-template-columns:minmax(0,1fr);}
+  .btn.menuBtn{display:inline-flex;}
+  aside.sidebar{position:fixed;top:0;bottom:0;right:0;height:auto;width:270px;max-width:84vw;transform:translateX(100%);transition:transform .22s ease;z-index:70;padding-top:18px;box-shadow:var(--shadow);}
+  aside.sidebar.open{transform:none;}
+  .sideBackdrop.show{display:block;position:fixed;inset:0;background:rgba(13,52,82,.45);z-index:65;}
+  header.top{padding:12px 14px;}
+}
 .userChip{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;}
 
 main{max-width:1240px;margin:0 auto;padding:22px 20px 70px;}
@@ -429,6 +449,11 @@ body.printing-cert #certPrintArea{display:block!important;}
 .invSheet2 #invQrCanvas{border:1px solid var(--line);border-radius:6px;padding:4px;background:#fff;}
 .finForm{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end;}
 .finForm label{margin:0 0 4px;}
+.taxBox{grid-column:1/-1;border:1px solid var(--line);background:var(--sand);border-radius:10px;padding:10px 12px;}
+.taxBox .taxOpts{display:flex;flex-wrap:wrap;gap:6px 18px;margin:6px 0;}
+.taxBox .taxOpts label,.taxBox .taxChk{display:flex;align-items:center;gap:6px;margin:0;font-weight:600;cursor:pointer;}
+.taxBox input[type=radio],.taxBox input[type=checkbox]{width:auto;margin:0;}
+.taxBox .taxPrev{margin:6px 0 0;color:var(--ink);font-weight:600;}
 </style>
 </head>
 <body>
@@ -461,24 +486,10 @@ body.printing-cert #certPrintArea{display:block!important;}
   <header class="top">
     <div class="brandrow">
       <div class="brand">
+        <button class="btn ghost menuBtn" id="menuBtn" type="button" aria-label="القائمة" aria-controls="sidebar" aria-expanded="false">☰</button>
         <div class="mark"><img src="assets/logo.png" alt="Holoul Energy" onerror="this.parentNode.classList.add('fallback');this.replaceWith('☀️')"></div>
         <div><div class="name">متابعة العملاء</div><div class="sub"><span id="crmBrandSub">HoloulEnergy</span> CRM</div></div>
       </div>
-      <nav class="tabs" id="tabsNav">
-        <button class="active" data-tab="dashboard">لوحة المتابعة</button>
-        <button data-tab="customers">العملاء</button>
-        <button data-tab="quotes">📄 عروض الأسعار</button>
-        <button data-tab="pipeline">الصفقات</button>
-        <button data-tab="sites">المزارع</button>
-        <button data-tab="warranty">الضمانات</button>
-        <button data-tab="projects">المشاريع</button>
-        <button data-tab="maintenance">الصيانة</button>
-        <button data-tab="invoices">🧾 الفواتير</button>
-        <button data-tab="settings" id="settingsTabBtn" class="hidden">الإعدادات</button>
-        <button data-tab="segments" id="segmentsTabBtn" class="hidden">📊 الشرائح</button>
-        <button data-tab="audit" id="auditTabBtn" class="hidden">سجل التغييرات</button>
-        <button data-tab="finance" id="financeTabBtn" class="hidden">💰 المالية</button>
-      </nav>
       <div class="userChip">
         <div class="gSearchWrap">
           <input type="text" id="globalSearchInput" placeholder="🔍 بحث عام برقم الجوال أو الاسم أو أي رقم مستند...">
@@ -490,6 +501,39 @@ body.printing-cert #certPrintArea{display:block!important;}
       </div>
     </div>
   </header>
+
+  <aside class="sidebar" id="sidebar">
+    <nav class="side" id="tabsNav" aria-label="التنقل الرئيسي">
+      <div class="grp">
+        <button class="active" data-tab="dashboard"><span class="ic">🏠</span>لوحة المتابعة</button>
+      </div>
+      <div class="grp">
+        <div class="gt">المبيعات</div>
+        <button data-tab="customers"><span class="ic">👥</span>العملاء</button>
+        <button data-tab="pipeline"><span class="ic">🎯</span>الصفقات</button>
+        <button data-tab="quotes"><span class="ic">📄</span>عروض الأسعار</button>
+      </div>
+      <div class="grp">
+        <div class="gt">التنفيذ</div>
+        <button data-tab="projects"><span class="ic">🏗️</span>المشاريع</button>
+        <button data-tab="sites"><span class="ic">🌾</span>المزارع</button>
+        <button data-tab="maintenance"><span class="ic">🛠️</span>الصيانة</button>
+        <button data-tab="warranty"><span class="ic">🛡️</span>الضمانات</button>
+      </div>
+      <div class="grp">
+        <div class="gt">المالية</div>
+        <button data-tab="invoices"><span class="ic">🧾</span>الفواتير</button>
+        <button data-tab="finance" id="financeTabBtn" class="hidden"><span class="ic">💰</span>الخزنة والحسابات</button>
+      </div>
+      <div class="grp">
+        <div class="gt">الإدارة</div>
+        <button data-tab="segments" id="segmentsTabBtn" class="hidden"><span class="ic">📊</span>الشرائح</button>
+        <button data-tab="audit" id="auditTabBtn" class="hidden"><span class="ic">🕘</span>سجل التغييرات</button>
+        <button data-tab="settings" id="settingsTabBtn" class="hidden"><span class="ic">⚙️</span>الإعدادات</button>
+      </div>
+    </nav>
+  </aside>
+  <div class="sideBackdrop" id="sideBackdrop"></div>
 
   <main>
     <section id="view-dashboard" class="view active">
@@ -917,12 +961,26 @@ async function enterApp(){
   }
 })();
 
+/* ============ SIDEBAR ============ */
+(function(){
+  const sb=document.getElementById('sidebar'), bd=document.getElementById('sideBackdrop'), mb=document.getElementById('menuBtn'), hd=document.querySelector('header.top');
+  const setH=()=>document.documentElement.style.setProperty('--hdrH', hd.offsetHeight+'px');
+  window.closeSidebar=function(){ sb.classList.remove('open'); bd.classList.remove('show'); mb.setAttribute('aria-expanded','false'); };
+  mb.addEventListener('click',()=>{ const o=!sb.classList.contains('open'); sb.classList.toggle('open',o); bd.classList.toggle('show',o); mb.setAttribute('aria-expanded',String(o)); });
+  bd.addEventListener('click',closeSidebar);
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeSidebar(); });
+  if(window.ResizeObserver) new ResizeObserver(setH).observe(hd);
+  window.addEventListener('resize',setH); setH();
+})();
+
 /* ============ TABS ============ */
 document.getElementById('tabsNav').addEventListener('click', (e)=>{
   const btn = e.target.closest('button[data-tab]');
   if(!btn) return;
   document.querySelectorAll('#tabsNav button').forEach(x=>x.classList.remove('active'));
   btn.classList.add('active');
+  if(typeof closeSidebar==='function') closeSidebar();
+  window.scrollTo({top:0});
   const tab = btn.dataset.tab;
   document.querySelectorAll('section.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-'+tab).classList.add('active');
@@ -958,6 +1016,7 @@ function finDone(msg){ toast(msg); finLoad(); }
 
 function loadFinance(){
   if(SESSION.role !== 'admin') return;
+  crmApi('finance-get-settings').then(r=>{ finVatRate = +r.settings.vat_rate || 15; }).catch(()=>{});
   const nav = document.getElementById('finSubnav');
   if(!nav.dataset.ready){
     nav.dataset.ready = '1';
@@ -994,9 +1053,9 @@ async overview(){
 },
 async projects(){
   const { projects:p } = await crmApi('finance-projects');
-  finBody().innerHTML = `<div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>المشروع</th><th>العميل</th><th>الحالة</th><th>التعاقد (صافي)</th><th>التكاليف (صافي)</th><th>الربح الفعلي</th><th>%</th><th>المحصّل</th><th>المتبقي</th></tr></thead><tbody>
-  ${p.map(x=>`<tr onclick="finOpenProject(${x.project_id})"><td>${escapeHtml(x.project_number)}</td><td>${escapeHtml(x.customer_name)}</td><td>${escapeHtml(labelOf(SETTINGS.projectStatuses,x.status))}${x.is_completed?'':' <span class="tag warn">غير منتهٍ</span>'}</td><td>${finN(x.contract_net)}</td><td>${finN(x.cost_net)}</td><td><b>${finS(x.actual_profit)}</b></td><td>${x.margin_pct ?? '-'}</td><td>${finN(x.collected)}</td><td>${finN(x.remaining)}</td></tr>`).join('')}</tbody></table></div>
-  <div class="emptyNote">اضغط على مشروع لإضافة التكاليف أو ضبط الضريبة وتاريخ الانتهاء.</div>`;
+  finBody().innerHTML = `<div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>المشروع</th><th>العميل</th><th>الحالة</th><th>التعاقد (شامل الضريبة)</th><th>التكاليف (شامل)</th><th>الربح (شامل)</th><th>هامش الربح %</th><th>المحصّل</th><th>المتبقي</th></tr></thead><tbody>
+  ${p.map(x=>`<tr onclick="finOpenProject(${x.project_id})"><td>${escapeHtml(x.project_number)}</td><td>${escapeHtml(x.customer_name)}</td><td>${escapeHtml(labelOf(SETTINGS.projectStatuses,x.status))}${x.is_completed?'':' <span class="tag warn">غير منتهٍ</span>'}</td><td>${finN(x.contract_gross)}</td><td>${finN(x.cost_gross)}</td><td><b>${finS(finPG(x))}</b></td><td>${x.margin_pct ?? '-'}</td><td>${finN(x.collected)}</td><td>${finN(x.remaining)}</td></tr>`).join('')}</tbody></table></div>
+  <div class="emptyNote">كل الأرقام شاملة الضريبة (التعاقد − التكاليف = الربح). اضغط على مشروع لتشوف التفصيل (الصافي والضريبة لكل بند) وتضيف التكاليف.</div>`;
 },
 async expenses(){
   const [e,r] = await Promise.all([ crmApi('finance-list-expenses',{month:finMonth}), crmApi('finance-list-recurring') ]);
@@ -1004,17 +1063,17 @@ async expenses(){
   <div class="card"><h3><span class="lbl">إضافة مصروف</span></h3><form class="finForm" onsubmit="finAddExp(event)">
     <div><label>التاريخ</label><input name="expenseDate" type="date" value="${todayStr()}" required></div>
     <div><label>النوع</label><select name="category">${finOpt(FIN_CAT)}</select></div>
-    <div><label>المبلغ (كما دفعته)</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
-    <div><label>الضريبة</label><select name="taxTreatment"><option value="">تلقائي (الرواتب بدون ضريبة)</option>${finOpt(FIN_TAX)}</select></div>
+    <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    ${finTaxBox()}
     <div><label>البيان</label><input name="description"></div>
     <div><button class="btn small teal">إضافة</button></div></form></div>
   <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">مصاريف شهر</span><input type="month" value="${finMonth}" style="max-width:170px" onchange="finMonth=this.value;finLoad()"></h3></div>
-  ${e.expenses.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>المبلغ</th><th>الضريبة</th><th></th></tr></thead><tbody>
-  ${e.expenses.map(x=>`<tr style="cursor:default"><td>${fmtDate(x.expense_date)}</td><td>${escapeHtml(FIN_CAT[x.category]||x.category)}</td><td>${escapeHtml(x.description||'')}</td><td>${finN(x.amount)}</td><td>${FIN_TAX[x.tax_treatment]}</td><td><button class="btn danger small" onclick="finDelExp(${x.id})">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش مصاريف في الشهر ده</div>'}</div>
+  ${e.expenses.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>الإجمالي المدفوع</th><th>الصافي</th><th>الضريبة</th><th></th></tr></thead><tbody>
+  ${e.expenses.map(x=>`<tr style="cursor:default"><td>${fmtDate(x.expense_date)}</td><td>${escapeHtml(FIN_CAT[x.category]||x.category)}</td><td>${escapeHtml(x.description||'')}</td>${finAmtCells(x.amount,x.tax_treatment)}<td><button class="btn danger small" onclick="finDelExp(${x.id})">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش مصاريف في الشهر ده</div>'}</div>
   <div class="card"><h3><span class="lbl">مصاريف شهرية ثابتة (رواتب، إيجارات)</span></h3><form class="finForm" onsubmit="finAddRec(event)">
     <div><label>النوع</label><select name="category">${finOpt(FIN_CAT)}</select></div>
     <div><label>المبلغ الشهري</label><input name="amount" type="number" step="0.01" min="0" required></div>
-    <div><label>الضريبة</label><select name="tax_treatment"><option value="">تلقائي</option>${finOpt(FIN_TAX)}</select></div>
+    ${finTaxBox()}
     <div><label>من شهر</label><input name="start_month" type="month" value="${todayStr().slice(0,7)}" required></div>
     <div><label>البيان</label><input name="description"></div>
     <div><button class="btn small teal">حفظ</button></div></form></div>
@@ -1050,6 +1109,37 @@ async vat(){
   ${v.months.map(m=>`<tr style="cursor:default"><td>${m.month.slice(0,7)}</td><td>${finN(m.output_vat)}</td><td>${finN(m.input_vat)}</td><td><b>${finS(m.net_vat_due)}</b></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش بيانات</div>'}</div>
   <div class="emptyNote">${escapeHtml(v.note)} الرقم السالب معناه ضريبة مشتريات أكبر من المبيعات في الشهر ده.</div>`;
 }};
+
+/* ---- الضريبة: اختيار صريح لكل مبلغ يتسجّل (شامل / غير شامل / بدون) ---- */
+let finVatRate = 15;
+const finTaxBox = () => `<div class="taxBox" data-taxbox><label>الضريبة (${finVatRate}%) — حدّد: المبلغ اللي هتكتبه شامل الضريبة ولا لأ؟</label>
+  <div class="taxOpts">
+   <label><input type="radio" name="vatMode" value="incl" required> المبلغ <b>شامل</b> الضريبة (زي ما دفعته فعليًا)</label>
+   <label><input type="radio" name="vatMode" value="excl"> المبلغ <b>غير شامل</b> (الضريبة بتتضاف عليه)</label>
+   <label><input type="radio" name="vatMode" value="none"> <b>بدون ضريبة</b> (لا تنطبق)</label></div>
+  <label class="taxChk"><input type="checkbox" name="validInvoice" checked> معايا فاتورة ضريبية صالحة باسم الشركة (الضريبة بتتسترد)</label>
+  <div class="emptyNote taxPrev">اختار وضع المبلغ واكتب القيمة، وهتظهر لك الحسبة هنا.</div></div>`;
+function finVat(d){
+  const r=finVatRate/100, a=Number(d.amount), mode=d.vatMode, valid=d.validInvoice==='on';
+  if(!(a>0)) throw new Error('المبلغ غير صالح');
+  if(!['incl','excl','none'].includes(mode)) throw new Error('حدّد هل المبلغ شامل الضريبة أم لا');
+  const amount = mode==='excl' ? Math.round(a*(1+r)*100)/100 : a;
+  return { amount, tax: (mode==='none'||!valid) ? 'none' : 'recoverable', mode, valid };
+}
+function finTaxPreview(f){
+  const box=f.querySelector('[data-taxbox]'); if(!box) return;
+  const out=box.querySelector('.taxPrev'), mode=(f.querySelector('input[name=vatMode]:checked')||{}).value, a=Number(f.querySelector('[name=amount]')?.value);
+  box.querySelector('.taxChk').style.display = mode==='none' ? 'none' : '';
+  if(!mode || !(a>0)){ out.textContent='اختار وضع المبلغ واكتب القيمة، وهتظهر لك الحسبة هنا.'; return; }
+  const v=finVat({amount:a,vatMode:mode,validInvoice:f.querySelector('input[name=validInvoice]').checked?'on':''}), r=finVatRate/100;
+  const vat = mode==='none' ? 0 : (mode==='excl' ? a*r : a-a/(1+r));
+  out.textContent = mode==='none' ? `الإجمالي والتكلفة: ${finN(v.amount)} · بدون ضريبة`
+    : v.tax==='recoverable' ? `الإجمالي اللي هيتدفع: ${finN(v.amount)} · الصافي: ${finN(v.amount-vat)} · الضريبة: ${finN(vat)} (بتتسترد)`
+    : `الإجمالي اللي هيتدفع: ${finN(v.amount)} · الضريبة ${finN(vat)} مش بتتسترد، فالتكلفة الفعلية = ${finN(v.amount)}`;
+}
+['input','change'].forEach(ev=>document.addEventListener(ev,e=>{ const f=e.target.closest&&e.target.closest('form'); if(f&&f.querySelector('[data-taxbox]')) finTaxPreview(f); }));
+const finPG = x => Math.round((Number(x.contract_gross)-Number(x.cost_gross))*100)/100;   // الربح شامل = التعاقد شامل − التكاليف شامل
+const finAmtCells = (a,t) => { const r=finVatRate/100, vat=t==='recoverable'?a-a/(1+r):0; return `<td>${finN(a)}</td><td>${finN(a-vat)}</td><td>${t==='recoverable'?finN(vat)+' <span class="tag">بتتسترد</span>':'<span class="mut">بدون / مش مستردة</span>'}</td>`; };
 
 /* ============ TREASURY (الخزنة) + SUPPLIERS — داخل تبويب المالية ============ */
 /* الخزنة = حركات فلوس فقط. فاتورة المورد التزام: بتدخل تكلفة مشروع (أو مصروف) من غير ما تحرّك الخزنة. */
@@ -1141,14 +1231,18 @@ function trOpen(kind, pre={}){ finRun(async()=>{
     <div><label>أو مورد جديد (اكتب الاسم)</label><input name="supplierName"></div>
     <div><label>المشروع</label><select name="projectId">${trProjOpts(pre.projectId,'مشتريات عامة (تتحسب مصروف)')}</select></div>
     <div><label>نوع التكلفة (للمشروع)</label><select name="costType">${optHtml(SETTINGS.costTypes,'')}</select></div>
-    <div><label>قيمة الفاتورة (شامل الضريبة)</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div><label>قيمة الفاتورة</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
     <div><label>رقم فاتورة المورد</label><input name="billNumber"></div><div><label>تاريخ الفاتورة</label><input name="billDate" type="date" value="${todayStr()}"></div>
-    <div><label>الضريبة</label><select name="taxTreatment">${finOpt(FIN_TAX)}</select></div><div><label>البيان</label><input name="description"></div>${btn}</form>`;
+    ${finTaxBox()}<div><label>البيان</label><input name="description"></div>${btn}</form>`;
   else if(kind==='expense') h = trHead('مصروف') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
-    <div><label>النوع</label><select name="category">${finOpt(FIN_CAT)}</select></div><div><label>البيان</label><input name="description"></div>
-    <div><label>المبلغ (كما دفعته)</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
-    <div><label>دفعه (الحساب)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}
-    <div><label>الضريبة</label><select name="taxTreatment"><option value="">تلقائي (الرواتب بدون ضريبة)</option>${finOpt(FIN_TAX)}</select></div>${dt}${ref}${btn}</form>`;
+    <div style="grid-column:1/-1"><label>المشروع (اختياري)</label><select name="projectId" onchange="trExpProj(this.value)">${trProjOpts(pre.projectId,'مصروف عام للشركة (إيجار، راتب، مكتب...)')}</select></div>
+    <div id="trCatWrap"><label>النوع</label><select name="category">${finOpt(FIN_CAT)}</select></div>
+    <div id="trCostWrap" style="display:none"><label>نوع التكلفة</label><select name="costType" disabled>${optHtml(SETTINGS.costTypes,'')}</select></div>
+    <div><label>البيان</label><input name="description" placeholder="مثال: تنقلات عمال، وجبات، إكرامية"></div>
+    <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div><label>دفعه (الحساب / العهدة)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}
+    ${finTaxBox()}${dt}${ref}${btn}</form>
+    <div class="emptyNote">لو اخترت مشروع، المصروف بيتخصم من الحساب وبيدخل <b>تكلفة المشروع</b> مباشرة. النثريات (أكل، إكراميات، عمالة مؤقتة) غالبًا "بدون ضريبة". لو معاك فاتورة ضريبية باسم الشركة اختار "شامل" أو "غير شامل" وسيب علامة الفاتورة الصالحة.</div>`;
   else if(kind==='partner_draw') h = trHead('سحب شريك') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
     <div><label>الشريك</label><select name="partnerId" required>${finLK.partners.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select></div>
     <div><label>النوع</label><select name="distKind">${finOpt(FIN_KIND,'draw')}</select></div>
@@ -1162,6 +1256,8 @@ function trOpen(kind, pre={}){ finRun(async()=>{
   trShow(h);
   if(kind==='supplier_payment'){ trSupChange(pre.supplierId||'', pre.billId); }
 }); }
+function trExpProj(pid){ const on=!!pid, c=document.querySelector('#finModal select[name=category]'), k=document.querySelector('#finModal select[name=costType]');
+  document.getElementById('trCatWrap').style.display=on?'none':''; document.getElementById('trCostWrap').style.display=on?'':'none'; c.disabled=on; k.disabled=!on; }
 function trHint(pid){ const p=finLK.projects.find(x=>String(x.project_id)===String(pid)); document.getElementById('trHint').textContent = p ? `التعاقد ${finN(p.contract_gross)} · المحصّل ${finN(p.collected)} · المتبقي ${finN(p.remaining)}` : ''; }
 function trSupChange(sid, billId){
   const bills = finLK.openBills.filter(b=>String(b.supplier_id)===String(sid));
@@ -1171,8 +1267,7 @@ function trSupChange(sid, billId){
 function trBillChange(){ const o=document.getElementById('trBill'); const rem=o.selectedOptions[0]?.dataset.rem; if(rem) document.getElementById('trAmt').value=rem; }
 async function trSubmit(e, kind){ const d=finFd(e); finRun(async()=>{
   if(kind==='transfer') await crmApi('treasury-record-transfer',d);
-  else if(kind==='bill') await crmApi('treasury-record-bill',d);
-  else { if(kind==='expense' && !d.taxTreatment) d.taxTreatment = d.category==='salary' ? 'none' : 'recoverable'; await crmApi('treasury-record-entry',{kind,...d}); }
+  else { const v=finVat(d); d.amount=v.amount; d.taxTreatment=v.tax; if(kind==='expense' && d.projectId){ d.category=d.costType||'other'; delete d.costType; } await crmApi(kind==='bill'?'treasury-record-bill':'treasury-record-entry',{kind,...d}); }
   finOverlay.classList.remove('show'); finLK=null; finDone('تم التسجيل');
 }); }
 const trAssign = pid => finRun(async()=>{ await crmApi('treasury-assign-payment',{paymentId:pid,accountId:document.getElementById('asg'+pid).value}); finDone('تم الربط'); });
@@ -1201,9 +1296,9 @@ function trSupplier(sid){ return finRun(async()=>{
 
 /* --- actions --- */
 const finSaveReserve = e => finRun(async()=>{ const d=finFd(e); await crmApi('finance-update-settings',{fields:{reserve_pct:+d.r}}); finDone('تم الحفظ'); });
-const finAddExp = e => finRun(async()=>{ const d=finFd(e); await crmApi('finance-add-expense',d); finDone('تمت إضافة المصروف'); });
+const finAddExp = e => finRun(async()=>{ const d=finFd(e), v=finVat(d); await crmApi('finance-add-expense',{...d,amount:v.amount,taxTreatment:v.tax}); finDone('تمت إضافة المصروف'); });
 const finDelExp = id => confirm('حذف المصروف؟') && finRun(async()=>{ await crmApi('finance-delete-expense',{expenseId:id}); finDone('تم الحذف'); });
-const finAddRec = e => finRun(async()=>{ const d=finFd(e); const f={category:d.category,amount:d.amount,start_month:d.start_month,description:d.description}; if(d.tax_treatment) f.tax_treatment=d.tax_treatment; await crmApi('finance-save-recurring',{fields:f}); finDone('تم الحفظ'); });
+const finAddRec = e => finRun(async()=>{ const d=finFd(e), v=finVat(d); const f={category:d.category,amount:v.amount,start_month:d.start_month,description:d.description,tax_treatment:v.tax}; await crmApi('finance-save-recurring',{fields:f}); finDone('تم الحفظ'); });
 const finTogRec = (id,a) => finRun(async()=>{ await crmApi('finance-save-recurring',{recurringId:id,fields:{active:a}}); finLoad(); });
 const finDelRec = id => confirm('حذف المصروف الثابت؟ المصاريف اللي اتولّدت قبل كده بتفضل.') && finRun(async()=>{ await crmApi('finance-delete-recurring',{recurringId:id}); finDone('تم الحذف'); });
 const finGenRec = () => finRun(async()=>{ const r=await crmApi('finance-generate-recurring',{month:finMonth}); finDone(r.created ? `اتضاف ${r.created} مصروف` : 'مفيش جديد، المصاريف موجودة بالفعل'); });
@@ -1216,28 +1311,43 @@ const finDelDist = id => confirm('حذف السجل؟') && finRun(async()=>{ awa
 const finOverlay = document.getElementById('finOverlay');
 finOverlay.addEventListener('click', e=>{ if(e.target===finOverlay) finOverlay.classList.remove('show'); });
 async function finOpenProject(id){ return finRun(async()=>{
-  const d = await crmApi('finance-project-detail',{projectId:id}), p = d.project, f = d.flags || {};
+  const [d, dc] = await Promise.all([ crmApi('finance-project-detail',{projectId:id}), crmApi('treasury-project-discounts',{projectId:id}) ]), p = d.project, f = d.flags || {};
   document.getElementById('finModal').innerHTML = `
   <div class="mhead"><div><h2>${escapeHtml(p.project_number)}</h2><div class="phone">${escapeHtml(p.customer_name||'')}</div></div><button class="closeX" type="button" onclick="finOverlay.classList.remove('show')">✕</button></div>
-  <div class="kpiGrid">
-    <div class="stat"><div class="v">${finN(p.contract_net)}</div><div class="l">التعاقد صافي (شامل ${finN(p.contract_gross)})</div></div>
-    <div class="stat"><div class="v">${finN(p.cost_net)}</div><div class="l">التكاليف صافي (شامل ${finN(p.cost_gross)})</div></div>
-    <div class="stat sun"><div class="v">${finS(p.actual_profit)}</div><div class="l">الربح الفعلي ${p.margin_pct ?? '-'}%</div></div></div>
+  ${(()=>{ const pg=finPG(p), pv=Math.round((Number(p.output_vat)-Number(p.input_vat))*100)/100, pn=Number(p.actual_profit);
+    const row=(t,n,v,g,b)=>`<tr style="cursor:default"><td>${b?'<b>'+t+'</b>':t}</td><td>${b?'<b>'+n+'</b>':n}</td><td>${b?'<b>'+v+'</b>':v}</td><td><b>${g}</b></td></tr>`;
+    return `<table class="admtable" style="margin:6px 0 4px"><thead><tr><th>البند</th><th>الصافي (قبل الضريبة)</th><th>الضريبة</th><th>الإجمالي (شامل)</th></tr></thead><tbody>
+    ${row('التعاقد',finN(p.contract_net),finN(p.output_vat),finN(p.contract_gross))}
+    ${row('التكاليف',finN(p.cost_net),finN(p.input_vat),finN(p.cost_gross))}
+    ${row('الربح',finS(pn),finS(pv),finS(pg),true)}</tbody></table>
+    <div class="emptyNote">ضريبة الربح (${finN(pv)}) = ضريبة المبيعات − ضريبة المشتريات = المستحق للهيئة عن المشروع، وهي مش ربح قابل للتوزيع. الربح الحقيقي للشركاء هو الصافي <b>${finN(pn)}</b> (هامش ${p.margin_pct ?? '-'}%). المحصّل ${finN(p.collected)} · المتبقي ${finN(p.remaining)}.</div>`; })()}
+  <div class="card" style="margin:10px 0;background:var(--sand)"><h3><span class="lbl">خصم تسوية على العميل (كسور / سماح)</span></h3>
+    <div class="emptyNote" style="color:var(--ink)">المتبقي على العميل: <b>${finN(p.remaining)}</b>${dc.total>0?` · خصومات سابقة ${finN(dc.total)} (التعاقد الأصلي ${finN(Number(p.contract_gross)+dc.total)})`:''}</div>
+    ${Number(p.remaining)>0 ? `<form class="finForm" onsubmit="finApplyDiscount(event,${id},${p.remaining})">
+      <div><label>مبلغ الخصم (شامل الضريبة)</label><input name="amount" type="number" step="0.01" min="0.01" max="${p.remaining}" value="${p.remaining}" required></div>
+      <div><label>التاريخ</label><input name="discountDate" type="date" value="${todayStr()}"></div>
+      <div style="grid-column:span 2"><label>السبب (إجباري)</label><input name="reason" required placeholder="مثال: تسوية كسور"></div>
+      <div><button class="btn small">تطبيق الخصم</button></div></form>` : ''}
+    ${dc.discounts.map(x=>`<div class="emptyNote" style="color:var(--ink)">• ${fmtDate(x.discount_date)} — خصم ${finN(x.amount)}: ${escapeHtml(x.reason)} <button class="btn ghost small" onclick="finUndoDiscount(${x.id},${id})">إلغاء الخصم</button></div>`).join('')}
+  </div>
   <form class="finForm" onsubmit="finSaveFlags(event,${id})"><div><label><input type="checkbox" name="inc"${f.contract_includes_vat===false?'':' checked'}> قيمة التعاقد شاملة الضريبة</label></div>
     <div><label>تاريخ الانتهاء الفعلي</label><input type="date" name="cd" value="${f.completion_date || (p.is_completed ? (p.completion_date||'') : '')}"></div><div><button class="btn ghost small">حفظ</button></div></form>
   <h3 style="margin:18px 0 8px"><span class="lbl">التكاليف</span></h3>
-  ${d.costs.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>النوع</th><th>المورد</th><th>البيان</th><th>المبلغ (شامل)</th><th>الضريبة</th></tr></thead><tbody>
-  ${d.costs.map(c=>`<tr style="cursor:default"><td>${fmtDate(c.cost_date||c.created_at)}</td><td>${escapeHtml(labelOf(SETTINGS.costTypes,c.cost_type))}</td><td>${escapeHtml(c.supplier||'')}</td><td>${escapeHtml(c.description||'')}</td><td>${finN(c.amount)}</td><td><select onchange="finSetTax(${c.id},this.value)">${finOpt(FIN_TAX,c.tax_treatment)}</select></td></tr>`).join('')}</tbody></table>` : '<div class="emptyNote">لسه مفيش تكاليف مسجلة للمشروع ده</div>'}
+  ${d.costs.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>النوع</th><th>المورد</th><th>البيان</th><th>الإجمالي المدفوع</th><th>الصافي</th><th>الضريبة</th><th>مؤهلة للاسترداد؟</th></tr></thead><tbody>
+  ${d.costs.map(c=>`<tr style="cursor:default"><td>${fmtDate(c.cost_date||c.created_at)}</td><td>${escapeHtml(labelOf(SETTINGS.costTypes,c.cost_type))}</td><td>${escapeHtml(c.supplier||'')}</td><td>${escapeHtml(c.description||'')}</td>${finAmtCells(c.amount,c.tax_treatment)}<td><select onchange="finSetTax(${c.id},this.value)">${finOpt(FIN_TAX,c.tax_treatment)}</select></td></tr>`).join('')}</tbody></table>` : '<div class="emptyNote">لسه مفيش تكاليف مسجلة للمشروع ده</div>'}
   <h3 style="margin:18px 0 8px"><span class="lbl">إضافة تكلفة</span></h3>
   <form class="finForm" onsubmit="finAddCost(event,${id})">
     <div><label>النوع</label><select name="costType">${optHtml(SETTINGS.costTypes,'')}</select></div>
-    <div><label>المبلغ (شامل الضريبة)</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
     <div><label>التاريخ</label><input name="costDate" type="date" value="${todayStr()}"></div>
     <div><label>المورد</label><input name="supplier"></div><div><label>البيان</label><input name="description"></div>
-    <div><label>الضريبة</label><select name="taxTreatment">${finOpt(FIN_TAX)}</select></div><div><button class="btn small teal">إضافة</button></div></form>`;
+    ${finTaxBox()}<div><button class="btn small teal">إضافة</button></div></form>`;
   finOverlay.classList.add('show');
 }); }
-const finAddCost = (e,id) => finRun(async()=>{ const d=finFd(e); await crmApi('finance-add-cost',{projectId:id,...d}); toast('تمت إضافة التكلفة'); await finOpenProject(id); finLoad(); });
+const finApplyDiscount = (e,id,rem) => { const d=finFd(e), a=Number(d.amount);
+  return confirm(`هيتخصم ${finN(a)} من قيمة التعاقد، ومديونية العميل هتبقى ${finN(rem-a)}، وربح المشروع هينزل بنفس القيمة (شامل الضريبة). متأكد؟`) && finRun(async()=>{ await crmApi('treasury-apply-discount',{projectId:id,...d}); toast('تم تطبيق الخصم'); await finOpenProject(id); finLoad(); }); };
+const finUndoDiscount = (did,id) => confirm('إلغاء الخصم هيرجّع قيمة التعاقد والمديونية على العميل. متأكد؟') && finRun(async()=>{ await crmApi('treasury-undo-discount',{discountId:did}); toast('تم إلغاء الخصم'); await finOpenProject(id); finLoad(); });
+const finAddCost = (e,id) => finRun(async()=>{ const d=finFd(e), v=finVat(d); await crmApi('finance-add-cost',{projectId:id,...d,amount:v.amount,taxTreatment:v.tax}); toast('تمت إضافة التكلفة'); await finOpenProject(id); finLoad(); });
 const finSetTax = (cid,v) => finRun(async()=>{ await crmApi('finance-update-cost',{costId:cid,fields:{tax_treatment:v}}); toast('تم التحديث'); finLoad(); });
 const finSaveFlags = (e,id) => finRun(async()=>{ e.preventDefault(); const f=e.target; await crmApi('finance-save-project-flags',{projectId:id,fields:{contract_includes_vat:f.inc.checked,completion_date:f.cd.value||null}}); toast('تم الحفظ'); await finOpenProject(id); finLoad(); });
 

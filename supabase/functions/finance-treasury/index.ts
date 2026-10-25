@@ -253,6 +253,31 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
+    // ---- خصم تسوية على العميل (كسور): بيخفّض قيمة التعاقد ويتسجّل بسببه، وممكن يتلغى ----
+    if (action === "treasury-project-discounts") {
+      if (!body.projectId) bad("projectId required");
+      const rows = must(await supabase.from("project_discounts").select("*").eq("project_id", body.projectId).order("created_at", { ascending: false })) as any[];
+      return json({ ok: true, discounts: rows, total: Math.round(rows.reduce((s, d) => s + Number(d.amount), 0) * 100) / 100 });
+    }
+
+    if (action === "treasury-apply-discount") {
+      if (!body.projectId) bad("projectId required");
+      const reason = txt(String(body.reason || "").trim(), 300);
+      if (!reason) bad("اكتب سبب الخصم");
+      const amount = num(body.amount, "مبلغ الخصم");
+      const id = await rpc("finance_apply_discount", { p_project: body.projectId, p_amount: amount, p_reason: reason, p_date: dateOrNull(body.discountDate, "تاريخ الخصم") });
+      await logAudit("apply_discount", "project", Number(body.projectId), reason, null, { amount, discount_id: id });
+      return json({ ok: true, discountId: id });
+    }
+
+    if (action === "treasury-undo-discount") {
+      if (!body.discountId) bad("discountId required");
+      const { data: old } = await supabase.from("project_discounts").select("project_id, amount, reason").eq("id", body.discountId).maybeSingle();
+      await rpc("finance_undo_discount", { p_id: body.discountId });
+      await logAudit("undo_discount", "project", old?.project_id ?? null, old?.reason || null, old, null);
+      return json({ ok: true });
+    }
+
     return json({ error: "unknown_action" }, 400);
   } catch (err) {
     if (err instanceof BadRequest) return json({ error: err.message }, 400);
