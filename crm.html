@@ -2,7 +2,7 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>متابعة العملاء (CRM) | HoloulEnergy</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,7 +38,10 @@ header.top{background:rgba(255,255,255,.94);padding:14px 28px;position:sticky;to
 #app{display:grid;grid-template-columns:236px minmax(0,1fr);grid-template-rows:auto 1fr;align-items:start;}
 #app>header.top{grid-column:1/-1;}
 #app>main{width:100%;min-width:0;}
-aside.sidebar{position:sticky;top:var(--hdrH,72px);height:calc(100vh - var(--hdrH,72px));overflow-y:auto;background:#fff;border-inline-end:1px solid var(--line);padding:14px 12px 28px;z-index:40;}
+aside.sidebar{position:sticky;top:var(--hdrH,72px);height:calc(100vh - var(--hdrH,72px));overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;background:#fff;border-inline-end:1px solid var(--line);padding:14px 12px calc(28px + env(safe-area-inset-bottom,0px));z-index:40;}
+/* iPad/iOS Safari: 100vh includes the area hidden behind the browser toolbar, so the last groups
+   (المالية / الإدارة) were cut off and unreachable. dvh tracks the real visible height. */
+@supports (height:100dvh){aside.sidebar{height:calc(100dvh - var(--hdrH,72px));}}
 nav.side{display:flex;flex-direction:column;gap:2px;}
 nav.side .grp{display:flex;flex-direction:column;gap:2px;margin-top:14px;}
 nav.side .grp:first-child{margin-top:0;}
@@ -53,7 +56,7 @@ nav.side button:not(.active):hover{background:var(--sand);}
 @media(max-width:900px){
   #app{grid-template-columns:minmax(0,1fr);}
   .btn.menuBtn{display:inline-flex;}
-  aside.sidebar{position:fixed;top:0;bottom:0;right:0;height:auto;width:270px;max-width:84vw;transform:translateX(100%);transition:transform .22s ease;z-index:70;padding-top:18px;box-shadow:var(--shadow);}
+  aside.sidebar{position:fixed;top:0;bottom:0;right:0;height:auto;max-height:100%;width:270px;max-width:84vw;transform:translateX(100%);transition:transform .22s ease;z-index:70;padding-top:18px;padding-bottom:calc(90px + env(safe-area-inset-bottom,0px));box-shadow:var(--shadow);}
   aside.sidebar.open{transform:none;}
   .sideBackdrop.show{display:block;position:fixed;inset:0;background:rgba(13,52,82,.45);z-index:65;}
   header.top{padding:12px 14px;}
@@ -4127,7 +4130,8 @@ async function renderProjectPanel(wrap, opportunityId, opp){
     sel.addEventListener('change', async ()=>{
       try{
         await crmApi('admin-crm-update-milestone', {milestoneId: sel.dataset.id, fields:{status: sel.value}});
-        toast('اتحدثت حالة الدفعة ✅');
+        toast(sel.value==='paid' ? 'اتحدثت حالة الدفعة ✅ وتم تسجيلها/ربطها في الدفعات تلقائيًا (من غير تكرار)' : 'اتحدثت حالة الدفعة ✅');
+        renderProjectPanel(wrap, opportunityId, opp); // يعرض الدفعة والمحصّل/المتبقي بعد التحديث
       }catch(err){ toast('خطأ: '+err.message); }
     });
   });
