@@ -278,6 +278,32 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true });
     }
 
+    // ---- تعديل دفعة محصّلة (مبلغ/تاريخ) مع سجل تعديلات دائم ----
+    if (action === "treasury-project-payments") {
+      if (!body.projectId) bad("projectId required");
+      const [pays, edits, ents, accs] = await Promise.all([
+        supabase.from("payments").select("*").eq("project_id", body.projectId).order("payment_date", { ascending: false }),
+        supabase.from("payment_edits").select("*").eq("project_id", body.projectId).order("edited_at", { ascending: false }),
+        supabase.from("treasury_entries").select("payment_id, account_id").eq("project_id", body.projectId).not("payment_id", "is", null),
+        supabase.from("treasury_accounts").select("id, name"),
+      ]);
+      const names = Object.fromEntries((must(accs) as any[]).map((a) => [a.id, a.name]));
+      const acc = Object.fromEntries((must(ents) as any[]).map((e) => [e.payment_id, names[e.account_id] || null]));
+      return json({ ok: true, payments: (must(pays) as any[]).map((p) => ({ ...p, account_name: acc[p.id] || null })), edits: must(edits) });
+    }
+
+    if (action === "treasury-edit-payment") {
+      if (!body.paymentId) bad("paymentId required");
+      const reason = txt(String(body.reason || "").trim(), 300);
+      if (!reason) bad("اكتب سبب التعديل");
+      const amount = num(body.amount, "المبلغ");
+      const date = dateOrNull(body.paymentDate, "تاريخ التحصيل") || bad("تاريخ التحصيل مطلوب");
+      const { data: old } = await supabase.from("payments").select("project_id, amount, payment_date").eq("id", body.paymentId).maybeSingle();
+      const id = await rpc("finance_edit_payment", { p_payment: body.paymentId, p_amount: amount, p_date: date, p_reason: reason });
+      await logAudit("edit_payment", "project", old?.project_id ?? null, reason, old, { amount, payment_date: date, edit_id: id });
+      return json({ ok: true, editId: id });
+    }
+
     return json({ error: "unknown_action" }, 400);
   } catch (err) {
     if (err instanceof BadRequest) return json({ error: err.message }, 400);

@@ -512,6 +512,7 @@ body.printing-cert #certPrintArea{display:block!important;}
         <button data-tab="customers"><span class="ic">👥</span>العملاء</button>
         <button data-tab="pipeline"><span class="ic">🎯</span>الصفقات</button>
         <button data-tab="quotes"><span class="ic">📄</span>عروض الأسعار</button>
+        <button data-tab="invoices"><span class="ic">🧾</span>الفواتير</button>
       </div>
       <div class="grp">
         <div class="gt">التنفيذ</div>
@@ -521,8 +522,11 @@ body.printing-cert #certPrintArea{display:block!important;}
         <button data-tab="warranty"><span class="ic">🛡️</span>الضمانات</button>
       </div>
       <div class="grp">
+        <div class="gt">المشتريات</div>
+        <button data-tab="purchases" id="purchasesTabBtn" class="hidden"><span class="ic">🛒</span>الموردون والمشتريات</button>
+      </div>
+      <div class="grp">
         <div class="gt">المالية</div>
-        <button data-tab="invoices"><span class="ic">🧾</span>الفواتير</button>
         <button data-tab="finance" id="financeTabBtn" class="hidden"><span class="ic">💰</span>الخزنة والحسابات</button>
       </div>
       <div class="grp">
@@ -713,6 +717,11 @@ body.printing-cert #certPrintArea{display:block!important;}
       <div class="emptyNote" style="margin-top:8px;">ملحوظة: العميل اللي عنده عروض في أكتر من شريحة بيتحسب في كل شريحة منها، فمجموع العملاء قد يزيد عن العدد الفعلي.</div>
     </section>
 
+    <section id="view-purchases" class="view">
+      <div class="filterBar" id="purSubnav"></div>
+      <div id="purBody"><div class="loadingNote">بيحمّل...</div></div>
+    </section>
+
     <section id="view-finance" class="view">
       <div class="filterBar" id="finSubnav"></div>
       <div id="finBody"><div class="loadingNote">بيحمّل...</div></div>
@@ -783,6 +792,7 @@ const WARRANTY_ACTIONS = new Set(['crm-warranty-config','crm-warranty-list','crm
 const PIPELINE_FN = SUPABASE_URL + '/functions/v1/crm-pipeline'; // pipeline board/table/alerts/bulk (server-side)
 const QUOTES_FN = SUPABASE_URL + '/functions/v1/crm-quotes'; // كل العروض (حتى غير المربوطة بعميل)
 const QUOTES_ACTIONS = new Set(['admin-crm-list-quotes']);
+const PURCHASING_FN = SUPABASE_URL + '/functions/v1/finance-purchasing'; // المشتريات: طلبات الشراء وفواتير الموردين (أدمن فقط) — actions بتبدأ بـ purchasing-
 const TREASURY_FN = SUPABASE_URL + '/functions/v1/finance-treasury'; // الخزنة والموردين (أدمن فقط) — actions بتبدأ بـ treasury-
 const FINANCE_FN = SUPABASE_URL + '/functions/v1/finance-api'; // المالية والمحاسبة (أدمن فقط) — كل actions بتبدأ بـ finance-
 const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live','crm-list-customer-quotations','crm-invoices-report','seller-info']);
@@ -837,7 +847,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch(action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
+  const res = await fetch(action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -916,6 +926,7 @@ async function enterApp(){
     document.getElementById('auditTabBtn').classList.remove('hidden');
     document.getElementById('segmentsTabBtn').classList.remove('hidden');
     document.getElementById('financeTabBtn').classList.remove('hidden');
+    document.getElementById('purchasesTabBtn').classList.remove('hidden');
   }
   try{
     const s = await crmApi('admin-crm-settings');
@@ -997,19 +1008,21 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='audit') loadAuditLog();
   if(tab==='segments') loadSegments();
   if(tab==='finance') loadFinance();
+  if(tab==='purchases') loadPurchases();
 });
 
 /* ============ FINANCE (admin only) ============ */
 /* كل المبالغ بتتسجل زي ما اتدفعت (شامل الضريبة)، والسيرفر بيفصل الصافي والضريبة. */
 let finTab = 'treasury', finMonth = todayStr().slice(0,7);
-const FIN_TABS = { treasury:'الخزنة', suppliers:'الموردون', overview:'نظرة عامة', projects:'المشاريع', expenses:'المصاريف', partners:'الشركاء', vat:'الضريبة' };
+const FIN_TABS = { treasury:'الخزنة', overview:'نظرة عامة', projects:'المشاريع', expenses:'المصاريف', partners:'الشركاء', vat:'الضريبة' };
 const FIN_CAT = { salary:'رواتب', rent:'إيجار', utilities:'كهرباء/اتصالات', fuel:'وقود ونقل', marketing:'تسويق', government:'رسوم حكومية', other:'أخرى' };
 const FIN_TAX = { recoverable:'فاتورة ضريبية صالحة', none:'بدون ضريبة قابلة للاسترداد' };
 const FIN_KIND = { profit:'توزيع أرباح', draw:'سحب', advance:'سلفة' };
 const finN = v => Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const finS = v => Number(v)<0 ? `<span class="od">${finN(v)}</span>` : finN(v);
 const finOpt = (m,sel) => Object.entries(m).map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${v}</option>`).join('');
-const finBody = () => document.getElementById('finBody');
+const finInPurchases = () => ((document.querySelector('#tabsNav button.active')||{}).dataset||{}).tab==='purchases';
+const finBody = () => document.getElementById(finInPurchases() ? 'purBody' : 'finBody');
 const finFd = e => { e.preventDefault(); return Object.fromEntries(new FormData(e.target)); };
 async function finRun(f){ try{ await f(); }catch(e){ toast(e.message||'حصل خطأ'); } }
 function finDone(msg){ toast(msg); finLoad(); }
@@ -1026,6 +1039,7 @@ function loadFinance(){
   finLoad();
 }
 function finLoad(){
+  if(finInPurchases()) return purLoad();
   document.querySelectorAll('#finSubnav button').forEach(b=>b.classList.toggle('ghost', b.dataset.fin!==finTab));
   finBody().innerHTML = '<div class="loadingNote">بيحمّل...</div>';
   finRun(()=>FIN_VIEWS[finTab]());
@@ -1034,8 +1048,16 @@ function finLoad(){
 const FIN_VIEWS = {
 async overview(){
   const o = await crmApi('finance-overview'), t = o.totals;
+  const [tv, pv] = await Promise.all([ crmApi('treasury-overview'), crmApi('purchasing-orders') ]);
+  const cash=Number(tv.totalBalance), rec=Number(t.remaining_all), pay=Number(tv.totalPayable), net=Math.round((cash+rec-pay)*100)/100, commit=Number(pv.totals.committed_unbilled);
+  const position = `<div class="card"><h3><span class="lbl">المركز المالي (شامل الضريبة)</span></h3><div class="kpiGrid">
+    <div class="stat"><div class="v">${finS(cash)}</div><div class="l">السيولة (خزنة + بنك + عهد)</div></div>
+    <div class="stat"><div class="v">${finN(rec)}</div><div class="l">مستحق من العملاء</div></div>
+    <div class="stat bad"><div class="v">${finN(pay)}</div><div class="l">مستحق للموردين (فواتير غير مسددة)</div></div>
+    <div class="stat sun"><div class="v">${finS(net)}</div><div class="l">صافي المركز = السيولة + مستحقات العملاء − مستحقات الموردين</div></div></div>
+    ${commit>0?`<div class="emptyNote">+ التزامات شراء لسه ماتفوترتش: ${finN(commit)} (طلبات شراء مفتوحة)، وهي مش داخلة في الأرقام فوق.</div>`:''}</div>`;
   const rows = o.monthly.filter(r=>r.projects_completed>0 || +r.expenses_net>0).reverse();
-  finBody().innerHTML = `
+  finBody().innerHTML = position + `
   <div class="kpiGrid">
     <div class="stat sun"><div class="v">${finS(t.net_profit)}</div><div class="l">صافي الربح بعد المصاريف (بدون ضريبة)</div></div>
     <div class="stat"><div class="v">${finS(t.project_profit)}</div><div class="l">أرباح المشاريع المنتهية (${t.completed_projects})</div></div>
@@ -1167,11 +1189,10 @@ FIN_VIEWS.treasury = async function(){
   <div class="card"><h3><span class="lbl">تسجيل حركة</span></h3><div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn teal small" onclick="trOpen('customer_receipt')">+ قبض من عميل</button>
     <button class="btn small" onclick="trOpen('supplier_payment')">+ دفع لمورد</button>
-    <button class="btn ghost small" onclick="trOpen('bill')">+ فاتورة مورد (التزام)</button>
     <button class="btn ghost small" onclick="trOpen('expense')">+ مصروف</button>
     <button class="btn ghost small" onclick="trOpen('partner_draw')">+ سحب شريك</button>
     <button class="btn ghost small" onclick="trOpen('transfer')">⇄ تحويل / عهدة</button></div>
-  <div class="emptyNote" style="margin-top:8px">فاتورة المورد مبتحرّكش الخزنة؛ هي بتزوّد تكلفة المشروع والمستحق للمورد. الفلوس بتخرج لما تسجّل "دفع لمورد".</div></div>
+  <div class="emptyNote" style="margin-top:8px">هنا بتسجّل الفلوس اللي دخلت وخرجت بس. طلبات الشراء وفواتير الموردين من تبويب <b>الموردون والمشتريات</b>، والدفع للمورد بيتسجّل من هنا أو من هناك (نفس الحركة).</div></div>
   ${o.unassigned.length ? `<div class="card" style="background:var(--sun-tint);border-color:var(--sun-2)"><h3><span class="lbl">دفعات عملاء مش مربوطة بحساب (${o.unassigned.length})</span></h3>
     <div class="emptyNote" style="color:var(--ink)">دي دفعات اتسجلت من شاشة المشروع. اختار الحساب اللي استلمها عشان تتحسب في رصيده.</div>
     <table class="admtable"><tbody>${o.unassigned.map(u=>`<tr style="cursor:default"><td>${fmtDate(u.payment_date)}</td><td>${escapeHtml(u.project_number||'')} — ${escapeHtml(u.customer_name||'')}</td><td>${finN(u.amount)}</td><td>${escapeHtml(labelOf(SETTINGS.paymentMethods,u.method,u.method||''))}</td>
@@ -1213,6 +1234,7 @@ const trHead = t => `<div class="mhead"><h2>${t}</h2><button class="closeX" type
 const trPM = () => `<div><label>طريقة الدفع</label><select name="method">${optHtml(SETTINGS.paymentMethods,'')}</select></div>`;
 function trOpen(kind, pre={}){ finRun(async()=>{
   if(!finLK) finLK = await crmApi('treasury-lookups');
+  if(kind==='bill') finPO = (await crmApi('purchasing-orders',{openOnly:true})).orders;
   const dt = `<div><label>التاريخ</label><input name="entryDate" type="date" value="${todayStr()}"></div>`;
   const ref = `<div><label>رقم مرجع / إيصال</label><input name="reference"></div>`, notes = `<div><label>ملاحظات</label><input name="notes"></div>`;
   const btn = `<div><button class="btn small teal">حفظ</button></div>`;
@@ -1227,6 +1249,7 @@ function trOpen(kind, pre={}){ finRun(async()=>{
     <div><label>المبلغ المدفوع</label><input name="amount" id="trAmt" type="number" step="0.01" min="0.01" required></div>
     <div><label>دفعه (الحساب)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}${dt}${ref}${notes}${btn}</form>`;
   else if(kind==='bill') h = trHead('فاتورة مورد (التزام — مش حركة خزنة)') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
+    <div style="grid-column:1/-1"><label>على طلب شراء (اختياري — بيملّي المورد والمشروع والمتبقي)</label><select name="poId" onchange="trPoChange(this.value)"><option value="">بدون طلب شراء</option>${finPO.map(o=>`<option value="${o.po_id}"${String(o.po_id)===String(pre.poId)?' selected':''}>${escapeHtml(o.po_number)} — ${escapeHtml(o.supplier_name)} — ${escapeHtml(o.project_number||'عام')} — متبقي للفوترة ${finN(o.remaining_to_bill)}</option>`).join('')}</select></div>
     <div><label>المورد</label><select name="supplierId">${trSupOpts(pre.supplierId)}</select></div>
     <div><label>أو مورد جديد (اكتب الاسم)</label><input name="supplierName"></div>
     <div><label>المشروع</label><select name="projectId">${trProjOpts(pre.projectId,'مشتريات عامة (تتحسب مصروف)')}</select></div>
@@ -1254,6 +1277,7 @@ function trOpen(kind, pre={}){ finRun(async()=>{
     <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>${dt}${notes}${btn}</form>
     <div class="emptyNote">أمثلة: تسليم عهدة = من الخزنة إلى حساب العهدة. إيداع نقدية في البنك = من الخزنة إلى البنك. رد باقي العهدة = من العهدة إلى الخزنة.</div>`;
   trShow(h);
+  if(kind==='bill' && pre.poId) trPoChange(pre.poId);
   if(kind==='supplier_payment'){ trSupChange(pre.supplierId||'', pre.billId); }
 }); }
 function trExpProj(pid){ const on=!!pid, c=document.querySelector('#finModal select[name=category]'), k=document.querySelector('#finModal select[name=costType]');
@@ -1267,7 +1291,12 @@ function trSupChange(sid, billId){
 function trBillChange(){ const o=document.getElementById('trBill'); const rem=o.selectedOptions[0]?.dataset.rem; if(rem) document.getElementById('trAmt').value=rem; }
 async function trSubmit(e, kind){ const d=finFd(e); finRun(async()=>{
   if(kind==='transfer') await crmApi('treasury-record-transfer',d);
-  else { const v=finVat(d); d.amount=v.amount; d.taxTreatment=v.tax; if(kind==='expense' && d.projectId){ d.category=d.costType||'other'; delete d.costType; } await crmApi(kind==='bill'?'treasury-record-bill':'treasury-record-entry',{kind,...d}); }
+  else {
+    // الضريبة بتتطبق على المصروف وفاتورة المورد بس (فيهم اختيار شامل/غير شامل). القبض والدفع للمورد وسحب الشريك حركات فلوس مفيهاش ضريبة.
+    if(kind==='expense' || kind==='bill'){ const v=finVat(d); d.amount=v.amount; d.taxTreatment=v.tax; }
+    if(kind==='expense' && d.projectId){ d.category=d.costType||'other'; delete d.costType; }
+    await crmApi(kind==='bill'?'purchasing-record-bill':'treasury-record-entry',{kind,...d});
+  }
   finOverlay.classList.remove('show'); finLK=null; finDone('تم التسجيل');
 }); }
 const trAssign = pid => finRun(async()=>{ await crmApi('treasury-assign-payment',{paymentId:pid,accountId:document.getElementById('asg'+pid).value}); finDone('تم الربط'); });
@@ -1294,6 +1323,73 @@ function trSupplier(sid){ return finRun(async()=>{
   ${d.payments.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>الحساب</th><th>المبلغ</th><th>المرجع</th></tr></thead><tbody>${d.payments.map(p=>`<tr style="cursor:default"><td>${fmtDate(p.entry_date)}</td><td>${escapeHtml(p.account_name)}</td><td>${finN(p.amount)}</td><td>${escapeHtml(p.reference||'')}</td></tr>`).join('')}</tbody></table>` : '<div class="emptyNote">مفيش مدفوعات</div>'}`);
 }); }
 
+/* ============ PURCHASES (المشتريات): طلبات الشراء + فواتير الموردين + الموردون ============ */
+/* الدورة: طلب شراء (التزام) ← فاتورة مورد (تكلفة + مستحق) ← دفع (خروج فلوس). كل خطوة بتتسجّل مرة واحدة والمالية بتقرأ منها. */
+let finPO = [], purTab = 'orders', purOpenOnly = true;
+const PUR_TABS = { orders:'طلبات الشراء', bills:'فواتير الموردين', suppliers:'الموردون' };
+const purPoStatus = o => o.status==='cancelled' ? '<span class="tag warn">ملغي</span>' : (Number(o.remaining_to_bill)<=0 ? '<span class="tag">مفوتر بالكامل</span>' : '<span class="tag">مفتوح</span>');
+function loadPurchases(){
+  if(SESSION.role !== 'admin') return;
+  const nav = document.getElementById('purSubnav');
+  if(!nav.dataset.ready){
+    nav.dataset.ready = '1';
+    nav.innerHTML = Object.entries(PUR_TABS).map(([k,v])=>`<button class="btn small" data-pur="${k}" type="button">${v}</button>`).join('');
+    nav.addEventListener('click', e=>{ const b=e.target.closest('button[data-pur]'); if(!b) return; purTab=b.dataset.pur; purLoad(); });
+  }
+  purLoad();
+}
+function purLoad(){
+  document.querySelectorAll('#purSubnav button').forEach(b=>b.classList.toggle('ghost', b.dataset.pur!==purTab));
+  finBody().innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  finRun(()=>PUR_VIEWS[purTab]());
+}
+const PUR_VIEWS = {
+async orders(){
+  const [o, lk] = await Promise.all([ crmApi('purchasing-orders'), crmApi('treasury-lookups') ]); finLK = lk;
+  finBody().innerHTML = `<div class="kpiGrid">
+    <div class="stat sun"><div class="v">${finN(o.totals.committed_unbilled)}</div><div class="l">التزامات لسه ماتفوترتش</div></div>
+    <div class="stat bad"><div class="v">${finN(o.totals.billed_unpaid)}</div><div class="l">مفوتر وماتدفعش</div></div>
+    <div class="stat"><div class="v">${o.totals.open_count}</div><div class="l">طلبات مفتوحة</div></div></div>
+  <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn teal small" onclick="purOpenOrder()">+ طلب شراء</button><button class="btn ghost small" onclick="trOpen('bill')">+ فاتورة مورد</button></div>
+  <div class="emptyNote" style="margin-top:8px">طلب الشراء ده اتفاق على مبلغ (مثلًا مكونات المشروع) ومبيأثرش على الحسابات. لما الفاتورة توصل سجّلها على الطلب، وبعدين الدفع.</div></div>
+  <div class="card" style="padding:0;overflow:auto">${o.orders.length ? `<table class="admtable"><thead><tr><th>الطلب</th><th>التاريخ</th><th>المورد</th><th>المشروع</th><th>البيان</th><th>المطلوب</th><th>المفوتر</th><th>المدفوع</th><th>متبقي للفوترة</th><th>متبقي للدفع</th><th>الحالة</th><th></th></tr></thead><tbody>
+  ${o.orders.map(x=>`<tr style="cursor:default"><td><b>${escapeHtml(x.po_number)}</b></td><td>${fmtDate(x.order_date)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${escapeHtml(x.description||'')}</td><td>${finN(x.amount)}</td><td>${finN(x.billed)}</td><td>${finN(x.paid)}</td><td>${finS(x.remaining_to_bill)}</td><td><b>${finS(x.remaining_to_pay)}</b></td><td>${purPoStatus(x)}</td>
+  <td>${x.status==='open'&&Number(x.remaining_to_bill)>0?`<button class="btn small" onclick="trOpen('bill',{poId:${x.po_id}})">فاتورة</button> `:''}${x.status==='open'?`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'cancelled')">إلغاء</button>`:`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'open')">تفعيل</button>`} <button class="btn danger small" onclick="purDelOrder(${x.po_id})">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش طلبات شراء لسه</div>'}</div>`;
+},
+async bills(){
+  const [b, lk] = await Promise.all([ crmApi('purchasing-bills',{openOnly:purOpenOnly}), crmApi('treasury-lookups') ]); finLK = lk;
+  finBody().innerHTML = `<div class="kpiGrid"><div class="stat bad"><div class="v">${finN(b.totalRemaining)}</div><div class="l">إجمالي المتبقي للموردين</div></div></div>
+  <div class="card"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button class="btn teal small" onclick="trOpen('bill')">+ فاتورة مورد</button>
+  <label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" style="width:auto" ${purOpenOnly?'checked':''} onchange="purOpenOnly=this.checked;purLoad()"> المفتوحة فقط (اللي عليها متبقي)</label></div></div>
+  <div class="card" style="padding:0;overflow:auto">${b.bills.length ? `<table class="admtable"><thead><tr><th>الفاتورة</th><th>المورد</th><th>المشروع</th><th>التاريخ</th><th>القيمة (شامل)</th><th>المدفوع</th><th>المتبقي</th><th></th></tr></thead><tbody>
+  ${b.bills.map(x=>`<tr style="cursor:default"><td>${escapeHtml(x.bill_number||('#'+x.bill_id))}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${fmtDate(x.bill_date)}</td><td>${finN(x.amount)}</td><td>${finN(x.paid)}</td><td><b>${finS(x.remaining)}</b></td>
+  <td>${Number(x.remaining)>0?`<button class="btn small" onclick="trOpen('supplier_payment',{supplierId:${x.supplier_id},billId:${x.bill_id}})">دفع</button> `:''}${Number(x.paid)===0?`<button class="btn danger small" onclick="purDelBill(${x.bill_id})">حذف</button>`:''}</td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش فواتير</div>'}</div>`;
+},
+suppliers: () => FIN_VIEWS.suppliers()
+};
+function purOpenOrder(){ finRun(async()=>{
+  if(!finLK) finLK = await crmApi('treasury-lookups');
+  trShow(trHead('طلب شراء جديد (التزام — مفيش أثر محاسبي لحد ما الفاتورة توصل)') + `<form class="finForm" onsubmit="purSaveOrder(event)">
+    <div><label>المورد</label><select name="supplierId">${trSupOpts('')}</select></div>
+    <div><label>أو مورد جديد (اكتب الاسم)</label><input name="supplierName"></div>
+    <div><label>المشروع</label><select name="projectId">${trProjOpts('','مشتريات عامة (مش مرتبطة بمشروع)')}</select></div>
+    <div><label>رقم الطلب (اختياري)</label><input name="poNumber" placeholder="PO-..."></div>
+    <div><label>التاريخ</label><input name="orderDate" type="date" value="${todayStr()}"></div>
+    <div><label>المبلغ المتفق عليه</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+    ${finTaxBox()}
+    <div style="grid-column:1/-1"><label>البيان (مثال: مكونات مشروع ...)</label><input name="description"></div>
+    <div style="grid-column:1/-1"><label>ملاحظات</label><input name="notes"></div>
+    <div><button class="btn small teal">حفظ</button></div></form>`);
+}); }
+const purSaveOrder = e => finRun(async()=>{ const d=finFd(e), v=finVat(d); await crmApi('purchasing-save-order',{...d,amount:v.amount,taxTreatment:v.tax}); finOverlay.classList.remove('show'); finLK=null; finDone('تم تسجيل طلب الشراء'); });
+const purSetStatus = (id,st) => finRun(async()=>{ await crmApi('purchasing-save-order',{orderId:id,fields:{status:st}}); finLoad(); });
+const purDelOrder = id => confirm('حذف طلب الشراء؟') && finRun(async()=>{ await crmApi('purchasing-delete-order',{orderId:id}); finDone('تم الحذف'); });
+const purDelBill = id => confirm('حذف الفاتورة؟ هتتحذف تكلفتها من المشروع كمان.') && finRun(async()=>{ await crmApi('treasury-delete-bill',{billId:id}); finDone('تم الحذف'); });
+function trPoChange(id){ const po=finPO.find(x=>String(x.po_id)===String(id)); if(!po) return; const f=document.querySelector('#finModal form');
+  f.querySelector('[name=supplierId]').value=po.supplier_id; f.querySelector('[name=projectId]').value=po.project_id||''; f.querySelector('[name=amount]').value=Math.max(0,Number(po.remaining_to_bill));
+  f.querySelector('input[name=vatMode][value=incl]').checked=true; f.querySelector('input[name=validInvoice]').checked=(po.tax_treatment==='recoverable');
+  f.querySelector('[name=amount]').dispatchEvent(new Event('input',{bubbles:true})); }
+
 /* --- actions --- */
 const finSaveReserve = e => finRun(async()=>{ const d=finFd(e); await crmApi('finance-update-settings',{fields:{reserve_pct:+d.r}}); finDone('تم الحفظ'); });
 const finAddExp = e => finRun(async()=>{ const d=finFd(e), v=finVat(d); await crmApi('finance-add-expense',{...d,amount:v.amount,taxTreatment:v.tax}); finDone('تمت إضافة المصروف'); });
@@ -1311,7 +1407,8 @@ const finDelDist = id => confirm('حذف السجل؟') && finRun(async()=>{ awa
 const finOverlay = document.getElementById('finOverlay');
 finOverlay.addEventListener('click', e=>{ if(e.target===finOverlay) finOverlay.classList.remove('show'); });
 async function finOpenProject(id){ return finRun(async()=>{
-  const [d, dc] = await Promise.all([ crmApi('finance-project-detail',{projectId:id}), crmApi('treasury-project-discounts',{projectId:id}) ]), p = d.project, f = d.flags || {};
+  const [d, dc, pm, cm] = await Promise.all([ crmApi('finance-project-detail',{projectId:id}), crmApi('treasury-project-discounts',{projectId:id}), crmApi('treasury-project-payments',{projectId:id}), crmApi('purchasing-project-commitments',{projectId:id}) ]), p = d.project, f = d.flags || {};
+  finPayCache = Object.fromEntries(pm.payments.map(x=>[x.id,x]));
   document.getElementById('finModal').innerHTML = `
   <div class="mhead"><div><h2>${escapeHtml(p.project_number)}</h2><div class="phone">${escapeHtml(p.customer_name||'')}</div></div><button class="closeX" type="button" onclick="finOverlay.classList.remove('show')">✕</button></div>
   ${(()=>{ const pg=finPG(p), pv=Math.round((Number(p.output_vat)-Number(p.input_vat))*100)/100, pn=Number(p.actual_profit);
@@ -1321,6 +1418,7 @@ async function finOpenProject(id){ return finRun(async()=>{
     ${row('التكاليف',finN(p.cost_net),finN(p.input_vat),finN(p.cost_gross))}
     ${row('الربح',finS(pn),finS(pv),finS(pg),true)}</tbody></table>
     <div class="emptyNote">ضريبة الربح (${finN(pv)}) = ضريبة المبيعات − ضريبة المشتريات = المستحق للهيئة عن المشروع، وهي مش ربح قابل للتوزيع. الربح الحقيقي للشركاء هو الصافي <b>${finN(pn)}</b> (هامش ${p.margin_pct ?? '-'}%). المحصّل ${finN(p.collected)} · المتبقي ${finN(p.remaining)}.</div>`; })()}
+  ${cm.total>0 ? `<div class="emptyNote" style="color:var(--ink)">تكاليف متوقعة (طلبات شراء مفتوحة لسه ماتفوترتش): <b>${finN(cm.total)}</b> — الربح المتوقع بعد الالتزامات (شامل): <b>${finS(finPG(p)-cm.total)}</b> · ${cm.orders.map(o=>escapeHtml(o.po_number+' ('+o.supplier_name+')')).join('، ')}</div>` : ''}
   <div class="card" style="margin:10px 0;background:var(--sand)"><h3><span class="lbl">خصم تسوية على العميل (كسور / سماح)</span></h3>
     <div class="emptyNote" style="color:var(--ink)">المتبقي على العميل: <b>${finN(p.remaining)}</b>${dc.total>0?` · خصومات سابقة ${finN(dc.total)} (التعاقد الأصلي ${finN(Number(p.contract_gross)+dc.total)})`:''}</div>
     ${Number(p.remaining)>0 ? `<form class="finForm" onsubmit="finApplyDiscount(event,${id},${p.remaining})">
@@ -1329,6 +1427,12 @@ async function finOpenProject(id){ return finRun(async()=>{
       <div style="grid-column:span 2"><label>السبب (إجباري)</label><input name="reason" required placeholder="مثال: تسوية كسور"></div>
       <div><button class="btn small">تطبيق الخصم</button></div></form>` : ''}
     ${dc.discounts.map(x=>`<div class="emptyNote" style="color:var(--ink)">• ${fmtDate(x.discount_date)} — خصم ${finN(x.amount)}: ${escapeHtml(x.reason)} <button class="btn ghost small" onclick="finUndoDiscount(${x.id},${id})">إلغاء الخصم</button></div>`).join('')}
+  </div>
+  <div class="card" style="margin:10px 0"><h3><span class="lbl">الدفعات المحصّلة من العميل</span></h3>
+    ${pm.payments.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>الطريقة</th><th>الحساب</th><th></th><th></th></tr></thead><tbody>
+    ${pm.payments.map(x=>{ const n=pm.edits.filter(e=>String(e.payment_id)===String(x.id)).length; return `<tr style="cursor:default"><td>${fmtDate(x.payment_date)}</td><td><b>${finN(x.amount)}</b></td><td>${escapeHtml(labelOf(SETTINGS.paymentMethods,x.method,x.method||''))}</td><td>${escapeHtml(x.account_name||'غير مربوطة بحساب')}</td><td>${n?`<span class="tag warn">معدّلة ${n}×</span>`:''}</td><td><button class="btn ghost small" onclick="finEditPayment(${x.id},${id})">تعديل</button></td></tr>`; }).join('')}</tbody></table>` : '<div class="emptyNote">مفيش دفعات مسجلة</div>'}
+    <div id="payEditBox"></div>
+    ${pm.edits.length ? `<h3 style="margin:12px 0 4px"><span class="lbl">سجل التعديلات (محفوظ دائمًا)</span></h3>${pm.edits.map(e=>`<div class="emptyNote" style="color:var(--ink)">• ${fmtDate(e.edited_at)} — دفعة #${e.payment_id}: ${Number(e.old_amount)!==Number(e.new_amount)?`المبلغ <s>${finN(e.old_amount)}</s> ← <b>${finN(e.new_amount)}</b> `:''}${String(e.old_date).slice(0,10)!==String(e.new_date).slice(0,10)?`التاريخ <s>${fmtDate(e.old_date)}</s> ← <b>${fmtDate(e.new_date)}</b> `:''}· السبب: ${escapeHtml(e.reason)} · <b>عُدّلت بواسطة الأدمن</b></div>`).join('')}` : ''}
   </div>
   <form class="finForm" onsubmit="finSaveFlags(event,${id})"><div><label><input type="checkbox" name="inc"${f.contract_includes_vat===false?'':' checked'}> قيمة التعاقد شاملة الضريبة</label></div>
     <div><label>تاريخ الانتهاء الفعلي</label><input type="date" name="cd" value="${f.completion_date || (p.is_completed ? (p.completion_date||'') : '')}"></div><div><button class="btn ghost small">حفظ</button></div></form>
@@ -1344,6 +1448,21 @@ async function finOpenProject(id){ return finRun(async()=>{
     ${finTaxBox()}<div><button class="btn small teal">إضافة</button></div></form>`;
   finOverlay.classList.add('show');
 }); }
+let finPayCache = {};
+function finEditPayment(pid, projectId){ const x=finPayCache[pid]; if(!x) return;
+  const box=document.getElementById('payEditBox');
+  box.innerHTML = `<form class="finForm" style="margin-top:10px;padding:10px;border:1px solid var(--line);border-radius:10px" onsubmit="finSavePayment(event,${pid},${projectId})">
+    <div style="grid-column:1/-1"><b>تعديل دفعة ${fmtDate(x.payment_date)} — ${finN(x.amount)}</b><div class="emptyNote">القيم القديمة هتتحفظ في سجل التعديلات. تغيير التاريخ بينقل الدفعة لشهر تاني في تقرير الضريبة.</div></div>
+    <div><label>المبلغ المحصّل الصحيح</label><input name="amount" type="number" step="0.01" min="0.01" value="${x.amount}" required></div>
+    <div><label>تاريخ التحصيل الصحيح</label><input name="paymentDate" type="date" value="${String(x.payment_date).slice(0,10)}" required></div>
+    <div style="grid-column:span 2"><label>سبب التعديل (إجباري)</label><input name="reason" required placeholder="مثال: التاريخ اتسجل غلط"></div>
+    <div style="display:flex;gap:8px"><button class="btn small teal">حفظ التعديل</button><button type="button" class="btn ghost small" onclick="document.getElementById('payEditBox').innerHTML=''">إلغاء</button></div></form>`;
+  box.scrollIntoView({block:'nearest'}); }
+const finSavePayment = (e,pid,projectId) => { const d=finFd(e), x=finPayCache[pid], parts=[];
+  if(Number(d.amount)!==Number(x.amount)) parts.push(`المبلغ ${finN(x.amount)} ← ${finN(d.amount)}`);
+  if(d.paymentDate!==String(x.payment_date).slice(0,10)) parts.push(`التاريخ ${String(x.payment_date).slice(0,10)} ← ${d.paymentDate}`);
+  if(!parts.length){ toast('مفيش تغيير'); return; }
+  return confirm(`هيتعدّل: ${parts.join(' و ')}.\nالقيمة القديمة هتفضل في السجل ويتسجّل إن التعديل بواسطة الأدمن، وحركة الخزنة المرتبطة هتتحدّث. متأكد؟`) && finRun(async()=>{ await crmApi('treasury-edit-payment',{paymentId:pid,...d}); toast('تم التعديل وحُفظ في السجل'); await finOpenProject(projectId); finLoad(); }); };
 const finApplyDiscount = (e,id,rem) => { const d=finFd(e), a=Number(d.amount);
   return confirm(`هيتخصم ${finN(a)} من قيمة التعاقد، ومديونية العميل هتبقى ${finN(rem-a)}، وربح المشروع هينزل بنفس القيمة (شامل الضريبة). متأكد؟`) && finRun(async()=>{ await crmApi('treasury-apply-discount',{projectId:id,...d}); toast('تم تطبيق الخصم'); await finOpenProject(id); finLoad(); }); };
 const finUndoDiscount = (did,id) => confirm('إلغاء الخصم هيرجّع قيمة التعاقد والمديونية على العميل. متأكد؟') && finRun(async()=>{ await crmApi('treasury-undo-discount',{discountId:did}); toast('تم إلغاء الخصم'); await finOpenProject(id); finLoad(); });
