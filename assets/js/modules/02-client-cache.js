@@ -4,6 +4,10 @@
 let cachedQuote = null;       // public quote (sell prices only)
 let cachedFeas = null;        // general feasibility-study assumptions (non-sensitive)
 let cachedBomItemImages = {}; // admin-managed fallback images for generic BOM line items (by item key)
+// ترتيب الألواح أبجديًا (البراند ثم القدرة) — للعرض فقط. ترتيب التخزين (idx) ما بيتغيّرش عشان عروض الأسعار المحفوظة بتعتمد عليه.
+const panelCmp = (a,b) => String(a.brand||'').localeCompare(String(b.brand||''), 'en', {sensitivity:'base', numeric:true}) || (Number(a.power)||0) - (Number(b.power)||0);
+const sortedPanelOptions = () => cachedPanelOptions.slice().sort(panelCmp);
+const pnlEsc = x => String(x==null?'':x).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let cachedPanelOptions = [];  // [{brand,power}] — never priceW
 let cachedBatteryVoltageOptions = []; // [12.8, 25.6, 51.2, ...] distinct voltages in the battery catalog
 let cachedBatteryModelOptions = []; // [{model,brand,voltage,stdVoltage,ah,kwh}, ...] exact battery models from the catalog

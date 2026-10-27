@@ -981,14 +981,73 @@ function wire(){
       document.querySelector('[data-view="calc"]').classList.add('active');
       render();
     };
-    document.getElementById('addPanel').onclick = ()=>{
+    /* ===== الألواح الشمسية: إضافة/تعديل من نافذة منبثقة (الجدول للعرض فقط) ===== */
+    const pmOverlay = document.getElementById('panelModalOverlay');
+    let pmEditIdx = null;   // null = لوح جديد، رقم = index اللوح في adminConfig.panels (مش ترتيب العرض)
+    const PM_FIELDS = [
+      ['brand','البراند','text'], ['power','القدرة (W)','number','1'], ['vimp','Vimp (فولت)','number','0.01'], ['voc','Voc (فولت)','number','0.01'],
+      ['iimp','Iimp (أمبير)','number','0.01'], ['isc','Isc (أمبير)','number','0.01'], ['priceW','السعر $/W (بدون ضريبة)','number','0.001']
+    ];
+    function pmOpen(idx){
+      pmEditIdx = idx;
+      const p = idx==null ? {brand:'',power:'',vimp:'',voc:'',iimp:'',isc:'',priceW:'',visible:true} : adminConfig.panels[idx];
+      const isDef = idx!=null && `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||'');
+      document.getElementById('pm_title').textContent = idx==null ? 'إضافة لوح جديد' : `تعديل لوح — ${p.brand} ${p.power}W`;
+      document.getElementById('pm_fields').innerHTML = PM_FIELDS.map(([k,l,t,st])=>`<div class="modal-field"><label>${l}</label><input id="pm_${k}" type="${t}" ${st?`step="${st}" min="0"`:''} value="${pnlEsc(p[k])}"></div>`).join('')
+        + `<label style="display:flex;align-items:center;gap:8px;margin:6px 0"><input type="checkbox" id="pm_visible" style="width:auto" ${p.visible!==false?'checked':''}><span>ظاهر للعميل</span></label>`
+        + `<label style="display:flex;align-items:center;gap:8px;margin:6px 0"><input type="checkbox" id="pm_default" style="width:auto" ${isDef?'checked':''}><span>اللوح الافتراضي في الحاسبة</span></label>`;
+      const er = document.getElementById('pm_error'); er.style.display='none'; er.textContent='';
+      pmOverlay.style.display = 'flex';
+      setTimeout(()=>{ const f=document.getElementById('pm_brand'); if(f) f.focus(); }, 50);
+    }
+    const pmClose = ()=>{ pmOverlay.style.display='none'; pmEditIdx=null; };
+    document.getElementById('addPanel').onclick = ()=>pmOpen(null);
+    document.querySelectorAll('[data-editpanel]').forEach(b=>b.onclick=()=>pmOpen(+b.dataset.editpanel));
+    document.getElementById('pm_cancel').onclick = pmClose;
+    pmOverlay.onclick = e=>{ if(e.target===pmOverlay) pmClose(); };
+    document.getElementById('pm_save').onclick = async ()=>{
+      const er = document.getElementById('pm_error');
+      const showErr = m=>{ er.textContent=m; er.style.display='block'; };
+      const v = k=>document.getElementById('pm_'+k).value.trim();
+      const brand = v('brand');
+      if(!brand) return showErr('اكتب اسم البراند');
+      const n = {};
+      for(const [k,l,t] of PM_FIELDS){ if(t!=='number') continue;
+        const x = v(k); if(x==='' || !isFinite(+x)) return showErr(`${l}: اكتب رقم صحيح`);
+        n[k] = +x; if(k!=='priceW' && n[k]<=0) return showErr(`${l}: لازم يكون أكبر من صفر`); if(k==='priceW' && n[k]<0) return showErr(`${l}: مينفعش يكون سالب`);
+      }
+      const key = `${brand}|${n.power}`;
+      if(adminConfig.panels.some((p,i)=>i!==pmEditIdx && `${p.brand}|${p.power}`===key)) return showErr('اللوح ده موجود بالفعل (نفس البراند والقدرة)');
+      const wantDefault = document.getElementById('pm_default').checked;
+      let oldKey = null;
+      if(pmEditIdx!=null){
+        const o = adminConfig.panels[pmEditIdx]; oldKey = `${o.brand}|${o.power}`;
+        if(o.brand!==brand && (adminConfig.discounts||[]).some(d=>d.category==='الألواح الشمسية' && d.brand===o.brand) &&
+           !confirm(`تغيير البراند من "${o.brand}" إلى "${brand}" هيفصل الخصومات المسجلة على "${o.brand}" في صفحة الخصومات. تكمل؟`)) return;
+      }
       harvestAdminInputs();
-      adminConfig.panels.push({brand:'جديد',power:600,vimp:40,voc:48,iimp:15,isc:16,priceW:0.5,visible:true});
+      const rec = { brand, power:n.power, vimp:n.vimp, voc:n.voc, iimp:n.iimp, isc:n.isc, priceW:n.priceW, visible:document.getElementById('pm_visible').checked };
+      if(pmEditIdx==null) adminConfig.panels.push(rec);
+      else Object.assign(adminConfig.panels[pmEditIdx], rec);   // بيحافظ على باقي بيانات اللوح (داتا شيت/صورة...)
+      if(wantDefault) adminConfig.defaultPanelKey = key;
+      else if(oldKey && adminConfig.defaultPanelKey===oldKey) adminConfig.defaultPanelKey = key;   // لو كان هو الافتراضي واتغيّر اسمه
+      const btn = document.getElementById('pm_save'); btn.disabled = true;
+      try{
+        await callEngine('update-config', { adminToken: adminTokenMem, config: adminConfig });
+        pmClose(); alert('تم حفظ اللوح ✔');
+        try{ await refreshQuote(); }catch(_){}
+      }catch(e){ btn.disabled=false; return showErr('تعذر الحفظ: '+e.message); }
       render();
     };
-    document.querySelectorAll('[data-delpanel]').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('[data-delpanel]').forEach(b=>b.onclick=async ()=>{
+      const p = adminConfig.panels[+b.dataset.delpanel]; if(!p) return;
+      if(!confirm(`حذف اللوح "${p.brand} ${p.power}W" نهائيًا؟`)) return;
       harvestAdminInputs();
-      adminConfig.panels.splice(+b.dataset.delpanel,1); render();
+      adminConfig.panels.splice(+b.dataset.delpanel,1);
+      if(adminConfig.defaultPanelKey===`${p.brand}|${p.power}`) adminConfig.defaultPanelKey = '';
+      try{ await callEngine('update-config', { adminToken: adminTokenMem, config: adminConfig }); alert('تم حذف اللوح ✔'); try{ await refreshQuote(); }catch(_){} }
+      catch(e){ alert('تعذر الحذف: '+e.message); }
+      render();
     });
     const splitBtn = document.getElementById('splitAccessoriesBtn');
     if(splitBtn) splitBtn.onclick = ()=>{

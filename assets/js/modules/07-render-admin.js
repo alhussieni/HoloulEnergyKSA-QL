@@ -585,7 +585,7 @@ let detailTab = 'description'; // 'description' | 'specs' — product detail pag
 // browsing/search/grid-list-toggle/detail-page code for free.
 function buildCatalogWithPanels(realCatalog){
   if(!cachedPanelsPublic) ensurePanelsPublicLoaded();
-  const panels = cachedPanelsPublic || [];
+  const panels = (cachedPanelsPublic || []).slice().sort(panelCmp);
   if(!panels.length) return realCatalog;
   const panelsCat = {
     category: 'الألواح الشمسية',
@@ -2088,24 +2088,37 @@ ${(function(){
     <table class="admtable">
       <thead><tr><th>افتراضي</th><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W (بدون ضريبة)</th><th>ظاهر للعميل</th><th></th></tr></thead>
       <tbody id="adm_panels">
-        ${adminConfig.panels.map((p,i)=>`
+        ${adminConfig.panels.map((p,i)=>i).sort((x,y)=>panelCmp(adminConfig.panels[x],adminConfig.panels[y])).map(i=>{ const p = adminConfig.panels[i]; const isDef = `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||''); return `
           <tr>
-            <td style="text-align:center"><input type="radio" name="defaultPanel" data-defpanel="${i}" ${(`${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||''))?'checked':''}></td>
-            <td><input data-p="${i}" data-f="brand" value="${p.brand}"></td>
-            <td><input data-p="${i}" data-f="power" type="number" value="${p.power}"></td>
-            <td><input data-p="${i}" data-f="vimp" type="number" step="0.01" value="${p.vimp}"></td>
-            <td><input data-p="${i}" data-f="voc" type="number" step="0.01" value="${p.voc}"></td>
-            <td><input data-p="${i}" data-f="iimp" type="number" step="0.01" value="${p.iimp}"></td>
-            <td><input data-p="${i}" data-f="isc" type="number" step="0.01" value="${p.isc}"></td>
-            <td><input data-p="${i}" data-f="priceW" type="number" step="0.001" value="${p.priceW}"></td>
-            <td style="text-align:center"><input type="checkbox" data-pvis="${i}" ${p.visible!==false?'checked':''}></td>
-            <td class="op"><button class="btn danger small" data-delpanel="${i}">✕</button></td>
-          </tr>`).join('')}
+            <td style="text-align:center">${isDef?'<span title="اللوح الافتراضي" style="color:#E7AC12;font-size:17px">★</span>':''}</td>
+            <td><b>${pnlEsc(p.brand)}</b></td>
+            <td>${pnlEsc(p.power)}</td>
+            <td>${pnlEsc(p.vimp)}</td>
+            <td>${pnlEsc(p.voc)}</td>
+            <td>${pnlEsc(p.iimp)}</td>
+            <td>${pnlEsc(p.isc)}</td>
+            <td>${pnlEsc(p.priceW)}</td>
+            <td style="text-align:center">${p.visible!==false?'<span class="tag good">ظاهر</span>':'<span class="tag warn">مخفي</span>'}</td>
+            <td class="op" style="white-space:nowrap"><button class="btn ghost small" data-editpanel="${i}">✏️ تعديل</button> <button class="btn danger small" data-delpanel="${i}">✕</button></td>
+          </tr>`; }).join('')}
       </tbody>
     </table>
     <button class="btn ghost small" id="addPanel">+ إضافة لوح</button>
+    <div class="note" style="margin-top:8px">الألواح مرتّبة أبجديًا. التعديل والإضافة بيتموا من نافذة منفصلة وبيتحفظوا فورًا — الجدول نفسه للعرض فقط عشان ما يتغيّرش أي رقم بالغلط.</div>
     <div class="note" style="margin-top:8px">اللوح يظهر للعميل فقط لو كان "ظاهر للعميل" مفعّل ومعاه سعر أكبر من صفر. عطّل التكة لإخفاء لوح مؤقتًا بدون حذفه.<br>اختَر لوح "افتراضي" ليكون هو المُحدَّد تلقائيًا للعميل عند فتح أي حاسبة (حتى لو أُضيفت ألواح جديدة بعد كده).</div>
   </div>
+  </div>
+
+  <div id="panelModalOverlay" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <h3 id="pm_title">لوح شمسي</h3>
+      <div id="pm_fields"></div>
+      <div class="note" id="pm_error" style="color:#B0432C;display:none;margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button class="btn ghost small" id="pm_cancel" type="button">إلغاء</button>
+        <button class="btn small" id="pm_save" type="button">حفظ اللوح</button>
+      </div>
+    </div>
   </div>
   <div class="admsubsec ${currentAdminSubSection.products==='catalog'?'active':''}" data-admsub="catalog">
   <div class="card no-print">

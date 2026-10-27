@@ -6,3 +6,7 @@
 - supabase/functions/finance-treasury-edit/index.ts    (جديدة — تعديل حركات الخزنة + بحث سجل الحركات، منشورة v2)
 - supabase/migrations/0036_rfq.sql                    (كان 0035_rfq.sql وبيتعارض مع 0035_milestone_payment_link.sql)
 - supabase/migrations/0037_treasury_entry_edits.sql   (جدول سجل التعديلات + دالة finance_edit_entry — مطبّقة بالفعل على قاعدة البيانات)
+
+## الألواح الشمسية (لوحة التحكم ← المنتجات والكتالوج)
+- assets/js/modules/02-client-cache.js, 05-render-calculator.js, 07-render-admin.js, 08-wiring.js
+  (نافذة منبثقة للإضافة/التعديل + جدول للعرض فقط + ترتيب أبجدي. ملفات الواجهة فقط — مفيش تغيير في Supabase)

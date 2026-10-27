@@ -57,7 +57,7 @@ function renderIrrigationCalc(){
 
         <label>نوع اللوح الشمسي</label>
         <select id="in_panel">
-          ${cachedPanelOptions.map(p=>`<option value="${p.idx}" ${p.idx==state.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
+          ${sortedPanelOptions().map(p=>`<option value="${p.idx}" ${p.idx==state.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
         </select>
 
         <details class="adv">
@@ -666,7 +666,7 @@ function renderOffgridCalc(){
     <div class="card">
       <h3>نوع اللوح الشمسي</h3>
       <select id="og_panel">
-        ${cachedPanelOptions.map(p=>`<option value="${p.idx}" ${p.idx==o.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
+        ${sortedPanelOptions().map(p=>`<option value="${p.idx}" ${p.idx==o.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
       </select>
     </div>
     <div class="card">
@@ -812,7 +812,7 @@ function renderOngridCalc(){
     <div class="card">
       <h3>نوع اللوح الشمسي</h3>
       <select id="ng_panel">
-        ${cachedPanelOptions.map(p=>`<option value="${p.idx}" ${p.idx==n.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
+        ${sortedPanelOptions().map(p=>`<option value="${p.idx}" ${p.idx==n.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
       </select>
     </div>`;
 
