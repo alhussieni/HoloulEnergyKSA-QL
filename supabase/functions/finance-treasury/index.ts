@@ -125,6 +125,7 @@ Deno.serve(async (req: Request) => {
         ok: true, accounts: acc, unassigned: must(unassigned),
         totalBalance: Math.round(acc.filter((a) => a.active).reduce((s, a) => s + Number(a.balance), 0) * 100) / 100,
         totalPayable: Math.round(sup.reduce((s, x) => s + Math.max(0, Number(x.balance)), 0) * 100) / 100,
+        totalAdvances: Math.round(sup.reduce((s, x) => s + Number(x.advance_open || 0), 0) * 100) / 100,
       });
     }
 
@@ -183,24 +184,45 @@ Deno.serve(async (req: Request) => {
 
     if (action === "treasury-supplier-statement") {
       if (!body.supplierId) bad("supplierId required");
-      const [sup, bills, pays] = await Promise.all([
-        supabase.from("v_supplier_balances").select("*").eq("supplier_id", body.supplierId).maybeSingle(),
-        supabase.from("v_supplier_bills").select("*").eq("supplier_id", body.supplierId).order("bill_date", { ascending: false }),
-        supabase.from("v_treasury_ledger").select("*").eq("supplier_id", body.supplierId).eq("kind", "supplier_payment").order("entry_date", { ascending: false }),
+      const sid = body.supplierId;
+      const [sup, bills, stmt, projs, orders, adv] = await Promise.all([
+        supabase.from("v_supplier_balances").select("*").eq("supplier_id", sid).maybeSingle(),
+        supabase.from("v_supplier_bills").select("*").eq("supplier_id", sid).order("bill_date", { ascending: false }).order("bill_id", { ascending: false }),
+        supabase.from("v_supplier_statement").select("*").eq("supplier_id", sid).order("doc_date", { ascending: true }).order("ord", { ascending: true }).order("doc_id", { ascending: true }),
+        supabase.from("v_supplier_project_summary").select("*").eq("supplier_id", sid).order("project_number", { ascending: true, nullsFirst: false }),
+        supabase.from("v_purchase_orders").select("*").eq("supplier_id", sid).order("order_date", { ascending: false }),
+        supabase.from("treasury_entries").select("id, entry_date, amount, project_id, purchase_order_id, reference, notes, account_id")
+          .eq("supplier_id", sid).eq("kind", "supplier_payment").is("bill_id", null).order("entry_date", { ascending: true }).order("id", { ascending: true }),
       ]);
       const s = must(sup);
       if (!s) return json({ error: "المورد غير موجود" }, 404);
-      return json({ ok: true, supplier: s, bills: must(bills), payments: must(pays) });
+      const advRows = must(adv) as any[];
+      let allocs: any[] = [];
+      if (advRows.length) allocs = must(await supabase.from("supplier_payment_allocations").select("entry_id, bill_id, amount").in("entry_id", advRows.map((a) => a.id))) as any[];
+      const billRows = must(bills) as any[];
+      const billNo: Record<string, string> = Object.fromEntries(billRows.map((b) => [String(b.bill_id), b.bill_number || ("#" + b.bill_id)]));
+      const poRows = must(orders) as any[];
+      const poNo: Record<string, string> = Object.fromEntries(poRows.map((o) => [String(o.po_id), o.po_number]));
+      const projNo: Record<string, string> = {};
+      for (const r of must(projs) as any[]) if (r.project_id) projNo[String(r.project_id)] = r.project_number;
+      const advances = advRows.map((a) => {
+        const al = allocs.filter((x) => x.entry_id === a.id).map((x) => ({ bill_id: x.bill_id, bill_number: billNo[String(x.bill_id)] || ("#" + x.bill_id), amount: Number(x.amount) }));
+        const applied = Math.round(al.reduce((t, x) => t + x.amount, 0) * 100) / 100;
+        return { ...a, amount: Number(a.amount), applied, remaining: Math.round((Number(a.amount) - applied) * 100) / 100, allocations: al,
+                 po_number: a.purchase_order_id ? (poNo[String(a.purchase_order_id)] || null) : null, project_number: a.project_id ? (projNo[String(a.project_id)] || null) : null };
+      });
+      return json({ ok: true, supplier: s, bills: billRows, statement: must(stmt), advances, projects: must(projs), orders: poRows });
     }
 
     if (action === "treasury-record-bill") {
       const tax = body.taxTreatment ? String(body.taxTreatment) : "recoverable";
       if (!TAX.includes(tax)) bad("نوع الضريبة غير صالح");
       const p = {
-        supplier_id: body.supplierId || null, supplier_name: txt(body.supplierName, 150),
+        supplier_id: body.supplierId || null, supplier_name: txt(body.supplierName, 150), po_id: body.poId || null,
         project_id: body.projectId || null, amount: num(body.amount, "المبلغ"),
         bill_date: dateOrNull(body.billDate, "تاريخ الفاتورة"), bill_number: txt(body.billNumber, 60),
         description: txt(body.description, 500), tax_treatment: tax, cost_type: txt(body.costType, 50),
+        doc_type: body.docType === "credit_note" ? "credit_note" : "invoice",
       };
       const id = await rpc("finance_record_bill", { p });
       await logAudit("add_bill", "supplier_bill", Number(id), p.bill_number, null, { amount: p.amount, project_id: p.project_id });
@@ -219,7 +241,7 @@ Deno.serve(async (req: Request) => {
         kind: String(body.kind || ""), account_id: body.accountId || null, amount: num(body.amount, "المبلغ"),
         entry_date: dateOrNull(body.entryDate), method: txt(body.method, 50), reference: txt(body.reference, 100),
         notes: txt(body.notes, 500), project_id: body.projectId || null, supplier_id: body.supplierId || null,
-        bill_id: body.billId || null, partner_id: body.partnerId || null, dist_kind: txt(body.distKind, 20),
+        bill_id: body.billId || null, po_id: body.poId || null, partner_id: body.partnerId || null, dist_kind: txt(body.distKind, 20),
         category: txt(body.category, 50), description: txt(body.description, 500),
         tax_treatment: body.taxTreatment ? String(body.taxTreatment) : null, direction: txt(body.direction, 3),
       };
@@ -227,6 +249,66 @@ Deno.serve(async (req: Request) => {
       const id = await rpc("finance_record_entry", { p });
       await logAudit("add_treasury_entry", "treasury_entry", Number(id), String(p.kind), null, { amount: p.amount, account_id: p.account_id });
       return json({ ok: true, entryId: id });
+    }
+
+    // ---- الدفعات المقدّمة للموردين: تخصيص على فاتورة / فكّ التخصيص / ربط بمشروع أو طلب شراء ----
+    if (action === "treasury-allocate-advance") {
+      if (!body.entryId || !body.billId) bad("entryId و billId مطلوبان");
+      await rpc("finance_allocate_advance", { p_entry: body.entryId, p_bill: body.billId, p_amount: num(body.amount, "المبلغ") });
+      await logAudit("allocate_advance", "treasury_entry", Number(body.entryId), null, null, { bill_id: body.billId, amount: body.amount });
+      return json({ ok: true });
+    }
+
+    if (action === "treasury-unallocate-advance") {
+      if (!body.entryId || !body.billId) bad("entryId و billId مطلوبان");
+      await rpc("finance_unallocate_advance", { p_entry: body.entryId, p_bill: body.billId });
+      await logAudit("unallocate_advance", "treasury_entry", Number(body.entryId), null, { bill_id: body.billId }, null);
+      return json({ ok: true });
+    }
+
+    if (action === "treasury-set-entry-link") {
+      if (!body.entryId) bad("entryId required");
+      await rpc("finance_set_entry_link", { p_entry: body.entryId, p_project: body.projectId || null, p_po: body.poId || null });
+      await logAudit("link_supplier_entry", "treasury_entry", Number(body.entryId), null, null, { project_id: body.projectId || null, po_id: body.poId || null });
+      return json({ ok: true });
+    }
+
+    // ---- الكاش فلو للموردين: الحركة الشهرية + المستحق + المقدّم + حسب المشروع ----
+    if (action === "treasury-supplier-cashflow") {
+      const from = dateOrNull(body.from, "من تاريخ"), to = dateOrNull(body.to, "إلى تاريخ");
+      let q = supabase.from("treasury_entries").select("entry_date, kind, amount, supplier_id, project_id").in("kind", ["supplier_payment", "supplier_refund"]).not("supplier_id", "is", null).order("entry_date", { ascending: true }).limit(20000);
+      if (from) q = q.gte("entry_date", from);
+      if (to) q = q.lte("entry_date", to);
+      const [ents, bal, proj, names] = await Promise.all([
+        q,
+        supabase.from("v_supplier_balances").select("*").order("name"),
+        supabase.from("v_supplier_project_summary").select("*"),
+        supabase.from("suppliers").select("id, name"),
+      ]);
+      const nm: Record<string, string> = Object.fromEntries((must(names) as any[]).map((x) => [String(x.id), x.name]));
+      const monthly: Record<string, { paid: number; refunds: number; bySupplier: Record<string, number> }> = {};
+      for (const e of must(ents) as any[]) {
+        const m = String(e.entry_date).slice(0, 7);
+        const row = (monthly[m] ||= { paid: 0, refunds: 0, bySupplier: {} });
+        const a = Number(e.amount);
+        if (e.kind === "supplier_payment") { row.paid += a; row.bySupplier[String(e.supplier_id)] = (row.bySupplier[String(e.supplier_id)] || 0) + a; }
+        else { row.refunds += a; row.bySupplier[String(e.supplier_id)] = (row.bySupplier[String(e.supplier_id)] || 0) - a; }
+      }
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+      const months = Object.keys(monthly).sort().map((m) => ({
+        month: m, paid: r2(monthly[m].paid), refunds: r2(monthly[m].refunds), net: r2(monthly[m].paid - monthly[m].refunds),
+        suppliers: Object.entries(monthly[m].bySupplier).map(([id, v]) => ({ supplier_id: Number(id), name: nm[id] || id, net: r2(v) })).sort((a, b) => b.net - a.net),
+      }));
+      const sup = must(bal) as any[];
+      return json({
+        ok: true, months, suppliers: sup,
+        projects: (must(proj) as any[]).map((r) => ({ ...r, supplier_name: nm[String(r.supplier_id)] || String(r.supplier_id) })),
+        totals: {
+          paid: r2(months.reduce((t, m) => t + m.paid, 0)), refunds: r2(months.reduce((t, m) => t + m.refunds, 0)),
+          payable: r2(sup.reduce((t, x) => t + Math.max(0, Number(x.balance)), 0)),
+          advances: r2(sup.reduce((t, x) => t + Number(x.advance_open || 0), 0)),
+        },
+      });
     }
 
     if (action === "treasury-record-transfer") {
