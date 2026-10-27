@@ -1179,7 +1179,8 @@ const finAmtCells = (a,t) => { const r=finVatRate/100, vat=t==='recoverable'?a-a
 
 /* ============ TREASURY (الخزنة) + SUPPLIERS — داخل تبويب المالية ============ */
 /* الخزنة = حركات فلوس فقط. فاتورة المورد التزام: بتدخل تكلفة مشروع (أو مصروف) من غير ما تحرّك الخزنة. */
-let finLK = null, trFilter = { accountId:'', month:'', q:'', kind:'' };
+const TR_F0 = () => ({ accountId:'', from:'', to:'', q:'', kind:'', projectId:'', supplierId:'' });
+let finLK = null, trOv = null, trFilter = TR_F0();
 let trSupData = null, trRetSup = null;
 const TR_KIND = { customer_receipt:'قبض من عميل', supplier_payment:'دفع لمورد', supplier_refund:'استرداد من مورد', expense:'مصروف', partner_draw:'سحب شريك', transfer:'تحويل', other:'أخرى' };
 const TR_ACC = { cash:'خزنة', bank:'بنك', custody:'عهدة' };
@@ -1189,19 +1190,29 @@ const trSupOpts = sel => '<option value="">-- اختر المورد --</option>'
 const trMonthEnd = m => { const d=new Date(m+'-01T00:00:00Z'); d.setUTCMonth(d.getUTCMonth()+1); d.setUTCDate(0); return d.toISOString().slice(0,10); };
 
 FIN_VIEWS.treasury = async function(){
-  const q = {};
-  if(trFilter.accountId) q.accountId = +trFilter.accountId;
-  if(trFilter.month){ q.from = trFilter.month+'-01'; q.to = trMonthEnd(trFilter.month); }
   const [lk, o] = await Promise.all([ crmApi('treasury-lookups'), crmApi('treasury-overview') ]);
-  finLK = lk;
+  finLK = lk; trOv = o;
   const accs = o.accounts;
   finBody().innerHTML = `
-  <div class="kpiGrid">
-    <div class="stat sun"><div class="v">${finS(o.totalBalance)}</div><div class="l">إجمالي السيولة (كل الحسابات النشطة)</div></div>
-    ${accs.filter(a=>a.active).map(a=>`<div class="stat"><div class="v">${finS(a.balance)}</div><div class="l">${escapeHtml(a.name)}${a.holder?' — '+escapeHtml(a.holder):''} · ${TR_ACC[a.kind]}</div></div>`).join('')}
-    <div class="stat supD"><div class="v">${finN(o.totalPayable)}</div><div class="l">مستحق للموردين</div></div>
-    ${Number(o.totalAdvances)>0?`<div class="stat supC"><div class="v">${finN(o.totalAdvances)}</div><div class="l">دفعات مقدّمة عند الموردين</div></div>`:''}
+  <div class="card" id="trFilterBar" style="padding:12px 18px">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <b style="font-size:13px">الفترة:</b>
+      ${[['all','الكل'],['month','الشهر الحالي'],['last','الشهر الماضي'],['year','السنة']].map(([k,v])=>`<button class="btn small trPer" type="button" data-per="${k}" onclick="trSetPeriod('${k}')">${v}</button>`).join('')}
+      <input id="trFrom" type="date" value="${trFilter.from}" style="max-width:150px" onchange="trFilter.from=this.value;trLedgerLoad()" title="من تاريخ">
+      <span style="font-size:12px">→</span>
+      <input id="trTo" type="date" value="${trFilter.to}" style="max-width:150px" onchange="trFilter.to=this.value;trLedgerLoad()" title="إلى تاريخ">
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <select style="max-width:200px" onchange="trFilter.accountId=this.value;trLedgerLoad()"><option value="">كل الحسابات</option>${accs.map(a=>`<option value="${a.account_id}"${String(a.account_id)===String(trFilter.accountId)?' selected':''}>${escapeHtml(a.name)}${a.holder?' — '+escapeHtml(a.holder):''}</option>`).join('')}</select>
+      <select style="max-width:240px" onchange="trFilter.projectId=this.value;trLedgerLoad()"><option value="">كل المشاريع</option>${finLK.projects.map(p=>`<option value="${p.project_id}"${String(p.project_id)===String(trFilter.projectId)?' selected':''}>${escapeHtml(p.project_number)} — ${escapeHtml(p.customer_name||'')}</option>`).join('')}</select>
+      <select style="max-width:220px" onchange="trFilter.supplierId=this.value;trLedgerLoad()"><option value="">كل الموردين</option>${finLK.suppliers.map(s=>`<option value="${s.supplier_id}"${String(s.supplier_id)===String(trFilter.supplierId)?' selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select>
+      <select style="max-width:160px" onchange="trFilter.kind=this.value;trLedgerLoad()"><option value="">كل الأنواع</option>${Object.entries(TR_KIND).map(([k,v])=>`<option value="${k}"${trFilter.kind===k?' selected':''}>${v}</option>`).join('')}</select>
+      <input id="trQ" type="search" placeholder="🔍 بحث: عميل / فاتورة / مرجع / مبلغ / ملاحظة" value="${escapeHtml(trFilter.q)}" style="flex:1;min-width:200px" oninput="trLedgerDebounce()">
+      <button class="btn ghost small" type="button" onclick="trFilterClear()">مسح الفلاتر</button>
+    </div>
+    <div id="trFilterNote" class="emptyNote" style="margin:8px 0 0"></div>
   </div>
+  <div id="trKpi" class="kpiGrid"><div class="loadingNote">جاري التحميل...</div></div>
   <div class="card"><h3><span class="lbl">تسجيل حركة</span></h3><div style="display:flex;gap:8px;flex-wrap:wrap">
     <button class="btn teal small" onclick="trOpen('customer_receipt')">+ قبض من عميل</button>
     <button class="btn small" onclick="trOpen('supplier_payment')">+ دفع لمورد</button>
@@ -1215,13 +1226,7 @@ FIN_VIEWS.treasury = async function(){
     <table class="admtable"><tbody>${o.unassigned.map(u=>`<tr style="cursor:default"><td>${fmtDate(u.payment_date)}</td><td>${escapeHtml(u.project_number||'')} — ${escapeHtml(u.customer_name||'')}</td><td>${finN(u.amount)}</td><td>${escapeHtml(labelOf(SETTINGS.paymentMethods,u.method,u.method||''))}</td>
     <td style="width:230px"><select id="asg${u.payment_id}">${trAccOpts('')}</select></td><td><button class="btn small teal" onclick="trAssign(${u.payment_id})">ربط</button></td></tr>`).join('')}</tbody></table></div>` : ''}
   <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">سجل الحركات</span></h3>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-      <input id="trQ" type="search" placeholder="🔍 بحث: اسم عميل / مورد / رقم فاتورة / مشروع / مرجع / مبلغ / ملاحظة" value="${escapeHtml(trFilter.q)}" style="flex:1;min-width:240px" oninput="trLedgerDebounce()">
-      <select style="max-width:160px" onchange="trFilter.kind=this.value;trLedgerLoad()"><option value="">كل الأنواع</option>${Object.entries(TR_KIND).map(([k,v])=>`<option value="${k}"${trFilter.kind===k?' selected':''}>${v}</option>`).join('')}</select>
-      <select style="max-width:200px" onchange="trFilter.accountId=this.value;trLedgerLoad()"><option value="">كل الحسابات</option>${accs.map(a=>`<option value="${a.account_id}"${String(a.account_id)===String(trFilter.accountId)?' selected':''}>${escapeHtml(a.name)}${a.holder?' — '+escapeHtml(a.holder):''}</option>`).join('')}</select>
-      <input type="month" value="${trFilter.month}" style="max-width:150px" onchange="trFilter.month=this.value;trLedgerLoad()">
-      <button class="btn ghost small" type="button" onclick="trFilterClear()">مسح الفلاتر</button>
-    </div><div id="trLedgerSum" class="emptyNote" style="margin:0 0 8px"></div></div>
+    <div id="trLedgerSum" class="emptyNote" style="margin:0 0 8px"></div></div>
   <div id="trLedgerBox"><div class="loadingNote">جاري التحميل...</div></div></div>
   <div class="card"><h3><span class="lbl">الحسابات (خزنة / بنك / عهد شخصية)</span></h3>
   <table class="admtable"><thead><tr><th>الاسم</th><th>النوع</th><th>صاحب العهدة</th><th>رصيد افتتاحي</th><th>من تاريخ</th><th>الرصيد الحالي</th><th></th></tr></thead><tbody>
@@ -1374,17 +1379,72 @@ const trAssign = pid => finRun(async()=>{ await crmApi('treasury-assign-payment'
 /* ============ بحث وفلاتر سجل الحركات (في السيرفر — بيشمل كل الحركات القديمة) ============ */
 let trLedgerT = null, trLedgerSeq = 0;
 function trLedgerDebounce(){ clearTimeout(trLedgerT); trLedgerT = setTimeout(()=>{ const el=document.getElementById('trQ'); trFilter.q = el ? el.value : ''; trLedgerLoad(); }, 300); }
-function trFilterClear(){ trFilter = { accountId:'', month:'', q:'', kind:'' }; finLoad(); }
+function trFilterClear(){ trFilter = TR_F0(); finLoad(); }
+const trIso = d => d.toISOString().slice(0,10);
+function trPeriodRange(k){
+  const t = new Date(todayStr()+'T00:00:00Z'), y = t.getUTCFullYear(), m = t.getUTCMonth();
+  if(k==='month') return [trIso(new Date(Date.UTC(y,m,1))), trIso(new Date(Date.UTC(y,m+1,0)))];
+  if(k==='last')  return [trIso(new Date(Date.UTC(y,m-1,1))), trIso(new Date(Date.UTC(y,m,0)))];
+  if(k==='year')  return [y+'-01-01', y+'-12-31'];
+  return ['',''];
+}
+function trSetPeriod(k){
+  [trFilter.from, trFilter.to] = trPeriodRange(k);
+  const f=document.getElementById('trFrom'), t=document.getElementById('trTo'); if(f) f.value=trFilter.from; if(t) t.value=trFilter.to;
+  trLedgerLoad();
+}
+function trMarkPeriod(){
+  document.querySelectorAll('#trFilterBar .trPer').forEach(b=>{ const [f,t]=trPeriodRange(b.dataset.per); b.classList.toggle('ghost', !(f===trFilter.from && t===trFilter.to)); });
+}
+/* كروت الأرقام: بتتحسب من نفس الفلاتر بتاعة السجل. الأرصدة = في آخر الفترة؛ ولو فيه فلتر (نوع/مشروع/مورد/بحث) بتتحول لصافي الحركة المفلترة. */
+function trKpiHtml(l){
+  const f = trFilter, narrowed = !!(f.kind || f.projectId || f.supplierId || (f.q||'').trim());
+  const accSel = a => !f.accountId || String(a.account_id)===String(f.accountId);
+  const shown = l.accounts.filter(a => a.active || String(a.account_id)===String(f.accountId));
+  const sel = shown.filter(accSel);
+  const val = a => narrowed ? a.in - a.out : a.balance;
+  const tot = sel.reduce((s,a)=>s+val(a),0), net = l.sumIn - l.sumOut;
+  const per = (f.from||f.to) ? ` · ${f.from?fmtDate(f.from):'البداية'} → ${f.to?fmtDate(f.to):'اليوم'}` : '';
+  let h = `<div class="stat sun"><div class="v">${finS(tot)}</div><div class="l">${narrowed?'صافي الحركة (حسب الفلتر)':(f.to?'إجمالي السيولة في آخر الفترة':'إجمالي السيولة الحالية')}${f.accountId?' · الحساب المختار':' · كل الحسابات'}</div></div>`;
+  h += `<div class="stat"><div class="v">${finN(l.sumIn)}</div><div class="l">وارد${per}</div></div><div class="stat"><div class="v">${finN(l.sumOut)}</div><div class="l">صادر${per}</div></div>`;
+  if(!narrowed) h += `<div class="stat"><div class="v">${finS(net)}</div><div class="l">صافي الحركة${per}</div></div>`;
+  h += shown.map(a=>`<div class="stat"${accSel(a)?'':' style="opacity:.45"'}><div class="v">${finS(val(a))}</div><div class="l">${escapeHtml(a.name)}${a.holder?' — '+escapeHtml(a.holder):''} · ${TR_ACC[a.kind]}${narrowed?' · صافي الحركة':''}<br><small>وارد ${finN(a.in)} · صادر ${finN(a.out)}${(!narrowed&&f.from)?' · أول الفترة '+finN(a.opening):''}</small></div></div>`).join('');
+  const P = f.projectId ? (finLK.projects||[]).find(p=>String(p.project_id)===String(f.projectId)) : null;
+  const S = f.supplierId ? (finLK.suppliers||[]).find(x=>String(x.supplier_id)===String(f.supplierId)) : null;
+  if(P){
+    h += `<div class="stat"><div class="v">${finN(P.contract_gross)}</div><div class="l">قيمة تعاقد المشروع</div></div>
+      <div class="stat"><div class="v">${finN(P.collected)}</div><div class="l">المقبوض من العميل (إجمالي)</div></div>
+      <div class="stat supD"><div class="v">${finN(P.remaining)}</div><div class="l">المتبقي على العميل</div></div>
+      <div class="stat"><div class="v">${finN((l.byKind.supplier_payment||{}).out)}</div><div class="l">مدفوع للموردين على المشروع${per}</div></div>`;
+  }
+  if(S){
+    h += `<div class="stat"><div class="v">${finN(S.total_bills)}</div><div class="l">إجمالي فواتير المورد</div></div>
+      <div class="stat"><div class="v">${finN((l.byKind.supplier_payment||{}).out)}</div><div class="l">مدفوع للمورد${per}</div></div>
+      <div class="stat supD"><div class="v">${finN(Math.max(0,Number(S.balance)))}</div><div class="l">مستحق للمورد (حالي)</div></div>
+      ${Number(S.advance_open)>0?`<div class="stat supC"><div class="v">${finN(S.advance_open)}</div><div class="l">دفعة مقدّمة عنده</div></div>`:''}`;
+  }
+  if(!P && !S && trOv){
+    h += `<div class="stat supD"><div class="v">${finN(trOv.totalPayable)}</div><div class="l">مستحق للموردين (حالي)</div></div>${Number(trOv.totalAdvances)>0?`<div class="stat supC"><div class="v">${finN(trOv.totalAdvances)}</div><div class="l">دفعات مقدّمة عند الموردين (حالي)</div></div>`:''}`;
+  }
+  return h;
+}
 async function trLedgerLoad(){
   const box = document.getElementById('trLedgerBox'); if(!box) return;
   const my = ++trLedgerSeq, q = {};
   if(trFilter.accountId) q.accountId = +trFilter.accountId;
   if(trFilter.kind) q.kind = trFilter.kind;
-  if(trFilter.month){ q.from = trFilter.month+'-01'; q.to = trMonthEnd(trFilter.month); }
+  if(trFilter.projectId) q.projectId = +trFilter.projectId;
+  if(trFilter.supplierId) q.supplierId = +trFilter.supplierId;
+  if(trFilter.from) q.from = trFilter.from;
+  if(trFilter.to) q.to = trFilter.to;
   if((trFilter.q||'').trim()) q.q = trFilter.q.trim();
+  trMarkPeriod();
+  const kpi = document.getElementById('trKpi'); if(kpi) kpi.style.opacity = '.55';
   try{
     const l = await crmApi('treasury-ledger-search', q);
     if(my !== trLedgerSeq || !document.getElementById('trLedgerBox')) return;
+    if(kpi){ kpi.style.opacity = '';
+      kpi.innerHTML = Array.isArray(l.accounts) ? trKpiHtml(l) : '<div class="emptyNote" style="grid-column:1/-1;background:var(--sun-tint);padding:12px;border-radius:10px">الكروت محتاجة تحديث الـ Edge Function <b>finance-treasury-edit</b> على Supabase (deploy للنسخة الجديدة). الجدول شغال، والفلاتر على المشروع/المورد هتشتغل بعد الـ deploy.</div>'; }
     const sum = document.getElementById('trLedgerSum');
     if(sum) sum.innerHTML = `${l.total} حركة${l.total>l.rows.length?` (معروض أحدث ${l.rows.length} — ضيّق البحث لباقي النتائج)`:''} · وارد <b>${finN(l.sumIn)}</b> · صادر <b>${finN(l.sumOut)}</b> · الصافي <b>${finN(l.sumIn-l.sumOut)}</b>`;
     box.innerHTML = l.rows.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>الحساب</th><th>البيان</th><th>الطريقة</th><th>وارد</th><th>صادر</th><th>الرصيد</th><th></th></tr></thead><tbody>
@@ -1392,8 +1452,8 @@ async function trLedgerLoad(){
      <td><b>${TR_KIND[r.kind]||r.kind}</b> ${escapeHtml([r.customer_name,r.supplier_name,r.project_number,(r.bill_numbers&&r.bill_numbers.length)?('فاتورة '+r.bill_numbers.join('، ')):'',r.reference,r.notes].filter(Boolean).join(' · '))}</td>
      <td>${escapeHtml(labelOf(SETTINGS.paymentMethods,r.method,r.method||''))}</td>
      <td class="num">${r.direction==='in'?finN(r.amount):''}</td><td class="num">${r.direction==='out'?finN(r.amount):''}</td><td class="num">${finS(r.running_balance)}</td>
-     <td style="white-space:nowrap"><button class="btn ghost small" onclick="trEditEntry(${r.id})">تعديل</button> <button class="btn danger small" onclick="trDelEntry(${r.id},'${r.kind}')">حذف</button></td></tr>`).join('')}</tbody></table>` : `<div class="loadingNote">${(trFilter.q||trFilter.kind||trFilter.month||trFilter.accountId)?'مفيش حركات مطابقة للبحث':'مفيش حركات لسه'}</div>`;
-  }catch(e){ if(my===trLedgerSeq) box.innerHTML = `<div class="loadingNote">${escapeHtml(e.message||'حصل خطأ')}</div>`; }
+     <td style="white-space:nowrap"><button class="btn ghost small" onclick="trEditEntry(${r.id})">تعديل</button> <button class="btn danger small" onclick="trDelEntry(${r.id},'${r.kind}')">حذف</button></td></tr>`).join('')}</tbody></table>` : `<div class="loadingNote">${(trFilter.q||trFilter.kind||trFilter.from||trFilter.to||trFilter.accountId||trFilter.projectId||trFilter.supplierId)?'مفيش حركات مطابقة للبحث':'مفيش حركات لسه'}</div>`;
+  }catch(e){ if(kpi) kpi.style.opacity=''; if(my===trLedgerSeq) box.innerHTML = `<div class="loadingNote">${escapeHtml(e.message||'حصل خطأ')}</div>`; }
 }
 /* ============ تعديل حركة خزنة: الحساب / التاريخ / المبلغ / المشروع / أمر الشراء / المرجع / الملاحظات (أدمن) ============ */
 /* التعديل بيتم في دالة Postgres ذرّية واحدة وبيتسجّل في سجل التعديلات بسببه. القبض من عميل بيعدّل دفعة المشروع نفسها، والمصروف بينتقل بين "عام" و"تكلفة مشروع". */
@@ -1558,7 +1618,7 @@ async orders(){
   <div class="emptyNote" style="margin-top:8px">أمر الشراء ده اتفاق على مبلغ (مثلًا مكونات المشروع) ومبيأثرش على الحسابات. لما الفاتورة توصل سجّلها على الطلب، وبعدين الدفع.</div></div>
   <div class="card" style="padding:0;overflow:auto">${o.orders.length ? `<table class="admtable"><thead><tr><th>الطلب</th><th>التاريخ</th><th>المورد</th><th>المشروع</th><th>البيان</th><th>المطلوب</th><th>المفوتر</th><th>المدفوع</th><th>متبقي للفوترة</th><th>متبقي للدفع</th><th>الحالة</th><th></th></tr></thead><tbody>
   ${o.orders.map(x=>`<tr style="cursor:default"><td><b>${escapeHtml(x.po_number)}</b></td><td>${fmtDate(x.order_date)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${escapeHtml(x.description||'')}</td><td>${finN(x.amount)}</td><td>${finN(x.billed)}</td><td>${finN(x.paid)}</td><td>${finS(x.remaining_to_bill)}</td><td><b>${finS(x.remaining_to_pay)}</b></td><td>${purPoStatus(x)}</td>
-  <td>${x.status==='open'&&Number(x.remaining_to_bill)>0?`<button class="btn small" onclick="trOpen('bill',{poId:${x.po_id}})">فاتورة</button> `:''}${x.status==='open'?`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'cancelled')">إلغاء</button>`:`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'open')">تفعيل</button>`} <button class="btn danger small" onclick="purDelOrder(${x.po_id})">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش أوامر شراء لسه</div>'}</div>`;
+  <td>${x.status==='open'&&Number(x.remaining_to_bill)>0?`<button class="btn small" onclick="trOpen('bill',{poId:${x.po_id}})">فاتورة</button> `:''}${x.status==='open'?`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'cancelled')">إلغاء</button>`:`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'open')">تفعيل</button>`} <button class="btn ghost small" onclick="poPrintMenu(${x.po_id})">🖨 طباعة</button> <button class="btn danger small" onclick="purDelOrder(${x.po_id})">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش أوامر شراء لسه</div>'}</div>`;
 },
 async bills(){
   const [b, lk] = await Promise.all([ crmApi('purchasing-bills',{openOnly:purOpenOnly}), crmApi('treasury-lookups') ]); finLK = lk;
@@ -1656,7 +1716,7 @@ function rfqOpen(id, openPrices){ return finRun(async()=>{
  const priceBtn = canEdit ? `<button class="btn ${anyPrice?'ghost':'teal'} small" onclick="rfqPrices(${id})">${anyPrice?'✏️ تعديل رد المورد':'تسجيل رد المورد (الأسعار)'}</button>` : '';
  const acts = r.status==='draft'||r.status==='sent' ? `<button class="btn small" onclick="rfqPrint(${id})">🖨 طباعة / PDF</button> <button class="btn small" onclick="rfqWhatsApp(${id})">واتساب</button> ${r.status==='draft'?`<button class="btn ghost small" onclick="rfqSent(${id})">تم الإرسال</button> `:''}${priceBtn} <button class="btn danger small" onclick="rfqDel(${id})">حذف</button>`
   : r.status==='quoted' ? `<button class="btn small" onclick="rfqPrint(${id})">🖨 طباعة</button> ${priceBtn} <button class="btn danger small" onclick="rfqReject(${id})">رفض</button>`
-  : r.status==='accepted' ? `${priceBtn}`
+  : r.status==='accepted' ? `${d.po?`<button class="btn small" onclick="poPrintMenu(${d.po.po_id})">🖨 طباعة أمر الشراء</button> `:''}${priceBtn}`
   : r.status==='rejected' ? `<button class="btn danger small" onclick="rfqDel(${id})">حذف</button>` : '';
  trShow(`${trHead(escapeHtml(r.rfq_number)+' — '+escapeHtml(r.supplier_name))}
  <div class="emptyNote" style="color:var(--ink)">${rfqTag(r.status)} · عرض العميل: <b>${escapeHtml(r.quote_ref||'—')}</b> · المشروع: <b>${escapeHtml(r.project_number||'—')}</b> · ${fmtDate(r.created_at)}${r.supplier_quote_ref?` · رقم عرض المورد: <b>${escapeHtml(r.supplier_quote_ref)}</b>`:''}</div>
@@ -1726,6 +1786,56 @@ function rfqPrint(id){ finRun(async()=>{ const d=await crmApi('proc-rfq',{rfqId:
   ${d.items.map(x=>`<tr><td>${x.line_no}</td><td>${escapeHtml(x.label)}</td><td>${Number(x.qty)}</td><td>${escapeHtml(x.unit||'')}</td><td></td><td></td><td>${escapeHtml(x.qty_note||'')}</td></tr>`).join('')}</tbody></table>
   <p class="m">${r.notes?escapeHtml(r.notes)+'<br>':''}يرجى بيان: هل الأسعار شاملة ضريبة القيمة المضافة، ومدة صلاحية العرض، ومدة التوريد.</p></body></html>`);
   w.document.close(); w.focus(); setTimeout(()=>w.print(),400); }); }
+/* --- طباعة أمر الشراء للمورد: خيارين (مكونات بالكميات بدون أسعار / بالكميات والأسعار المتفق عليها) --- */
+function poPrintMenu(poId){ trShow(`${trHead('طباعة أمر الشراء')}
+  <div class="emptyNote" style="color:var(--ink)">اختار نوع النسخة:</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px">
+   <button class="btn teal" type="button" onclick="poPrint(${poId},false)">📦 المكونات والكميات (بدون أسعار)</button>
+   <button class="btn" type="button" onclick="poPrint(${poId},true)">💰 المكونات والكميات والأسعار المتفق عليها</button></div>
+  <div class="emptyNote" style="margin-top:10px">النسخة بدون أسعار مناسبة للمخزن/التوريد، والنسخة بالأسعار هي أمر الشراء الرسمي للمورد.</div>`); }
+async function poPrint(poId, withPrices){ finRun(async()=>{
+  const w = window.open('','_blank'); if(!w) throw new Error('المتصفح منع النافذة — اسمح بالنوافذ المنبثقة');
+  try{
+    const [ord, rf] = await Promise.all([ crmApi('purchasing-orders',{}), crmApi('proc-rfqs') ]);
+    const po = ord.orders.find(o=>String(o.po_id)===String(poId)); if(!po) throw new Error('أمر الشراء غير موجود');
+    const link = rf.rfqs.find(x=>String(x.po_id)===String(poId));
+    const d = link ? await crmApi('proc-rfq',{rfqId:link.rfq_id}) : null;
+    if(!finLK) finLK = await crmApi('treasury-lookups');
+    const sup = (finLK.suppliers||[]).find(x=>String(x.supplier_id)===String(po.supplier_id)) || {};
+    const r = d ? d.rfq : null, items = d ? d.items : [];
+    const lump = !!(r && r.lump_total!=null), vm = r ? r.vat_mode : null, rate = finVatRate/100;
+    const priced = items.filter(x=>x.unit_price!=null);
+    const net = priced.reduce((t,x)=>t+Number(x.qty)*Number(x.unit_price),0);
+    const gross = Number(po.amount);
+        const E = escapeHtml, num = v=>Number(v).toLocaleString('en-US',{maximumFractionDigits:3});
+    const hasItems = items.length>0;
+    const showLinePrices = withPrices && hasItems && !lump;
+    const rows = hasItems ? items.map(x=>`<tr><td>${x.line_no}</td><td>${E(x.label)}</td><td class="c">${num(x.qty)}</td><td class="c">${E(x.unit||'')}</td>${showLinePrices?(x.unit_price!=null?`<td class="n">${finN(x.unit_price)}</td><td class="n">${finN(Number(x.qty)*Number(x.unit_price))}</td>`:'<td class="n">—</td><td class="n">—</td>'):''}<td class="m">${E(x.qty_note||'')}</td></tr>`).join('')
+      : `<tr><td>1</td><td>${E(po.description||'حسب الاتفاق مع المورد')}</td><td class="c">—</td><td class="c">—</td>${withPrices?`<td class="n">—</td><td class="n">${finN(po.amount)}</td>`:''}<td></td></tr>`;
+    const colHead = `<th>م</th><th>البند / المكوّن</th><th>الكمية</th><th>الوحدة</th>${(showLinePrices||(withPrices&&!hasItems))?'<th>سعر الوحدة</th><th>الإجمالي</th>':''}<th>ملاحظات</th>`;
+    const vatTxt = vm==='incl' ? 'الأسعار المذكورة شاملة ضريبة القيمة المضافة' : vm==='excl' ? 'الأسعار المذكورة غير شاملة ضريبة القيمة المضافة (تُضاف عند الفوترة)' : vm==='none' ? 'بدون ضريبة قيمة مضافة' : '';
+    const pc = (showLinePrices||(withPrices&&!hasItems)); // أعمدة سعر الوحدة والإجمالي ظاهرة؟
+    const trow = (lbl,amt,cls) => pc ? `<tr${cls?` class="${cls}"`:''}><td colspan="5" class="t">${lbl}</td><td class="n">${finN(amt)}</td><td></td></tr>` : `<tr${cls?` class="${cls}"`:''}><td colspan="4" class="t">${lbl}</td><td class="n">${finN(amt)}</td></tr>`;
+    let totals = '';
+    if(withPrices){
+      if(vm==='excl' && !lump && priced.length) totals = trow('مجموع البنود (قبل الضريبة)',net) + trow(`ضريبة القيمة المضافة ${finVatRate}%`,gross-net);
+      totals += trow(`${lump?'السعر الإجمالي المتفق عليه':'إجمالي أمر الشراء'}${vm==='none'?'':' (شامل الضريبة)'}`,gross,'g');
+    }
+    const css = `@page{size:A4;margin:14mm}body{font-family:Tahoma,Arial,sans-serif;color:#111;margin:0;padding:6px 4px}.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #E5A91A;padding-bottom:10px}.top img{height:54px}h1{margin:0;font-size:22px}.sub{color:#555;font-size:12px;margin-top:2px}.badge{display:inline-block;border:1px solid #111;border-radius:6px;padding:2px 10px;font-size:12px;margin-top:6px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin:14px 0;font-size:13.5px}.meta b{color:#333}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #888;padding:7px 8px;text-align:right;font-size:13.5px;vertical-align:top}th{background:#f0ece0}.c{text-align:center}.n{text-align:left;direction:ltr;white-space:nowrap}.m{color:#555;font-size:12px}.t{text-align:left;font-weight:700;background:#faf8f1}.g td{background:#fff3cf;font-weight:700;font-size:15px}.note{margin-top:12px;font-size:12.5px;color:#333;line-height:1.8}.sig{display:flex;justify-content:space-between;gap:40px;margin-top:44px;font-size:13px}.sig div{flex:1;border-top:1px solid #333;padding-top:6px;text-align:center}`;
+    w.document.open();
+    w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${E(po.po_number)}</title><style>${css}</style></head><body>
+    <div class="top"><div><h1>أمر شراء — ${E(po.po_number)}</h1><div class="sub">HoloulEnergy — حلول الطاقة المتجددة والمقاولات</div><span class="badge">${withPrices?'النسخة المسعّرة':'قائمة المكونات والكميات (بدون أسعار)'}</span></div><img src="assets/logo.png" alt="" onerror="this.style.display='none'"></div>
+    <div class="meta"><div><b>السادة / المورد:</b> ${E(po.supplier_name)}</div><div><b>تاريخ الأمر:</b> ${fmtDate(po.order_date)}</div>
+     ${sup.vat_number?`<div><b>الرقم الضريبي للمورد:</b> ${E(sup.vat_number)}</div>`:''}${(r&&r.supplier_phone)||sup.phone?`<div><b>هاتف المورد:</b> ${E((r&&r.supplier_phone)||sup.phone)}</div>`:''}
+     <div><b>المشروع:</b> ${E(po.project_number||'مشتريات عامة')}</div>${r?`<div><b>مرجع طلب عرض السعر:</b> ${E(r.rfq_number)}${r.supplier_quote_ref?' — عرض المورد رقم '+E(r.supplier_quote_ref):''}${r.supplier_quote_date?' بتاريخ '+fmtDate(r.supplier_quote_date):''}</div>`:''}</div>
+    <p style="font-size:14px;margin:8px 0">نرجو التكرم بتوريد البنود التالية${withPrices?' بالأسعار المتفق عليها':''}:</p>
+    <table><thead><tr>${colHead}</tr></thead><tbody>${rows}${totals}</tbody></table>
+    <div class="note">${withPrices&&vatTxt?E(vatTxt)+'.<br>':''}${withPrices&&lump?'السعر المتفق عليه إجمالي واحد للأمر كله.<br>':''}${withPrices&&hasItems&&!lump&&priced.length<items.length?'بعض البنود غير مسعّرة وغير داخلة في قيمة الأمر.<br>':''}${po.notes?E(po.notes)+'<br>':''}${!hasItems?'<b>ملاحظة:</b> أمر الشراء ده اتسجّل يدويًا بدون قائمة بنود تفصيلية.<br>':''}يرجى تأكيد استلام هذا الأمر وموعد التوريد، وإرفاق رقم أمر الشراء على الفاتورة.</div>
+    <div class="sig"><div>اعتماد المشتريات</div><div>اعتماد المورد / الختم</div></div></body></html>`);
+    w.document.close(); w.focus(); setTimeout(()=>w.print(),500);
+    finOverlay.classList.remove('show');
+  }catch(e){ w.close(); throw e; }
+}); }
 function rfqWhatsApp(id){ finRun(async()=>{ const d=await crmApi('proc-rfq',{rfqId:id}), r=d.rfq;
   const lines=d.items.map(x=>`${x.line_no}) ${x.label} — ${Number(x.qty)}${x.unit?' '+x.unit:''}${x.qty_note?' ('+x.qty_note+')':''}`).join('\n');
   const msg=`السلام عليكم\nطلب عرض سعر ${r.rfq_number} من HoloulEnergy:\n\n${lines}\n\n${r.notes?r.notes+'\n':''}نرجو إفادتنا بسعر الوحدة وهل الأسعار شاملة الضريبة، ومدة التوريد. شكرًا.`;
