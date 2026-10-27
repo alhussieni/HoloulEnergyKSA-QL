@@ -1606,7 +1606,7 @@ PUR_VIEWS.rfqs = async function(){
   finBody().innerHTML = `<div class="card"><button class="btn teal small" onclick="rfqNew()">+ طلب عرض سعر جديد</button>
     <div class="emptyNote" style="margin-top:8px">اختار عرض السعر اللي قدمته للعميل، والنظام يسحب البنود والكميات (من غير أسعار البيع) ويطلّع طلب للمورد. المورد يرد بأسعاره، تسجّلها هنا، وتقبل أو ترفض. القبول بيطلّع <b>أمر شراء</b>، والفاتورة بتتسجل لما المورد يصدرها.</div></div>
   <div class="card" style="padding:0;overflow:auto">${r.rfqs.length ? `<table class="admtable"><thead><tr><th>الطلب</th><th>التاريخ</th><th>المورد</th><th>عرض العميل</th><th>المشروع</th><th>البنود</th><th>إجمالي عرض المورد (شامل)</th><th>الحالة</th></tr></thead><tbody>
-  ${r.rfqs.map(x=>`<tr onclick="rfqOpen(${x.rfq_id})"><td><b>${escapeHtml(x.rfq_number)}</b></td><td>${fmtDate(x.created_at)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.quote_ref||'')}</td><td>${escapeHtml(x.project_number||'')}</td><td>${x.items_count}</td><td>${x.total_gross!=null?finN(x.total_gross):'—'}</td><td>${rfqTag(x.status)}</td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش طلبات عروض أسعار لسه</div>'}</div>`;
+  ${r.rfqs.map(x=>`<tr onclick="rfqOpen(${x.rfq_id})"><td><b>${escapeHtml(x.rfq_number)}</b></td><td>${fmtDate(x.created_at)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.quote_ref||'')}</td><td>${escapeHtml(x.project_number||'')}</td><td>${x.items_count}</td><td>${x.total_gross!=null?finN(x.total_gross):'—'}${x.lump_total!=null?' <span class="mut">(إجمالي)</span>':(Number(x.priced_count)>0&&Number(x.priced_count)<Number(x.items_count)?` <span class="mut">(${x.priced_count}/${x.items_count} بند)</span>`:'')}</td><td>${rfqTag(x.status)}</td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش طلبات عروض أسعار لسه</div>'}</div>`;
 };
 
 /* --- إنشاء طلب جديد: مورد + عرض سعر العميل → سحب البنود → اختيار وتعديل الكميات --- */
@@ -1645,55 +1645,76 @@ function rfqSave(e){ e.preventDefault(); finRun(async()=>{
 }); }
 
 /* --- تفاصيل الطلب --- */
-function rfqOpen(id){ return finRun(async()=>{
-  const d = await crmApi('proc-rfq',{rfqId:id}), r = d.rfq, it = d.items; rfqCur = d;
-  if(!finLK) finLK = await crmApi('treasury-lookups');
-  const priced = r.status==='quoted' || r.status==='accepted';
-  const vr = finVatRate/100, net = Number(r.net_total||0), gross = Number(r.total_gross||0);
-  const acts = r.status==='draft'||r.status==='sent' ? `<button class="btn small" onclick="rfqPrint(${id})">🖨 طباعة / PDF</button> <button class="btn small" onclick="rfqWhatsApp(${id})">واتساب</button> ${r.status==='draft'?`<button class="btn ghost small" onclick="rfqSent(${id})">تم الإرسال</button> `:''}<button class="btn teal small" onclick="rfqPrices(${id})">تسجيل رد المورد (الأسعار)</button> <button class="btn danger small" onclick="rfqDel(${id})">حذف</button>`
-    : r.status==='quoted' ? `<button class="btn small" onclick="rfqPrint(${id})">🖨 طباعة</button> <button class="btn ghost small" onclick="rfqPrices(${id})">تعديل الأسعار</button> <button class="btn danger small" onclick="rfqReject(${id})">رفض</button>`
-    : r.status==='rejected' ? `<button class="btn danger small" onclick="rfqDel(${id})">حذف</button>` : '';
-  trShow(`${trHead(escapeHtml(r.rfq_number)+' — '+escapeHtml(r.supplier_name))}
-  <div class="emptyNote" style="color:var(--ink)">${rfqTag(r.status)} · عرض العميل: <b>${escapeHtml(r.quote_ref||'—')}</b> · المشروع: <b>${escapeHtml(r.project_number||'—')}</b> · ${fmtDate(r.created_at)}${r.supplier_quote_ref?` · رقم عرض المورد: <b>${escapeHtml(r.supplier_quote_ref)}</b>`:''}</div>
-  <table class="admtable" style="margin-top:8px"><thead><tr><th>م</th><th>البند</th><th>الكمية</th><th>الوحدة</th>${priced?'<th>سعر الوحدة</th><th>الإجمالي</th>':''}<th>ملاحظة</th></tr></thead><tbody>
-  ${it.map(x=>`<tr style="cursor:default"><td>${x.line_no}</td><td>${escapeHtml(x.label)}</td><td>${Number(x.qty)}</td><td>${escapeHtml(x.unit||'')}</td>${priced?`<td>${finN(x.unit_price)}</td><td>${finN(Number(x.qty)*Number(x.unit_price))}</td>`:''}<td class="mut">${escapeHtml(x.qty_note||'')}</td></tr>`).join('')}</tbody></table>
-  ${priced?`<div class="emptyNote" style="color:var(--ink)">${RFQ_VAT[r.vat_mode]||''} · مجموع الأسعار: <b>${finN(net)}</b> · <b>الإجمالي شامل الضريبة: ${finN(gross)}</b>${r.valid_invoice?'':' · (بدون فاتورة ضريبية صالحة — الضريبة مش بتتسترد)'}</div>`:''}
-  ${r.status==='quoted'?`<div class="card" style="margin:10px 0;background:var(--sand)"><b>قبول عرض المورد</b><div class="emptyNote" style="color:var(--ink)">القبول بيطلّع <b>أمر شراء</b> بمبلغ ${finN(gross)} (شامل الضريبة). ده التزام بس، ومفيش أثر على الحسابات لحد ما فاتورة المورد توصل.</div>
-    <div class="finForm"><div><label>المشروع</label><select id="rfqAccProj">${trProjOpts(r.project_id,'مشتريات عامة (مش مرتبطة بمشروع)')}</select></div><div><button class="btn small teal" onclick="rfqAccept(${id})">قبول وإنشاء أمر شراء</button></div></div></div>`:''}
-  ${r.status==='accepted'&&d.po?`<div class="emptyNote" style="color:var(--ink)">اتقبل ← أمر الشراء <b>${escapeHtml(d.po.po_number)}</b> (مفوتر ${finN(d.po.billed)} · مدفوع ${finN(d.po.paid)}). كمّل من تبويب <b>أوامر الشراء</b>: فاتورة ← دفع.</div>`:''}
-  <div id="rfqAct" style="margin:10px 0"></div><div style="display:flex;gap:8px;flex-wrap:wrap">${acts}</div>`);
+/* رد المورد مرن: سعر كل بند لوحده (مش شرط كلهم، وتكمّل لاحقًا) أو سعر إجمالي واحد — وأي سعر يتعدّل/يتمسح، حتى بعد القبول لو أمر الشراء ماعليهوش فواتير/دفعات. */
+function rfqOpen(id, openPrices){ return finRun(async()=>{
+ const d = await crmApi('proc-rfq',{rfqId:id}), r = d.rfq, it = d.items; rfqCur = d;
+ if(!finLK) finLK = await crmApi('treasury-lookups');
+ const lump = r.lump_total!=null, nPriced = Number(r.priced_count||0), anyPrice = lump || nPriced>0, partial = !lump && anyPrice && nPriced < it.length;
+ const poLocked = r.status==='accepted' && d.po && (Number(d.po.billed)>0 || Number(d.po.paid)>0);
+ const canEdit = ['draft','sent','quoted'].includes(r.status) || (r.status==='accepted' && !poLocked);
+ const net = Number(r.net_total||0), gross = Number(r.total_gross||0);
+ const priceBtn = canEdit ? `<button class="btn ${anyPrice?'ghost':'teal'} small" onclick="rfqPrices(${id})">${anyPrice?'✏️ تعديل رد المورد':'تسجيل رد المورد (الأسعار)'}</button>` : '';
+ const acts = r.status==='draft'||r.status==='sent' ? `<button class="btn small" onclick="rfqPrint(${id})">🖨 طباعة / PDF</button> <button class="btn small" onclick="rfqWhatsApp(${id})">واتساب</button> ${r.status==='draft'?`<button class="btn ghost small" onclick="rfqSent(${id})">تم الإرسال</button> `:''}${priceBtn} <button class="btn danger small" onclick="rfqDel(${id})">حذف</button>`
+  : r.status==='quoted' ? `<button class="btn small" onclick="rfqPrint(${id})">🖨 طباعة</button> ${priceBtn} <button class="btn danger small" onclick="rfqReject(${id})">رفض</button>`
+  : r.status==='accepted' ? `${priceBtn}`
+  : r.status==='rejected' ? `<button class="btn danger small" onclick="rfqDel(${id})">حذف</button>` : '';
+ trShow(`${trHead(escapeHtml(r.rfq_number)+' — '+escapeHtml(r.supplier_name))}
+ <div class="emptyNote" style="color:var(--ink)">${rfqTag(r.status)} · عرض العميل: <b>${escapeHtml(r.quote_ref||'—')}</b> · المشروع: <b>${escapeHtml(r.project_number||'—')}</b> · ${fmtDate(r.created_at)}${r.supplier_quote_ref?` · رقم عرض المورد: <b>${escapeHtml(r.supplier_quote_ref)}</b>`:''}</div>
+ <table class="admtable" style="margin-top:8px"><thead><tr><th>م</th><th>البند</th><th>الكمية</th><th>الوحدة</th>${anyPrice&&!lump?'<th>سعر الوحدة</th><th>الإجمالي</th>':''}<th>ملاحظة</th></tr></thead><tbody>
+ ${it.map(x=>`<tr style="cursor:default"><td>${x.line_no}</td><td>${escapeHtml(x.label)}</td><td>${Number(x.qty)}</td><td>${escapeHtml(x.unit||'')}</td>${anyPrice&&!lump?(x.unit_price!=null?`<td>${finN(x.unit_price)}</td><td>${finN(Number(x.qty)*Number(x.unit_price))}</td>`:'<td colspan="2" class="mut">لم يُسعَّر بعد</td>'):''}<td class="mut">${escapeHtml(x.qty_note||'')}</td></tr>`).join('')}</tbody></table>
+ ${anyPrice?`<div class="emptyNote" style="color:var(--ink)">${lump?'<b>سعر إجمالي واحد</b> للطلب كله':`مسعّر <b>${nPriced}</b> من <b>${it.length}</b> بند`} · ${RFQ_VAT[r.vat_mode]||''} · ${lump?'الإجمالي':'مجموع الأسعار'}: <b>${finN(net)}</b> · <b>الإجمالي شامل الضريبة: ${finN(gross)}</b>${r.valid_invoice?'':' · (بدون فاتورة ضريبية صالحة — الضريبة مش بتتسترد)'}</div>`:''}
+ ${r.status==='quoted'?`<div class="card" style="margin:10px 0;background:var(--sand)"><b>قبول عرض المورد</b><div class="emptyNote" style="color:var(--ink)">القبول بيطلّع <b>أمر شراء</b> بمبلغ ${finN(gross)} (شامل الضريبة). ده التزام بس، ومفيش أثر على الحسابات لحد ما فاتورة المورد توصل.${partial?` <b style="color:#B0432C">⚠ فيه ${it.length-nPriced} بند لسه من غير سعر — أمر الشراء هيتعمل بالبنود المسعّرة بس.</b>`:''}</div>
+ <div class="finForm"><div><label>المشروع</label><select id="rfqAccProj">${trProjOpts(r.project_id,'مشتريات عامة (مش مرتبطة بمشروع)')}</select></div><div><button class="btn small teal" onclick="rfqAccept(${id})">قبول وإنشاء أمر شراء</button></div></div></div>`:''}
+ ${r.status==='accepted'&&d.po?`<div class="emptyNote" style="color:var(--ink)">اتقبل ← أمر الشراء <b>${escapeHtml(d.po.po_number)}</b> (مبلغه ${finN(d.po.amount)} · مفوتر ${finN(d.po.billed)} · مدفوع ${finN(d.po.paid)}). ${poLocked?'اتسجّل عليه فواتير/دفعات، فتعديل الأسعار من هنا مقفول — عدّله من تبويب <b>أوامر الشراء</b>.':'لو عدّلت الأسعار، مبلغ أمر الشراء بيتحدّث تلقائيًا (طالما ماعليهوش فواتير أو دفعات).'} كمّل من تبويب <b>أوامر الشراء</b>: فاتورة ← دفع.</div>`:''}
+ <div id="rfqAct" style="margin:10px 0"></div><div style="display:flex;gap:8px;flex-wrap:wrap">${acts}</div>`);
+ if(openPrices && canEdit) rfqPrices(id);
 }); }
 const rfqSent = id => finRun(async()=>{ await crmApi('proc-mark-sent',{rfqId:id}); finLoad(); rfqOpen(id); });
 const rfqDel = id => confirm('حذف طلب عرض السعر؟') && finRun(async()=>{ await crmApi('proc-delete',{rfqId:id}); finOverlay.classList.remove('show'); finDone('تم الحذف'); });
 const rfqReject = id => confirm('رفض عرض المورد؟') && finRun(async()=>{ await crmApi('proc-reject',{rfqId:id}); finOverlay.classList.remove('show'); finDone('تم الرفض'); });
-const rfqAccept = id => finRun(async()=>{ const g=Number(rfqCur.rfq.total_gross);
-  if(!confirm(`هيتعمل أمر شراء بمبلغ ${finN(g)} (شامل الضريبة) للمورد ${rfqCur.rfq.supplier_name}. ده التزام بس ومفيش أثر محاسبي لحد ما الفاتورة توصل. متأكد؟`)) return;
-  await crmApi('proc-accept',{rfqId:id,projectId:document.getElementById('rfqAccProj').value}); toast('اتقبل وطلع أمر شراء'); finLoad(); rfqOpen(id); });
+const rfqAccept = id => finRun(async()=>{ const r=rfqCur.rfq, g=Number(r.total_gross), miss=rfqCur.items.length-Number(r.priced_count||0);
+ if(!confirm(`هيتعمل أمر شراء بمبلغ ${finN(g)} (شامل الضريبة) للمورد ${r.supplier_name}${r.lump_total==null&&miss>0?`\nتنبيه: ${miss} بند من غير سعر مش داخلين في الأمر`:''}.\nده التزام بس ومفيش أثر محاسبي لحد ما الفاتورة توصل. متأكد؟`)) return;
+ await crmApi('proc-accept',{rfqId:id,projectId:document.getElementById('rfqAccProj').value}); toast('اتقبل وطلع أمر شراء'); finLoad(); rfqOpen(id); });
 
-/* --- تسجيل رد المورد (أسعار الوحدة) + وضع الضريبة صريح --- */
-function rfqPrices(id){ const d=rfqCur, r=d.rfq;
-  document.getElementById('rfqAct').innerHTML = `<form class="finForm" style="padding:10px;border:1px solid var(--line);border-radius:10px" onsubmit="rfqSavePrices(event,${id})" oninput="rfqPreview()">
-   <div style="grid-column:1/-1"><b>أسعار المورد (سعر الوحدة)</b></div>
-   ${d.items.map(x=>`<div><label>${x.line_no}) ${escapeHtml(x.label)} — ${Number(x.qty)} ${escapeHtml(x.unit||'')}</label><input type="number" step="0.0001" min="0" name="p${x.line_no}" value="${x.unit_price??''}" required></div>`).join('')}
-   <div><label>رقم عرض المورد</label><input name="ref" value="${escapeHtml(r.supplier_quote_ref||'')}"></div><div><label>تاريخ عرض المورد</label><input type="date" name="qdate" value="${String(r.supplier_quote_date||todayStr()).slice(0,10)}"></div>
-   <div class="taxBox"><label>الضريبة — حدّد: أسعار المورد شاملة ضريبة القيمة المضافة ولا لأ؟</label><div class="taxOpts">
-     <label><input type="radio" name="vm" value="incl" required${r.vat_mode==='incl'?' checked':''}> الأسعار <b>شاملة</b> الضريبة</label>
-     <label><input type="radio" name="vm" value="excl"${r.vat_mode==='excl'?' checked':''}> الأسعار <b>غير شاملة</b> (الضريبة بتتضاف)</label>
-     <label><input type="radio" name="vm" value="none"${r.vat_mode==='none'?' checked':''}> <b>بدون ضريبة</b></label></div>
-     <label class="taxChk"><input type="checkbox" name="vi"${r.valid_invoice===false?'':' checked'}> هيصدّر فاتورة ضريبية صالحة باسم الشركة (الضريبة بتتسترد)</label>
-     <div class="emptyNote taxPrev" id="rfqPrev">اكتب الأسعار واختار وضع الضريبة، وهتظهر لك الحسبة.</div></div>
-   <div><button class="btn small teal">حفظ رد المورد</button> <button type="button" class="btn ghost small" onclick="document.getElementById('rfqAct').innerHTML=''">إلغاء</button></div></form>`;
-  rfqPreview(); }
-function rfqPreview(){ const f=document.querySelector('#rfqAct form'); if(!f||!rfqCur) return; const mode=(f.querySelector('input[name=vm]:checked')||{}).value;
-  f.querySelector('.taxChk').style.display = mode==='none' ? 'none' : '';
-  let sum=0, ok=true; rfqCur.items.forEach(x=>{ const v=f.querySelector(`[name=p${x.line_no}]`).value; if(v==='') ok=false; sum+=Number(x.qty)*Number(v||0); });
-  const out=document.getElementById('rfqPrev'); if(!mode||!ok){ out.textContent='اكتب الأسعار واختار وضع الضريبة، وهتظهر لك الحسبة.'; return; }
-  const r=finVatRate/100, gross = mode==='excl' ? sum*(1+r) : sum, vat = mode==='none' ? 0 : (mode==='excl' ? sum*r : sum-sum/(1+r));
-  out.textContent = `مجموع الأسعار: ${finN(sum)} · الإجمالي شامل الضريبة: ${finN(gross)}` + (mode==='none' ? ' · بدون ضريبة' : ` · منها ضريبة: ${finN(vat)}`); }
+/* --- تسجيل/تعديل رد المورد: وضعين (سعر لكل بند — أو سعر إجمالي) + وضع الضريبة صريح --- */
+function rfqPrices(id){ const d=rfqCur, r=d.rfq, lump=r.lump_total!=null;
+ document.getElementById('rfqAct').innerHTML = `<form class="finForm" style="padding:10px;border:1px solid var(--line);border-radius:10px" onsubmit="rfqSavePrices(event,${id})" oninput="rfqPreview()">
+ <div style="grid-column:1/-1"><b>رد المورد</b><div class="taxOpts" style="margin-top:6px">
+  <label><input type="radio" name="qm" value="items"${lump?'':' checked'} onchange="rfqMode()"> المورد سعّر <b>كل بند لوحده</b></label>
+  <label><input type="radio" name="qm" value="lump"${lump?' checked':''} onchange="rfqMode()"> المورد بلّغ <b>سعر إجمالي واحد</b> للطلب</label></div></div>
+ <div id="rfqModeItems" style="grid-column:1/-1"><div class="emptyNote">اكتب سعر الوحدة للبنود اللي المورد سعّرها بس وسيب الباقي فاضي — وكمّل لما يرد. تقدر تحفظ كل بند لوحده بزر "حفظ البند"، ولو السعر غلط عدّله أو امسحه (فاضي = مش مسعّر).</div>
+  <table class="admtable"><thead><tr><th>م</th><th>البند</th><th>الكمية</th><th style="width:150px">سعر الوحدة</th><th></th></tr></thead><tbody>
+  ${d.items.map(x=>`<tr style="cursor:default"><td>${x.line_no}</td><td>${escapeHtml(x.label)}</td><td>${Number(x.qty)} ${escapeHtml(x.unit||'')}</td><td><input type="number" step="0.0001" min="0" name="p${x.line_no}" value="${x.unit_price??''}" placeholder="مش مسعّر"></td><td><button type="button" class="btn ghost small" onclick="rfqSaveOne(${id},${x.line_no})">حفظ البند</button></td></tr>`).join('')}</tbody></table></div>
+ <div id="rfqModeLump" style="grid-column:1/-1;display:none"><label>السعر الإجمالي اللي بلّغه المورد للطلب كله</label><input type="number" step="0.01" min="0.01" name="lump" value="${r.lump_total??''}"><div class="emptyNote">بيتسجّل كسعر إجمالي واحد (أسعار البنود الفردية مش بتتسجّل في الوضع ده، وبتتمسح لو كانت متسجّلة). الإجمالي مرتبط بوضع الضريبة تحت.</div></div>
+ <div><label>رقم عرض المورد</label><input name="ref" value="${escapeHtml(r.supplier_quote_ref||'')}"></div><div><label>تاريخ عرض المورد</label><input type="date" name="qdate" value="${String(r.supplier_quote_date||todayStr()).slice(0,10)}"></div>
+ <div class="taxBox"><label>الضريبة — حدّد: أسعار المورد شاملة ضريبة القيمة المضافة ولا لأ؟</label><div class="taxOpts">
+ <label><input type="radio" name="vm" value="incl"${r.vat_mode==='incl'?' checked':''}> الأسعار <b>شاملة</b> الضريبة</label>
+ <label><input type="radio" name="vm" value="excl"${r.vat_mode==='excl'?' checked':''}> الأسعار <b>غير شاملة</b> (الضريبة بتتضاف)</label>
+ <label><input type="radio" name="vm" value="none"${r.vat_mode==='none'?' checked':''}> <b>بدون ضريبة</b></label></div>
+ <label class="taxChk"><input type="checkbox" name="vi"${r.valid_invoice===false?'':' checked'}> هيصدّر فاتورة ضريبية صالحة باسم الشركة (الضريبة بتتسترد)</label>
+ <div class="emptyNote taxPrev" id="rfqPrev"></div></div>
+ <div><button class="btn small teal">حفظ كل الأسعار</button> <button type="button" class="btn ghost small" onclick="document.getElementById('rfqAct').innerHTML=''">إغلاق</button></div></form>`;
+ rfqMode(); rfqPreview(); }
+function rfqMode(){ const f=document.querySelector('#rfqAct form'); if(!f) return; const lump=f.querySelector('input[name=qm]:checked').value==='lump';
+ document.getElementById('rfqModeItems').style.display = lump?'none':''; document.getElementById('rfqModeLump').style.display = lump?'':'none'; rfqPreview(); }
+function rfqPreview(){ const f=document.querySelector('#rfqAct form'); if(!f||!rfqCur) return; const mode=(f.querySelector('input[name=vm]:checked')||{}).value, lump=f.querySelector('input[name=qm]:checked').value==='lump';
+ f.querySelector('.taxChk').style.display = mode==='none' ? 'none' : '';
+ let sum=0, n=0; if(lump){ sum=Number(f.lump.value||0); n=sum>0?1:0; } else rfqCur.items.forEach(x=>{ const v=f.querySelector(`[name=p${x.line_no}]`).value; if(v!==''){ n++; sum+=Number(x.qty)*Number(v); } });
+ const out=document.getElementById('rfqPrev'); if(!mode||!n){ out.textContent='اكتب الأسعار واختار وضع الضريبة، وهتظهر لك الحسبة.'; return; }
+ const r=finVatRate/100, gross = mode==='excl' ? sum*(1+r) : sum, vat = mode==='none' ? 0 : (mode==='excl' ? sum*r : sum-sum/(1+r));
+ out.textContent = (lump?'':`مسعّر ${n} من ${rfqCur.items.length} بند · `) + `${lump?'الإجمالي':'مجموع الأسعار'}: ${finN(sum)} · الإجمالي شامل الضريبة: ${finN(gross)}` + (mode==='none' ? ' · بدون ضريبة' : ` · منها ضريبة: ${finN(vat)}`); }
+/* حفظ بند واحد بس (باقي الأسعار والبيانات بتفضل زي ما هي) */
+function rfqSaveOne(id,no){ const f=document.querySelector('#rfqAct form'); finRun(async()=>{
+ const vm=(f.querySelector('input[name=vm]:checked')||{}).value||rfqCur.rfq.vat_mode; if(!vm) throw new Error('حدّد وضع الضريبة الأول (شاملة / غير شاملة / بدون)');
+ await crmApi('proc-record-quote',{rfqId:id, mode:'items', prices:[{lineNo:no, unitPrice:f.querySelector(`[name=p${no}]`).value}], vatMode:vm, validInvoice:f.querySelector('[name=vi]').checked});
+ toast('تم حفظ البند'); finLoad(); await rfqOpen(id,true); }); }
 function rfqSavePrices(e,id){ e.preventDefault(); const f=e.target; finRun(async()=>{
-  const prices = rfqCur.items.map(x=>({lineNo:x.line_no, unitPrice:f.querySelector(`[name=p${x.line_no}]`).value}));
-  await crmApi('proc-record-quote',{rfqId:id, prices, vatMode:f.querySelector('input[name=vm]:checked').value, validInvoice:f.querySelector('[name=vi]').checked, supplierQuoteRef:f.ref.value, supplierQuoteDate:f.qdate.value});
-  toast('تم تسجيل رد المورد'); finLoad(); rfqOpen(id); }); }
+ const vm=(f.querySelector('input[name=vm]:checked')||{}).value; if(!vm) throw new Error('حدّد وضع الضريبة (شاملة / غير شاملة / بدون)');
+ const lump=f.querySelector('input[name=qm]:checked').value==='lump';
+ const base={rfqId:id, vatMode:vm, validInvoice:f.querySelector('[name=vi]').checked, supplierQuoteRef:f.ref.value, supplierQuoteDate:f.qdate.value};
+ if(lump) await crmApi('proc-record-quote',{...base, mode:'lump', lumpTotal:f.lump.value});
+ else await crmApi('proc-record-quote',{...base, mode:'items', prices:rfqCur.items.map(x=>({lineNo:x.line_no, unitPrice:f.querySelector(`[name=p${x.line_no}]`).value}))});
+ toast('تم تسجيل رد المورد'); finLoad(); rfqOpen(id); }); }
 
 /* --- الإرسال: طباعة/PDF (من غير أسعار) وواتساب --- */
 function rfqPrint(id){ finRun(async()=>{ const d=await crmApi('proc-rfq',{rfqId:id}), r=d.rfq;

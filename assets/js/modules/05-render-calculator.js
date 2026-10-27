@@ -81,8 +81,7 @@ function renderIrrigationCalc(){
           <div style="display:flex;gap:8px">
             <input type="number" id="in_specialdiscount" value="${state.specialDiscountAmt}" step="50" style="flex:1">
             <button class="btn small" id="specialdiscount_confirm" type="button">تأكيد</button>
-          </div>
-          ${(()=>{ const cap = maxSpecialDiscountOf(adminFinancials); return cap==null ? '' : `<div class="note" style="margin-top:6px;font-size:11px">أقصى خصم خاص متاح: <b>${fmt(cap)} ﷼</b> (قبل الضريبة) — السعر مش هينزل عن التكلفة الفعلية.</div>`; })()}` : ''}
+          </div>` : ''}
         </details>
       </div>
 

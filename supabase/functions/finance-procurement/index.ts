@@ -167,19 +167,28 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, rfqId: id });
     }
 
+    // رد المورد: سعر كل بند لوحده (مش شرط كلهم — والسعر الفاضي بيمسح السعر) أو سعر إجمالي واحد. تقدر تعدّله بعد كده.
     if (action === "proc-record-quote") {
       if (!body.rfqId) bad("rfqId required");
-      const prices = (Array.isArray(body.prices) ? body.prices : []).map((x: any) => {
+      const lump = body.mode === "lump";
+      const prices = lump ? [] : (Array.isArray(body.prices) ? body.prices : []).map((x: any) => {
+        if (x.unitPrice === null || x.unitPrice === undefined || String(x.unitPrice).trim() === "") return { line_no: Number(x.lineNo), unit_price: null };
         const n = Number(x.unitPrice);
         if (!isFinite(n) || n < 0) bad("سعر غير صالح");
         return { line_no: Number(x.lineNo), unit_price: n };
       });
-      const p = {
-        prices, vat_mode: body.vatMode || null, valid_invoice: body.validInvoice === false ? false : true,
-        supplier_quote_ref: txt(body.supplierQuoteRef, 60), supplier_quote_date: dateOrNull(body.supplierQuoteDate, "تاريخ عرض المورد"),
-      };
+      const p: Record<string, unknown> = { mode: lump ? "lump" : "items", prices };
+      if (lump) {
+        const t = Number(body.lumpTotal);
+        if (!isFinite(t) || t <= 0) bad("اكتب السعر الإجمالي اللي بلّغه المورد");
+        p.lump_total = t;
+      }
+      if (body.vatMode) p.vat_mode = body.vatMode;
+      if (body.validInvoice !== undefined) p.valid_invoice = body.validInvoice !== false;
+      if ("supplierQuoteRef" in body) p.supplier_quote_ref = txt(body.supplierQuoteRef, 60);
+      if ("supplierQuoteDate" in body) p.supplier_quote_date = dateOrNull(body.supplierQuoteDate, "تاريخ عرض المورد");
       await rpc("finance_record_rfq_quote", { p_rfq: body.rfqId, p });
-      await logAudit("rfq_quote", "rfq", Number(body.rfqId), p.supplier_quote_ref, null, { vat_mode: p.vat_mode, lines: prices.length });
+      await logAudit("rfq_quote", "rfq", Number(body.rfqId), (p.supplier_quote_ref as string) || null, null, { mode: p.mode, vat_mode: p.vat_mode ?? null, lines: prices.length, lump_total: p.lump_total ?? null });
       return json({ ok: true });
     }
 
