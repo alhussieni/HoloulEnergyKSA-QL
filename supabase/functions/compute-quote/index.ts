@@ -233,8 +233,14 @@ function computeQuote(D: any, inp: any) {
     discountTotal += discount;
   }
   discountTotal = Math.round(discountTotal / 10) * 10;
+  // حد أدنى صلب: السعر بعد كل الخصومات (قبل الضريبة) لا يقل عن التكلفة الفعلية للبنود المفعّلة — مهما كان المدخل.
+  const floorCost = items.reduce((s: number, it: any) => (it.on ? s + it.costBasis : s), 0);
+  discountTotal = Math.min(discountTotal, Math.max(0, sellTotal - floorCost));
   const netAfterDiscount = sellTotal - discountTotal;
-  const manualDiscountAmt = Math.min(netAfterDiscount, inp.specialDiscountAmt || 0);
+  const maxManual = Math.max(0, Math.floor((netAfterDiscount - floorCost) * 100) / 100);
+  const requestedManual = inp.specialDiscountAmt || 0;
+  const manualDiscountAmt = Math.min(maxManual, requestedManual);   // الرقم السالب (زيادة سعر) بيعدّي زي ما هو
+  const manualDiscountCapped = requestedManual > maxManual + 0.005;
   const netAfterManual = netAfterDiscount - manualDiscountAmt;
   const vat = netAfterManual * D.vat;
   const finalTotal = netAfterManual + vat;
@@ -279,7 +285,7 @@ function computeQuote(D: any, inp: any) {
     invBrandName: inv.brand,
     inverterCalcKW, invKW, invMaxSolarKw: invMaxSolarKw ?? null, inverterOversizeWarning,
     reactorModel, reactorPrice, cbSize, combiner,
-    items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt,
+    items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt, manualDiscountCapped,
     netAfterManual, vat, finalTotal, sarPerKW: finalTotal / calcKW,
     supplyOnlyTotal, supplyPlusInstallTotal,
   };
@@ -722,12 +728,18 @@ function finalizeQuote(items: any[], discountFactor: number, D: any, manualDisco
     discountTotal += discount;
   }
   discountTotal = Math.round(discountTotal / 10) * 10;
+  // حد أدنى صلب: السعر بعد كل الخصومات (قبل الضريبة) لا يقل عن التكلفة الفعلية للبنود المفعّلة.
+  const floorCost = items.reduce((s: number, it: any) => (it.on ? s + it.costBasis : s), 0);
+  discountTotal = Math.min(discountTotal, Math.max(0, sellTotal - floorCost));
   const netAfterDiscount = sellTotal - discountTotal;
-  const manualDiscount = Math.min(netAfterDiscount, manualDiscountAmt || 0);
+  const maxManual = Math.max(0, Math.floor((netAfterDiscount - floorCost) * 100) / 100);
+  const requestedManual = manualDiscountAmt || 0;
+  const manualDiscount = Math.min(maxManual, requestedManual);
+  const manualDiscountCapped = requestedManual > maxManual + 0.005;
   const netAfterManual = netAfterDiscount - manualDiscount;
   const vat = netAfterManual * D.vat;
   const finalTotal = netAfterManual + vat;
-  return { sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt: manualDiscount, netAfterManual, vat, finalTotal };
+  return { sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt: manualDiscount, manualDiscountCapped, netAfterManual, vat, finalTotal };
 }
 
 function computeOffgridQuote(D: any, inp: any) {

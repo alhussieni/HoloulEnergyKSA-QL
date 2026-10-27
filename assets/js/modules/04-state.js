@@ -41,6 +41,23 @@ const state = {
 };
 let discountUnlocked = false;
 let adminInfoUnlocked = false;
+let adminInfoCollapsed = false;   // معلومات الأدمن مفتوحة لكن مطويّة (من غير ما نقفلها ونطلب الباسورد تاني)
+
+// حد أدنى للسعر: السعر بعد كل الخصومات (قبل الضريبة) لا يقل عن التكلفة الفعلية أبدًا.
+// أقصى خصم خاص = (الصافي بعد خصم الفئة) − (إجمالي التكلفة). بيتحسب من بيانات الأدمن اللي جاية من السيرفر.
+function maxSpecialDiscountOf(aq){
+  if(!aq || aq.netAfterDiscount == null || aq.totalCost == null) return null;
+  return Math.max(0, Math.floor((Number(aq.netAfterDiscount) - Number(aq.totalCost)) * 100) / 100);
+}
+function enforceDiscountFloor(aq, refreshAgain){
+  const cap = maxSpecialDiscountOf(aq);
+  if(cap == null || !(state.specialDiscountAmt > cap + 0.005)) return false;
+  const asked = state.specialDiscountAmt;
+  state.specialDiscountAmt = cap;
+  try{ alert(`الخصم الخاص (${Number(asked).toLocaleString('en-US')} ﷼) هيخلّي السعر أقل من التكلفة الفعلية.\nتم تخفيضه لأقصى خصم متاح: ${Number(cap).toLocaleString('en-US')} ﷼ (قبل الضريبة).`); }catch(_){}
+  if(typeof refreshAgain === 'function') refreshAgain();
+  return true;
+}
 
 function currentQuote(){
   return cachedQuote;

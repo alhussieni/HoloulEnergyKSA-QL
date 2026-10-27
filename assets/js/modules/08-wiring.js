@@ -498,7 +498,10 @@ function wire(){
     const confirmSpecialDiscount = ()=>{
       const el = document.getElementById('in_specialdiscount');
       if(!el) return;
-      state.specialDiscountAmt = +el.value || 0;
+      let v = +el.value || 0;
+      const cap = maxSpecialDiscountOf(adminFinancials);   // الحد الأدنى: السعر مينزلش عن التكلفة
+      if(cap != null && v > cap){ alert(`أقصى خصم خاص متاح ${cap.toLocaleString('en-US')} ﷼ (قبل الضريبة) — أكتر من كده السعر هيبقى أقل من التكلفة الفعلية.`); v = cap; el.value = cap; }
+      state.specialDiscountAmt = v;
       scheduleRefresh();
     };
     const specBtn = document.getElementById('specialdiscount_confirm');
@@ -518,10 +521,7 @@ function wire(){
       }
       scheduleRefresh();
     });
-    const unlockInfoBtn = document.getElementById('adminInfoTrigger');
-    if(unlockInfoBtn && !adminInfoUnlocked) unlockInfoBtn.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked=true; scheduleRefresh(); });
-    const lockInfoBtn = document.getElementById('lockAdminInfo');
-    if(lockInfoBtn) lockInfoBtn.onclick = ()=>{ adminInfoUnlocked=false; render(); };
+    wireAdminInfo(()=>scheduleRefresh());
   }
   if(currentView==='feas'){
     const map = {f_psh:'psh',f_deg:'panelDegradationPct',f_gridp:'gridPrice',f_gride:'gridEscalationPct',
@@ -1462,8 +1462,7 @@ function wireOffgridCalc(){
     o.appliances.push({name:preset.name, watts:preset.watts, dayHours:preset.dayHours, nightHours:preset.nightHours, qty:1, surgeMultiplier:preset.surgeMultiplier});
     markLoadsDirty(); render();
   };
-  const unlockInfoBtn = document.getElementById('adminInfoTrigger');
-  if(unlockInfoBtn && !adminInfoUnlocked) unlockInfoBtn.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked=true; scheduleRefreshOffgrid(0); });
+  wireAdminInfo(()=>scheduleRefreshOffgrid(0));
   // Manual BOM-quantity overrides (panel/inverter/battery/structure) — lets
   // the rep/engineer raise or lower a calculated quantity based on their
   // technical read of the site, without touching the underlying inputs.
@@ -1514,8 +1513,7 @@ function wireOngridCalc(){
   if(kwEl) kwEl.oninput = e=>{ n.systemKw = +e.target.value || 0; scheduleRefreshOngrid(); };
   const panelEl = document.getElementById('ng_panel');
   if(panelEl) panelEl.onchange = e=>{ n.panelIdx = +e.target.value; scheduleRefreshOngrid(); };
-  const unlockInfoBtn = document.getElementById('adminInfoTrigger');
-  if(unlockInfoBtn && !adminInfoUnlocked) unlockInfoBtn.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked=true; scheduleRefreshOngrid(0); });
+  wireAdminInfo(()=>scheduleRefreshOngrid(0));
 }
 
 document.querySelectorAll('nav.tabs button').forEach(btn=>{
@@ -1567,6 +1565,25 @@ async function refresh(){
   render();
 }
 let refreshTimer = null;
+/* معلومات الأدمن الإضافية: فك القفل بالباسورد → طيّ/فتح بدون باسورد → قفل بيرجّع طلب الباسورد */
+function setAdminInfoCollapsed(v){
+  adminInfoCollapsed = v;
+  const body = document.getElementById('adminInfoBody'), caret = document.getElementById('adminInfoCaret');
+  if(body) body.style.display = v ? 'none' : '';
+  if(caret) caret.textContent = v ? '◀' : '▼';
+}
+function wireAdminInfo(onUnlocked){
+  const head = document.getElementById('adminInfoTrigger');
+  if(head){
+    if(!adminInfoUnlocked) head.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked=true; adminInfoCollapsed=false; onUnlocked(); });
+    else head.onclick = ()=>setAdminInfoCollapsed(!adminInfoCollapsed);
+  }
+  const col = document.getElementById('collapseAdminInfo');
+  if(col) col.onclick = ()=>{ setAdminInfoCollapsed(true); if(head) head.scrollIntoView({block:'nearest', behavior:'smooth'}); };
+  const lock = document.getElementById('lockAdminInfo');
+  if(lock) lock.onclick = ()=>{ adminInfoUnlocked=false; adminInfoCollapsed=false; render(); };
+}
+
 function scheduleRefresh(delay = 220){
   if(refreshTimer) clearTimeout(refreshTimer);
   refreshTimer = setTimeout(()=>{

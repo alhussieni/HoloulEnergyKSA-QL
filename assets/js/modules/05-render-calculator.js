@@ -81,7 +81,8 @@ function renderIrrigationCalc(){
           <div style="display:flex;gap:8px">
             <input type="number" id="in_specialdiscount" value="${state.specialDiscountAmt}" step="50" style="flex:1">
             <button class="btn small" id="specialdiscount_confirm" type="button">تأكيد</button>
-          </div>` : ''}
+          </div>
+          ${(()=>{ const cap = maxSpecialDiscountOf(adminFinancials); return cap==null ? '' : `<div class="note" style="margin-top:6px;font-size:11px">أقصى خصم خاص متاح: <b>${fmt(cap)} ﷼</b> (قبل الضريبة) — السعر مش هينزل عن التكلفة الفعلية.</div>`; })()}` : ''}
         </details>
       </div>
 
@@ -243,8 +244,7 @@ function renderIrrigationCalc(){
       </div>
 
       <div class="card no-print">
-        <h3 id="adminInfoTrigger" style="cursor:default">معلومات إضافية</h3>
-        ${adminInfoUnlocked ? (adminFinancials ? renderAdminFinancials(adminFinancials) : `<div class="note">جارِ التحميل...</div>`) : ``}
+        ${adminInfoCardHtml(adminFinancials)}
       </div>
     </div>
   </div>
@@ -773,8 +773,7 @@ function renderOffgridCalc(){
         autoQty: q.autoQty || {},
       })}
       <div class="card no-print">
-        <h3 id="adminInfoTrigger" style="cursor:default">معلومات إضافية</h3>
-        ${adminInfoUnlocked ? (adminFinancialsOffgrid ? renderAdminFinancials(adminFinancialsOffgrid) : `<div class="note">جارِ التحميل...</div>`) : ``}
+        ${adminInfoCardHtml(adminFinancialsOffgrid)}
       </div>
     </div>
   </div>`;
@@ -840,8 +839,7 @@ function renderOngridCalc(){
       </div>
       ${renderQuoteBomAndTotal(q, `عرض سعر منظومة طاقة شمسية أون-جريد (مربوطة بالشبكة الكهربائية) بسعة ${fmt1(q.actualKw)} كيلوواط.`)}
       <div class="card no-print">
-        <h3 id="adminInfoTrigger" style="cursor:default">معلومات إضافية</h3>
-        ${adminInfoUnlocked ? (adminFinancialsOngrid ? renderAdminFinancials(adminFinancialsOngrid) : `<div class="note">جارِ التحميل...</div>`) : ``}
+        ${adminInfoCardHtml(adminFinancialsOngrid)}
       </div>
     </div>
   </div>`;
@@ -879,6 +877,12 @@ function buildFinancialsDonut(cost, profit, vat){
   </div>`;
 }
 
+/* معلومات إضافية (أدمن): بعد فك القفل تتطوي/تتفتح بضغطة من غير باسورد، و"قفل" بيرجّع طلب الباسورد */
+function adminInfoCardHtml(fin){
+  if(!adminInfoUnlocked) return `<h3 id="adminInfoTrigger" style="cursor:default">معلومات إضافية</h3>`;
+  return `<h3 id="adminInfoTrigger" style="cursor:pointer;display:flex;align-items:center;gap:8px;user-select:none" title="اضغط للطيّ / الفتح"><span id="adminInfoCaret" style="font-size:12px">${adminInfoCollapsed?'◀':'▼'}</span> معلومات إضافية</h3>
+    <div id="adminInfoBody" style="${adminInfoCollapsed?'display:none':''}">${fin ? renderAdminFinancials(fin) : `<div class="note">جارِ التحميل...</div>`}</div>`;
+}
 function renderAdminFinancials(q){
   const onItems = q.items.filter(it=>it.on);
   const totalCost = onItems.reduce((s,it)=>s+it.costBasis,0);
@@ -903,6 +907,7 @@ function renderAdminFinancials(q){
         ${onItems.map(it=>`<tr><td>${it.label}</td><td class="num">${fmt(it.costBasis)}</td><td class="num">${fmt(it.sell)}</td><td class="num">${fmt(it.sell-it.costBasis)}</td></tr>`).join('')}
       </tbody>
     </table>
+    ${q.manualDiscountCapped ? `<div class="note" style="margin-bottom:10px;border-color:#E0B3A8;background:#FBEFEC;color:#B0432C">⚠ الخصم الخاص المطلوب كان هيخلّي السعر أقل من التكلفة — اتخفّض تلقائيًا لأقصى خصم متاح.</div>` : ''}
     ${(q.discountTotal || q.manualDiscountAmt) ? `
     <div class="note" style="margin-bottom:10px">
       إجمالي سعر البيع قبل الخصم: ${fmt(q.sellTotal)} ﷼ ·
@@ -932,7 +937,7 @@ function renderAdminFinancials(q){
 
     ${buildFinancialsDonut(totalCost, profit, q.vat)}
 
-    <button class="btn ghost small" id="lockAdminInfo" type="button" style="margin-top:14px">إخفاء</button>
+    <div style="display:flex;gap:8px;margin-top:14px"><button class="btn ghost small" id="collapseAdminInfo" type="button">▲ طيّ</button><button class="btn ghost small" id="lockAdminInfo" type="button">🔒 قفل (يطلب الباسورد)</button></div>
   `;
 }
 

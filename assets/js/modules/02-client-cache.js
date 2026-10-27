@@ -169,7 +169,7 @@ async function refreshQuote(){
   // parallel instead of one-after-the-other — halves the wait when the
   // admin panel is open, since both round-trips happen at the same time.
   const quotePromise = callEngine('quote', { input });
-  const adminPromise = (adminInfoUnlocked && adminTokenMem)
+  const adminPromise = ((adminInfoUnlocked || discountUnlocked) && adminTokenMem)
     ? callEngine('admin-view', { adminToken: adminTokenMem, input }).catch(()=>{ adminInfoUnlocked = false; return null; })
     : Promise.resolve(null);
   try{
@@ -179,6 +179,7 @@ async function refreshQuote(){
     cachedPanelOptions = data.panelOptions;
     cachedBomItemImages = data.bomItemImages || cachedBomItemImages;
     adminFinancials = adminData ? adminData.quote : null;
+    enforceDiscountFloor(adminFinancials, ()=>scheduleRefresh(0));   // لو الخصم الخاص أقل من التكلفة بيتخفّض ويتعاد الحساب
     let needsRetry = false;
     if(!mainDefaultsApplied){
       mainDefaultsApplied = true;
@@ -222,7 +223,7 @@ async function refreshOffgridQuote(){
   try{
     const input = buildOffgridInput();
     const quotePromise = callEngine('offgrid-quote', { input });
-    const adminPromise = (adminInfoUnlocked && adminTokenMem)
+    const adminPromise = ((adminInfoUnlocked || discountUnlocked) && adminTokenMem)
       ? callEngine('offgrid-admin-view', { adminToken: adminTokenMem, input }).catch(()=>null)
       : Promise.resolve(null);
     const [data, adminData] = await Promise.all([quotePromise, adminPromise]);
@@ -280,6 +281,7 @@ async function refreshOffgridQuote(){
       }
     }
     adminFinancialsOffgrid = adminData ? adminData.quote : null;
+    enforceDiscountFloor(adminFinancialsOffgrid, ()=>scheduleRefreshOffgrid(0));   // لو الخصم الخاص أقل من التكلفة بيتخفّض ويتعاد الحساب
   }catch(e){
     offgridEngineError = e.message || 'تعذر الاتصال بالخادم';
   }
@@ -302,7 +304,7 @@ async function refreshOngridQuote(){
   try{
     const input = buildOngridInput();
     const quotePromise = callEngine('ongrid-quote', { input });
-    const adminPromise = (adminInfoUnlocked && adminTokenMem)
+    const adminPromise = ((adminInfoUnlocked || discountUnlocked) && adminTokenMem)
       ? callEngine('ongrid-admin-view', { adminToken: adminTokenMem, input }).catch(()=>null)
       : Promise.resolve(null);
     const [data, adminData] = await Promise.all([quotePromise, adminPromise]);
@@ -318,6 +320,7 @@ async function refreshOngridQuote(){
     cachedPanelOptions = data.panelOptions || cachedPanelOptions;
     cachedBomItemImages = data.bomItemImages || cachedBomItemImages;
     adminFinancialsOngrid = adminData ? adminData.quote : null;
+    enforceDiscountFloor(adminFinancialsOngrid, ()=>scheduleRefreshOngrid(0));   // لو الخصم الخاص أقل من التكلفة بيتخفّض ويتعاد الحساب
   }catch(e){
     ongridEngineError = e.message || 'تعذر الاتصال بالخادم';
   }

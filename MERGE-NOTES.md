@@ -10,3 +10,7 @@
 ## الألواح الشمسية (لوحة التحكم ← المنتجات والكتالوج)
 - assets/js/modules/02-client-cache.js, 05-render-calculator.js, 07-render-admin.js, 08-wiring.js
   (نافذة منبثقة للإضافة/التعديل + جدول للعرض فقط + ترتيب أبجدي. ملفات الواجهة فقط — مفيش تغيير في Supabase)
+
+## الحاسبة: طيّ معلومات الأدمن + حد أدنى للسعر = التكلفة
+- assets/js/modules/04-state.js (جديد في القائمة), 02-client-cache.js, 05-render-calculator.js, 08-wiring.js
+- supabase/functions/compute-quote/index.ts  ← **لازم يتنشر (deploy)** عشان الحد الأدنى يتفرض في السيرفر كمان (مش بس في الواجهة)
