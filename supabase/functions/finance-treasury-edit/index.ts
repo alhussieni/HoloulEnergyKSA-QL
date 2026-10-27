@@ -1,7 +1,7 @@
 // HoloulEnergy — finance-treasury-edit Edge Function (ADMIN ONLY)
 // تعديل حركات الخزنة (الحساب / التاريخ / المبلغ / المشروع / أمر الشراء / المرجع / الملاحظات) مع سجل تعديلات.
 // التعديل نفسه بيتم جوه دالة Postgres واحدة ذرّية: finance_edit_entry.
-// نفس توثيق باقي دوال المالية (توكن أدمن HMAC + session_version). actions: treasury-get-entry, treasury-edit-entry.
+// نفس توثيق باقي دوال المالية (توكن أدمن HMAC + session_version). actions: treasury-get-entry, treasury-edit-entry, treasury-ledger-search.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -88,6 +88,13 @@ async function rpc(name: string, args: Record<string, unknown>) {
   return data;
 }
 
+const KIND_AR: Record<string, string> = {
+  customer_receipt: "قبض من عميل", supplier_payment: "دفع لمورد", supplier_refund: "استرداد من مورد",
+  expense: "مصروف", partner_draw: "سحب شريك", transfer: "تحويل", other: "أخرى",
+};
+// تطبيع النص العربي للبحث: يشيل التشكيل ويوحّد الألف والياء والتاء المربوطة
+const norm = (s: unknown) => String(s ?? "").toLowerCase().replace(/[\u064B-\u0652]/g, "").replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -131,6 +138,43 @@ Deno.serve(async (req: Request) => {
       const id = await rpc("finance_edit_entry", { p_id: body.entryId, p, p_reason: reason });
       await logAudit("edit_treasury_entry", "treasury_entry", Number(body.entryId), reason, null, p);
       return json({ ok: true, editId: id });
+    }
+
+    // سجل الحركات مع بحث نصّي في كل الفترة: اسم عميل / مورد / رقم فاتورة (مباشرة أو مخصومة من دفعة مقدّمة) / مشروع / مرجع / ملاحظات / مبلغ
+    if (action === "treasury-ledger-search") {
+      const from = dateOrNull(body.from, "من تاريخ"), to = dateOrNull(body.to, "إلى تاريخ");
+      let q = supabase.from("v_treasury_ledger").select("*").order("entry_date", { ascending: false }).order("id", { ascending: false }).limit(20000);
+      if (body.accountId) q = q.eq("account_id", body.accountId);
+      if (body.kind) q = q.eq("kind", String(body.kind));
+      if (from) q = q.gte("entry_date", from);
+      if (to) q = q.lte("entry_date", to);
+      const [rowsR, billsR, allocR] = await Promise.all([
+        q,
+        supabase.from("supplier_bills").select("id, bill_number").limit(50000),
+        supabase.from("supplier_payment_allocations").select("entry_id, bill_id").limit(50000),
+      ]);
+      const billNo: Record<string, string> = {};
+      for (const b of must(billsR) as any[]) if (b.bill_number) billNo[String(b.id)] = String(b.bill_number);
+      const allocBy: Record<string, string[]> = {};
+      for (const a of must(allocR) as any[]) { const n = billNo[String(a.bill_id)]; if (n) (allocBy[String(a.entry_id)] ||= []).push(n); }
+      const terms = norm(body.q).split(/\s+/).filter(Boolean);
+      const out: any[] = [];
+      let sumIn = 0, sumOut = 0, total = 0;
+      for (const r of must(rowsR) as any[]) {
+        const nums = new Set<string>(allocBy[String(r.id)] || []);
+        if (r.bill_id && billNo[String(r.bill_id)]) nums.add(billNo[String(r.bill_id)]);
+        const bill_numbers = [...nums];
+        if (terms.length) {
+          const hay = norm([r.customer_name, r.supplier_name, r.project_number, r.reference, r.notes, r.account_name, r.method, KIND_AR[r.kind], r.kind,
+            String(r.amount), String(Number(r.amount)), ...bill_numbers].join(" "));
+          if (!terms.every((t) => hay.includes(t))) continue;
+        }
+        total++;
+        if (r.direction === "in") sumIn += Number(r.amount); else sumOut += Number(r.amount);
+        if (out.length < 500) out.push({ ...r, bill_numbers });
+      }
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+      return json({ ok: true, rows: out, total, sumIn: r2(sumIn), sumOut: r2(sumOut) });
     }
 
     return json({ error: "unknown_action" }, 400);
