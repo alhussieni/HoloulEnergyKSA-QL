@@ -799,7 +799,7 @@ const PIPELINE_FN = SUPABASE_URL + '/functions/v1/crm-pipeline'; // pipeline boa
 const QUOTES_FN = SUPABASE_URL + '/functions/v1/crm-quotes'; // كل العروض (حتى غير المربوطة بعميل)
 const QUOTES_ACTIONS = new Set(['admin-crm-list-quotes']);
 const TREASURY_EDIT_FN = SUPABASE_URL + '/functions/v1/finance-treasury-edit'; // تعديل حركات الخزنة (أدمن فقط)
-const TREASURY_EDIT_ACTIONS = new Set(['treasury-get-entry','treasury-edit-entry','treasury-ledger-search']);
+const TREASURY_EDIT_ACTIONS = new Set(['treasury-get-entry','treasury-edit-entry','treasury-ledger-search','treasury-get-bill','treasury-edit-bill']);
 const PROCUREMENT_FN = SUPABASE_URL + '/functions/v1/finance-procurement'; // طلبات عروض الأسعار وكشف حساب المورد (أدمن فقط) — actions بتبدأ بـ proc-
 const PURCHASING_FN = SUPABASE_URL + '/functions/v1/finance-purchasing'; // المشتريات: أوامر الشراء وفواتير الموردين (أدمن فقط) — actions بتبدأ بـ purchasing-
 const TREASURY_FN = SUPABASE_URL + '/functions/v1/finance-treasury'; // الخزنة والموردين (أدمن فقط) — actions بتبدأ بـ treasury-
@@ -1023,7 +1023,7 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
 /* ============ FINANCE (admin only) ============ */
 /* كل المبالغ بتتسجل زي ما اتدفعت (شامل الضريبة)، والسيرفر بيفصل الصافي والضريبة. */
 let finTab = 'treasury', finMonth = todayStr().slice(0,7);
-const FIN_TABS = { treasury:'الخزنة', overview:'نظرة عامة', suppliersCF:'كاش فلو الموردين', projects:'المشاريع', expenses:'المصاريف', partners:'الشركاء', vat:'الضريبة' };
+const FIN_TABS = { treasury:'الخزنة', overview:'نظرة عامة', suppliersCF:'كاش فلو الموردين', projects:'المشاريع', pricing:'تقرير تسعير البنود', expenses:'المصاريف', partners:'الشركاء', vat:'الضريبة' };
 const FIN_CAT = { salary:'رواتب', rent:'إيجار', utilities:'كهرباء/اتصالات', fuel:'وقود ونقل', marketing:'تسويق', government:'رسوم حكومية', other:'أخرى' };
 const FIN_TAX = { recoverable:'فاتورة ضريبية صالحة', none:'بدون ضريبة قابلة للاسترداد' };
 const FIN_KIND = { profit:'توزيع أرباح', draw:'سحب', advance:'سلفة' };
@@ -1504,6 +1504,30 @@ function trEditSubmit(ev){ ev.preventDefault(); const f = ev.target, o = window.
   finRun(async()=>{ await crmApi('treasury-edit-entry',{entryId:o.id, fields, reason:f.elements.reason.value});
     finOverlay.classList.remove('show'); finLK=null;
     if(retSid){ toast('تم التعديل'); finLoad(); trSupplier(retSid); } else finDone('تم التعديل'); }); }
+/* ============ تعديل فاتورة/مرتجع مورد: التاريخ / القيمة / الرقم / البيان (أدمن) — بيتعدّل معاها تكلفة المشروع والمصروف، وبيتسجّل في سجل دائم ============ */
+function trEditBill(id, retSid){ finRun(async()=>{
+  const d = await crmApi('treasury-get-bill',{billId:id}), b = d.bill, cn = b.doc_type==='credit_note';
+  window._trBill = { b, retSid };
+  const FN = { bill_date:'التاريخ', amount:'القيمة', bill_number:'الرقم', description:'البيان' };
+  const showV = (k,v) => v==null||v==='' ? '—' : k==='bill_date' ? fmtDate(v) : k==='amount' ? finN(v) : escapeHtml(v);
+  const hist = d.edits.length ? `<h3 style="margin:14px 0 6px"><span class="lbl">سجل تعديلات المستند (محفوظ دائمًا)</span></h3><table class="admtable"><thead><tr><th>وقت التعديل</th><th>التغيير</th><th>السبب</th></tr></thead><tbody>${d.edits.map(h=>`<tr style="cursor:default"><td>${fmtDate(h.edited_at)}</td><td>${Object.keys(h.new_values).map(k=>`${FN[k]||k}: <s>${showV(k,h.old_values[k])}</s> ← <b>${showV(k,h.new_values[k])}</b>`).join('<br>')}</td><td>${escapeHtml(h.reason)}</td></tr>`).join('')}</tbody></table>` : '';
+  trShow(trHead('تعديل '+(cn?'مرتجع مورد':'فاتورة مورد')+(b.bill_number?' — '+escapeHtml(b.bill_number):'')) + `<form class="finForm" onsubmit="trEditBillSubmit(event)">
+    <div class="emptyNote" style="grid-column:1/-1">تعديل القيمة أو التاريخ بيتعدّل معاه ${b.project_cost_id?'تكلفة المشروع':'المصروف'} المرتبط بالمستند. ${Number(d.used)>0?`اتدفع/اتخصم على المستند ${finN(d.used)} — مينفعش القيمة تبقى أقل منه.`:''}</div>
+    <div><label>التاريخ</label><input name="billDate" type="date" value="${String(b.bill_date).slice(0,10)}" required></div>
+    <div><label>القيمة (شامل)</label><input name="amount" type="number" step="0.01" min="0.01" value="${b.amount}" required></div>
+    <div><label>رقم الفاتورة</label><input name="billNumber" value="${escapeHtml(b.bill_number||'')}"></div>
+    <div><label>البيان</label><input name="description" value="${escapeHtml(b.description||'')}"></div>
+    <div style="grid-column:1/-1"><label>سبب التعديل (مطلوب — بيتسجّل)</label><input name="reason" required placeholder="مثلًا: التاريخ اتسجل غلط"></div>
+    <div><button class="btn small teal">حفظ التعديل</button></div></form>${hist}`);
+}); }
+function trEditBillSubmit(ev){ ev.preventDefault(); const f = ev.target, o = window._trBill.b, retSid = window._trBill.retSid;
+  const cur = { billDate:String(o.bill_date).slice(0,10), amount:String(Number(o.amount)), billNumber:o.bill_number||'', description:o.description||'' };
+  const fields = {};
+  for(const k of Object.keys(cur)){ let v = String(f.elements[k].value||'').trim(); if(k==='amount') v = String(Number(v)); if(v !== cur[k]) fields[k] = v === '' ? null : v; }
+  if(!Object.keys(fields).length){ toast('مفيش تغيير'); return; }
+  finRun(async()=>{ await crmApi('treasury-edit-bill',{billId:o.id, fields, reason:f.elements.reason.value});
+    finOverlay.classList.remove('show'); finLK=null; toast('تم التعديل');
+    if(retSid){ finLoad(); trSupplier(retSid); } else finLoad(); }); }
 const trDelEntry = (id,kind) => confirm(kind==='customer_receipt' ? 'حذف الحركة هيحذف الدفعة المسجلة على المشروع كمان. متأكد؟' : kind==='transfer' ? 'هيتحذف طرفا التحويل معًا. متأكد؟' : 'حذف الحركة؟') && finRun(async()=>{ await crmApi('treasury-delete-entry',{entryId:id}); finDone('تم الحذف'); });
 const trAddAcc = e => finRun(async()=>{ const d=finFd(e); await crmApi('treasury-save-account',{fields:d}); finDone('تم إضافة الحساب'); });
 const trToggleAcc = (id,a) => finRun(async()=>{ await crmApi('treasury-save-account',{accountId:id,fields:{active:a}}); finLoad(); });
@@ -1528,9 +1552,9 @@ function trSupplier(sid){ return finRun(async()=>{
     if(r.doc_kind==='invoice'){
       const paid = Number(r.bill_paid||0), st = paid >= Number(r.amount)-0.005 ? 'مسدّدة' : paid > 0 ? 'مسدّدة جزئيًا ('+finN(paid)+')' : 'غير مسدّدة';
       desc = `فاتورة ${escapeHtml(r.ref||'')} <span class="tag${paid >= Number(r.amount)-0.005 ? '' : ' warn'}">${st}</span>`;
-      act = paid < 0.005 ? `<button class="btn danger small" onclick="trDelBill(${r.doc_id},${sid})">حذف</button>` : '';
+      act = `<button class="btn ghost small" onclick="trEditBill(${r.doc_id},${sid})">تعديل</button> ` + (paid < 0.005 ? `<button class="btn danger small" onclick="trDelBill(${r.doc_id},${sid})">حذف</button>` : '');
     } else if(r.doc_kind==='credit_note'){
-      desc = `مرتجع ${escapeHtml(r.ref||'')}`; act = `<button class="btn danger small" onclick="trDelBill(${r.doc_id},${sid})">حذف</button>`;
+      desc = `مرتجع ${escapeHtml(r.ref||'')}`; act = `<button class="btn ghost small" onclick="trEditBill(${r.doc_id},${sid})">تعديل</button> <button class="btn danger small" onclick="trDelBill(${r.doc_id},${sid})">حذف</button>`;
     } else if(r.doc_kind==='supplier_payment'){
       desc = r.bill_id ? `دفع على فاتورة${r.account_name?' — '+escapeHtml(r.account_name):''}`
         : `دفعة مقدّمة${r.account_name?' — '+escapeHtml(r.account_name):''}${Number(r.applied)>0 ? ' <span class="tag">خُصم منها '+finN(r.applied)+'</span>' : ' <span class="tag warn">لسه مش مخصومة</span>'}`;
@@ -1627,7 +1651,7 @@ async bills(){
   <label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" style="width:auto" ${purOpenOnly?'checked':''} onchange="purOpenOnly=this.checked;purLoad()"> المفتوحة فقط (اللي عليها متبقي)</label></div></div>
   <div class="card" style="padding:0;overflow:auto">${b.bills.length ? `<table class="admtable"><thead><tr><th>الفاتورة</th><th>المورد</th><th>المشروع</th><th>التاريخ</th><th>القيمة (شامل)</th><th>المدفوع</th><th>المتبقي</th><th></th></tr></thead><tbody>
   ${b.bills.map(x=>`<tr style="cursor:default"><td>${escapeHtml(x.bill_number||('#'+x.bill_id))}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${fmtDate(x.bill_date)}</td><td>${finN(x.amount)}</td><td>${finN(x.paid)}</td><td><b>${finS(x.remaining)}</b></td>
-  <td>${Number(x.remaining)>0?`<button class="btn small" onclick="trOpen('supplier_payment',{supplierId:${x.supplier_id},billId:${x.bill_id}})">دفع</button> `:''}${Number(x.paid)===0?`<button class="btn danger small" onclick="purDelBill(${x.bill_id})">حذف</button>`:''}</td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش فواتير</div>'}</div>`;
+  <td>${Number(x.remaining)>0?`<button class="btn small" onclick="trOpen('supplier_payment',{supplierId:${x.supplier_id},billId:${x.bill_id}})">دفع</button> `:''}<button class="btn ghost small" onclick="trEditBill(${x.bill_id})">تعديل</button> ${Number(x.paid)===0?`<button class="btn danger small" onclick="purDelBill(${x.bill_id})">حذف</button>`:''}</td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش فواتير</div>'}</div>`;
 },
 suppliers: () => FIN_VIEWS.suppliers()
 };
@@ -1786,6 +1810,97 @@ function rfqPrint(id){ finRun(async()=>{ const d=await crmApi('proc-rfq',{rfqId:
   ${d.items.map(x=>`<tr><td>${x.line_no}</td><td>${escapeHtml(x.label)}</td><td>${Number(x.qty)}</td><td>${escapeHtml(x.unit||'')}</td><td></td><td></td><td>${escapeHtml(x.qty_note||'')}</td></tr>`).join('')}</tbody></table>
   <p class="m">${r.notes?escapeHtml(r.notes)+'<br>':''}يرجى بيان: هل الأسعار شاملة ضريبة القيمة المضافة، ومدة صلاحية العرض، ومدة التوريد.</p></body></html>`);
   w.document.close(); w.focus(); setTimeout(()=>w.print(),400); }); }
+
+/* ============ مقارنة التسعير: سعر البيع في عرض العميل مقابل سعر الشراء الفعلي (أوامر الشراء المقبولة) — على أساس صافي قبل الضريبة ============ */
+let pcTarget = 10;
+const PC_ST = { ok:['سليم','#0A7D68'], low:['هامش ضعيف','#B7791F'], loss:['تسعير خاطئ — الشراء أعلى من البيع','#B0432C'], none:['لم يُشترَ بعد','#7a857f'], group:['ضمن سعر إجمالي','#7a857f'] };
+const pcChip = st => { const c = PC_ST[st] || PC_ST.none; return `<span class="tag" style="background:${c[1]}22;color:${c[1]};white-space:nowrap">${c[0]}</span>`; };
+const pcPct = v => v==null ? '—' : `<b style="color:${v<0?'#B0432C':v<pcTarget?'#B7791F':'#0A7D68'}">${v}%</b>`;
+const pcN = v => v==null ? '—' : Number(v).toLocaleString('en-US',{maximumFractionDigits:2});
+const pcFlag = (f,l) => f==='over' ? `⚠ المشترى ${pcN(l.buy_qty)} من ${pcN(l.qty)} (أكتر من العرض)` : f==='under' ? `المشترى ${pcN(l.buy_qty)} من ${pcN(l.qty)} بس` : 'أكتر من مورد على نفس البند';
+
+function pcInstallTabs(id){
+  const m = document.getElementById('finModal'), head = m && m.querySelector('.mhead'); if(!head || m.querySelector('#pcTabs')) return;
+  const main = document.createElement('div'); main.id = 'pcMain'; while(head.nextSibling) main.appendChild(head.nextSibling);
+  const tabs = document.createElement('div'); tabs.id = 'pcTabs'; tabs.style.cssText = 'display:flex;gap:6px;margin:6px 0 10px';
+  tabs.innerHTML = '<button class="btn small" type="button" data-t="fin">المالية والتكاليف</button><button class="btn small ghost" type="button" data-t="cmp">مقارنة التسعير</button>';
+  const cmp = document.createElement('div'); cmp.id = 'pcCmp'; cmp.style.display = 'none';
+  head.after(tabs); tabs.after(main); main.after(cmp);
+  tabs.addEventListener('click', e=>{ const b = e.target.closest('button[data-t]'); if(!b) return; const t = b.dataset.t;
+    tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('ghost', x!==b));
+    main.style.display = t==='fin' ? '' : 'none'; cmp.style.display = t==='cmp' ? '' : 'none';
+    if(t==='cmp' && !cmp.dataset.loaded){ cmp.dataset.loaded = '1'; pcLoad(cmp, id); } });
+}
+async function pcLoad(box, projectId){
+  box.innerHTML = '<div class="loadingNote">بيحسب المقارنة...</div>';
+  try{ const d = await crmApi('proc-pricing-compare', { projectId }); pcTarget = d.target || 10; box.innerHTML = pcProjectHtml(d); }
+  catch(e){ box.innerHTML = `<div class="loadingNote">${escapeHtml(e.message||'حصل خطأ')}</div>`; }
+}
+function pcProjectHtml(d){
+  const p = d.projects[0];
+  if(!p) return '<div class="emptyNote">مفيش أوامر شراء متقبّلة مربوطة بعرض سعر للمشروع ده لسه. المقارنة بتظهر بعد ما تقبل رد مورد على طلب عرض سعر (الموردون والمشتريات ← طلبات عروض الأسعار) وتحدد المشروع.</div>';
+  const card = (v,l,cls) => `<div class="stat ${cls||''}"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  const disc = p.sell_total - p.contract_net;
+  let h = `<div class="kpiGrid">
+    ${card(finN(p.contract_net),'قيمة المشروع (صافي قبل الضريبة)','sun')}
+    ${card(finN(p.sell_total),'مجموع بنود عرض السعر'+(Math.abs(disc)>1?` <small>(الفرق عن التعاقد ${finS(disc)} — خصم/تسوية)</small>`:''))}
+    ${card(finN(p.ordered_net),'أوامر الشراء المعتمدة (صافي)')}
+    ${card(finS(p.remaining_value),'المتبقي من قيمة المشروع بعد الأوامر', p.remaining_value<0?'bad':'')}
+    ${card(p.matched_margin_pct==null?'—':p.matched_margin_pct+'%','هامش البنود اللي اتشرت (بيع − شراء)')}
+    ${card(finN(p.not_bought_sell),'بنود لسه ماتشترتش (بسعر البيع)')}
+    ${card(finN(p.actual_cost_net),'تكلفة فعلية مفوترة (صافي)')}
+    ${card(finS(p.actual_profit)+(p.margin_pct_actual!=null?` <small>(${p.margin_pct_actual}%)</small>`:''),'الربح الفعلي حاليًا (تعاقد − فواتير)')}
+  </div>`;
+  if(p.loss_lines||p.low_lines) h += `<div class="emptyNote" style="color:var(--ink);background:var(--sun-tint);padding:8px 12px;border-radius:10px">${p.loss_lines?`<b style="color:#B0432C">${p.loss_lines} بند تسعيره أقل من تكلفته</b>`:''}${p.loss_lines&&p.low_lines?' · ':''}${p.low_lines?`<b style="color:#B7791F">${p.low_lines} بند هامشه أقل من ${pcTarget}%</b>`:''}</div>`;
+  for(const q of p.quotes){
+    h += `<h3 style="margin:14px 0 6px"><span class="lbl">عرض السعر ${escapeHtml(q.ref||'')} — ${escapeHtml(q.client_name||'')}</span></h3>
+    <div style="overflow:auto"><table class="admtable"><thead><tr><th>البند</th><th>الكمية</th><th>بيع / وحدة</th><th>شراء / وحدة</th><th>الفرق / وحدة</th><th>الهامش</th><th>الحالة</th><th>ملاحظات</th></tr></thead><tbody>
+    ${q.lines.map(l=>{ const diff = (l.sell_unit!=null && l.buy_unit!=null) ? l.sell_unit - l.buy_unit : null;
+      const buysTxt = l.buys.length ? `<div class="mut" style="font-size:12px;margin-top:2px">${l.buys.map(b=>`${escapeHtml(b.supplier)}${b.po_number?' · '+escapeHtml(b.po_number):''}: ${pcN(b.unit_net)}${b.lump?' (إجمالي)':''}`).join(' | ')}</div>` : '';
+      const note = l.flags.map(f=>`<div style="font-size:12px;color:#B7791F">${pcFlag(f,l)}</div>`).join('') + (l.group!=null?'<div class="mut" style="font-size:12px">سعر المورد إجمالي لعدة بنود</div>':'') + (l.approx?'<div class="mut" style="font-size:12px">كمية تقريبية</div>':'');
+      return `<tr style="cursor:default"><td><b>${escapeHtml(l.label)}</b>${buysTxt}</td><td>${l.qty!=null?pcN(l.qty):escapeHtml(l.qty_raw)}</td><td>${pcN(l.sell_unit)}<div class="mut" style="font-size:12px">${finN(l.sell_total)}</div></td><td>${l.buy_unit!=null?pcN(l.buy_unit):'—'}</td><td>${diff!=null?`<b class="${diff<0?'od':''}">${pcN(diff)}</b>`:'—'}</td><td>${pcPct(l.margin_pct)}</td><td>${pcChip(l.status)}</td><td>${note}</td></tr>`; }).join('')}
+    </tbody></table></div>`;
+    if(q.extras.length) h += `<div class="emptyNote" style="color:var(--ink)"><b>بنود اتشرت ومش في عرض السعر:</b> ${q.extras.map(x=>`${escapeHtml(x.label)} (${escapeHtml(x.supplier)} — ${finN(x.total_net)})`).join('، ')}</div>`;
+  }
+  if(p.lump_groups.length) h += `<div class="emptyNote" style="color:var(--ink)"><b>أوامر بسعر إجمالي لعدة بنود (مش بتتقارن بند بند):</b> ${p.lump_groups.map(g=>`${escapeHtml(g.po_number||'')} ${escapeHtml(g.supplier)} — ${finN(g.total_net)} عن: ${g.labels.map(escapeHtml).join('، ')}`).join(' | ')}</div>`;
+  h += `<h3 style="margin:14px 0 6px"><span class="lbl">أوامر الشراء والفواتير</span></h3>
+    <table class="admtable"><thead><tr><th>الأمر</th><th>المورد</th><th>صافي</th><th>الإجمالي شامل</th><th>مفوتر</th><th>مدفوع</th><th>فرق الفاتورة عن الأمر</th></tr></thead><tbody>
+    ${p.pos.map(o=>`<tr style="cursor:default"><td><b>${escapeHtml(o.po_number||'')}</b></td><td>${escapeHtml(o.supplier)}</td><td>${finN(o.net)}</td><td>${finN(o.amount)}</td><td>${finN(o.billed)}</td><td>${finN(o.paid)}</td><td>${o.invoice_diff==null?'<span class="mut">لسه مفيش فاتورة</span>':`<b class="${Math.abs(o.invoice_diff)>0.5?'od':''}">${finS(o.invoice_diff)}</b>`}</td></tr>`).join('')}</tbody></table>
+    <div class="emptyNote">المقارنة قبل الضريبة (أسعار المورد الشاملة بتتحوّل لصافي). سعر الشراء من أوامر الشراء المقبولة. فواتير الموردين بتتسجّل بإجمالي الفاتورة، فالتحقق من الفاتورة على مستوى إجمالي الأمر (عمود "فرق الفاتورة عن الأمر"): أي فرق معناه السعر الفعلي اتغيّر عن المتفق عليه.</div>`;
+  return h;
+}
+
+/* ============ تقرير تسعير البنود بين المشاريع ============ */
+let pcRep = null, pcRepFilter = 'all', pcRepQ = '';
+FIN_VIEWS.pricing = async function(){
+  const d = await crmApi('proc-pricing-compare', {}); pcRep = d; pcTarget = d.target || 10; pcRepRender();
+};
+function pcRepRender(){
+  const d = pcRep; if(!d) return;
+  const body = finBody(); if(!body) return;
+  if(!d.items.length){ body.innerHTML = '<div class="emptyNote">مفيش بيانات لسه: التقرير بيتبني من طلبات عروض الأسعار المقبولة (اللي طلّعت أوامر شراء) والمربوطة بمشروع وعرض سعر.</div>'; return; }
+  const bad = d.items.filter(i=>i.status==='loss').length, low = d.items.filter(i=>i.status==='low').length;
+  const q = pcRepQ.trim().toLowerCase();
+  const rows = d.items.filter(i => (pcRepFilter==='all' || (pcRepFilter==='bad' && (i.status==='loss'||i.status==='low')) || pcRepFilter===i.status) && (!q || i.label.toLowerCase().includes(q)));
+  body.innerHTML = `<div class="kpiGrid">
+    <div class="stat sun"><div class="v">${d.items.length}</div><div class="l">بند اتحلل (من ${d.projects.length} مشروع)</div></div>
+    <div class="stat bad"><div class="v">${bad}</div><div class="l">بنود تسعيرها أقل من تكلفتها</div></div>
+    <div class="stat"><div class="v">${low}</div><div class="l">بنود هامشها أقل من ${d.target}%</div></div></div>
+  <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">أسعار البنود: البيع للعميل مقابل الشراء الفعلي</span></h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <select style="max-width:220px" onchange="pcRepFilter=this.value;pcRepRender()"><option value="all"${pcRepFilter==='all'?' selected':''}>كل البنود</option><option value="bad"${pcRepFilter==='bad'?' selected':''}>الخاسر والضعيف فقط</option><option value="loss"${pcRepFilter==='loss'?' selected':''}>الخاسر فقط</option><option value="ok"${pcRepFilter==='ok'?' selected':''}>السليم فقط</option></select>
+      <input type="search" placeholder="🔍 اسم البند" value="${escapeHtml(pcRepQ)}" style="max-width:240px" oninput="pcRepQ=this.value;clearTimeout(pcRepT);pcRepT=setTimeout(pcRepRender,250)">
+    </div>
+    <div class="emptyNote" style="margin:0 0 8px">صافي قبل الضريبة. "أقل سعر بيع مقترح" = آخر سعر شراء ÷ (1 − ${d.target}%). استخدمه كحد أدنى في التسعيرات الجديدة.</div></div>
+  <table class="admtable"><thead><tr><th>البند</th><th>مشاريع</th><th>متوسط البيع</th><th>متوسط الشراء</th><th>أقل / أعلى شراء</th><th>الهامش</th><th>مرات خسارة / ضعف</th><th>آخر سعر شراء</th><th>أقل سعر بيع مقترح</th><th>الموردين</th><th>الحالة</th></tr></thead><tbody>
+  ${rows.map(i=>`<tr style="cursor:default"><td><b>${escapeHtml(i.label)}</b></td><td>${i.projects_count}</td><td>${pcN(i.avg_sell_unit)}</td><td>${pcN(i.avg_buy_unit)}</td><td>${pcN(i.min_buy)} / ${pcN(i.max_buy)}</td><td>${pcPct(i.margin_pct)}</td><td>${i.loss_count} / ${i.low_count}</td><td>${pcN(i.last_buy_unit)}${i.last_date?`<div class="mut" style="font-size:12px">${fmtDate(i.last_date)}</div>`:''}</td><td><b>${i.last_buy_unit!=null?pcN(i.last_buy_unit/(1-d.target/100)):'—'}</b></td><td>${i.suppliers.map(escapeHtml).join('، ')}</td><td>${pcChip(i.status)}</td></tr>`).join('') || '<tr><td colspan="11" class="loadingNote">مفيش بنود مطابقة</td></tr>'}</tbody></table></div>
+  <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">ملخص المشاريع</span></h3></div>
+  <table class="admtable"><thead><tr><th>المشروع</th><th>العميل</th><th>قيمة المشروع (صافي)</th><th>أوامر الشراء (صافي)</th><th>المتبقي</th><th>هامش البنود المشتراة</th><th>خاسر / ضعيف</th></tr></thead><tbody>
+  ${d.projects.map(p=>`<tr style="cursor:pointer" onclick="finOpenProject(${p.project_id})"><td><b>${escapeHtml(p.project_number||String(p.project_id))}</b></td><td>${escapeHtml(p.customer_name||'')}</td><td>${finN(p.contract_net)}</td><td>${finN(p.ordered_net)}</td><td>${finS(p.remaining_value)}</td><td>${pcPct(p.matched_margin_pct)}</td><td>${p.loss_lines} / ${p.low_lines}</td></tr>`).join('')}</tbody></table>
+  <div class="emptyNote" style="padding:0 18px 12px">اضغط على مشروع لفتح تفاصيله (تبويب "مقارنة التسعير").</div></div>`;
+}
+let pcRepT = null;
+
 /* --- طباعة أمر الشراء للمورد: خيارين (مكونات بالكميات بدون أسعار / بالكميات والأسعار المتفق عليها) --- */
 function poPrintMenu(poId){ trShow(`${trHead('طباعة أمر الشراء')}
   <div class="emptyNote" style="color:var(--ink)">اختار نوع النسخة:</div>
@@ -1898,6 +2013,7 @@ async function finOpenProject(id){ return finRun(async()=>{
     <div><label>التاريخ</label><input name="costDate" type="date" value="${todayStr()}"></div>
     <div><label>المورد</label><input name="supplier"></div><div><label>البيان</label><input name="description"></div>
     ${finTaxBox()}<div><button class="btn small teal">إضافة</button></div></form>`;
+  pcInstallTabs(id);
   finOverlay.classList.add('show');
 }); }
 let finPayCache = {};
@@ -4620,6 +4736,10 @@ async function renderProjectPanel(wrap, opportunityId, opp){
       catch(err){ toast('خطأ: '+err.message); }
     });
   });
+  if(isAdmin){
+    wrap.insertAdjacentHTML('beforeend', `<div class="card" style="margin-top:14px"><h3><span class="lbl">مقارنة التسعير (سعر البيع للعميل مقابل سعر الشراء من الموردين)</span></h3><div id="pcPanelBox"><button class="btn small" type="button" id="pcPanelBtn">عرض المقارنة</button></div></div>`);
+    wrap.querySelector('#pcPanelBtn').addEventListener('click', ()=>pcLoad(wrap.querySelector('#pcPanelBox'), p.id));
+  }
 }
 
 /* ============ TOP-LEVEL: PROJECTS TAB ============ */

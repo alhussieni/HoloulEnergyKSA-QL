@@ -1,7 +1,7 @@
 // HoloulEnergy — finance-treasury-edit Edge Function (ADMIN ONLY)
 // تعديل حركات الخزنة (الحساب / التاريخ / المبلغ / المشروع / أمر الشراء / المرجع / الملاحظات) مع سجل تعديلات.
 // التعديل نفسه بيتم جوه دالة Postgres واحدة ذرّية: finance_edit_entry.
-// نفس توثيق باقي دوال المالية (توكن أدمن HMAC + session_version). actions: treasury-get-entry, treasury-edit-entry, treasury-ledger-search.
+// نفس توثيق باقي دوال المالية (توكن أدمن HMAC + session_version). actions: treasury-get-entry, treasury-edit-entry, treasury-get-bill, treasury-edit-bill, treasury-ledger-search (فلاتر: حساب/نوع/مشروع/مورد/فترة/نص + ملخصات الكروت).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -140,27 +140,49 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, editId: id });
     }
 
-    // سجل الحركات مع بحث نصّي في كل الفترة: اسم عميل / مورد / رقم فاتورة (مباشرة أو مخصومة من دفعة مقدّمة) / مشروع / مرجع / ملاحظات / مبلغ
+    // سجل الحركات + ملخصات الكروت. الفلاتر: حساب / نوع / مشروع / مورد / فترة / بحث نصّي (اسم عميل / مورد / رقم فاتورة / مشروع / مرجع / ملاحظات / مبلغ).
+    // بنسحب كل الحركات لحد "إلى تاريخ" من غير فلاتر عشان نحسب: رصيد كل حساب في آخر الفترة + رصيد أول الفترة،
+    // وبعدين نطبّق الفلاتر في الذاكرة لحساب الوارد/الصادر والصافي لكل حساب وحسب نوع الحركة.
     if (action === "treasury-ledger-search") {
       const from = dateOrNull(body.from, "من تاريخ"), to = dateOrNull(body.to, "إلى تاريخ");
       let q = supabase.from("v_treasury_ledger").select("*").order("entry_date", { ascending: false }).order("id", { ascending: false }).limit(20000);
-      if (body.accountId) q = q.eq("account_id", body.accountId);
-      if (body.kind) q = q.eq("kind", String(body.kind));
-      if (from) q = q.gte("entry_date", from);
       if (to) q = q.lte("entry_date", to);
-      const [rowsR, billsR, allocR] = await Promise.all([
+      const [rowsR, billsR, allocR, accR] = await Promise.all([
         q,
         supabase.from("supplier_bills").select("id, bill_number").limit(50000),
         supabase.from("supplier_payment_allocations").select("entry_id, bill_id").limit(50000),
+        supabase.from("treasury_accounts").select("id, name, kind, holder, opening_balance, active").order("id"),
       ]);
       const billNo: Record<string, string> = {};
       for (const b of must(billsR) as any[]) if (b.bill_number) billNo[String(b.id)] = String(b.bill_number);
       const allocBy: Record<string, string[]> = {};
       for (const a of must(allocR) as any[]) { const n = billNo[String(a.bill_id)]; if (n) (allocBy[String(a.entry_id)] ||= []).push(n); }
       const terms = norm(body.q).split(/\s+/).filter(Boolean);
+      const accId = body.accountId ? String(body.accountId) : "";
+      const prjId = body.projectId ? String(body.projectId) : "";
+      const supId = body.supplierId ? String(body.supplierId) : "";
+      const kindF = body.kind ? String(body.kind) : "";
+      const r2 = (n: number) => Math.round(n * 100) / 100;
+      // إحصائيات كل حساب
+      const accs: Record<string, any> = {};
+      for (const a of must(accR) as any[]) {
+        accs[String(a.id)] = { account_id: a.id, name: a.name, kind: a.kind, holder: a.holder, active: a.active,
+          opening: Number(a.opening_balance), balance: Number(a.opening_balance), in: 0, out: 0, count: 0 };
+      }
+      const byKind: Record<string, { in: number; out: number }> = {};
       const out: any[] = [];
       let sumIn = 0, sumOut = 0, total = 0;
       for (const r of must(rowsR) as any[]) {
+        const amt = Number(r.amount), sgn = r.direction === "in" ? 1 : -1;
+        const A = accs[String(r.account_id)];
+        if (A) {
+          A.balance += sgn * amt;                              // رصيد الحساب في آخر الفترة (بغض النظر عن باقي الفلاتر)
+          if (from && r.entry_date < from) { A.opening += sgn * amt; continue; } // قبل بداية الفترة: يدخل في رصيد أول الفترة بس
+        } else if (from && r.entry_date < from) continue;
+        if (accId && String(r.account_id) !== accId) continue;
+        if (kindF && r.kind !== kindF) continue;
+        if (prjId && String(r.project_id ?? "") !== prjId) continue;
+        if (supId && String(r.supplier_id ?? "") !== supId) continue;
         const nums = new Set<string>(allocBy[String(r.id)] || []);
         if (r.bill_id && billNo[String(r.bill_id)]) nums.add(billNo[String(r.bill_id)]);
         const bill_numbers = [...nums];
@@ -170,11 +192,46 @@ Deno.serve(async (req: Request) => {
           if (!terms.every((t) => hay.includes(t))) continue;
         }
         total++;
-        if (r.direction === "in") sumIn += Number(r.amount); else sumOut += Number(r.amount);
+        if (r.direction === "in") sumIn += amt; else sumOut += amt;
+        if (A) { A[r.direction === "in" ? "in" : "out"] += amt; A.count++; }
+        const K = (byKind[r.kind] ||= { in: 0, out: 0 });
+        K[r.direction === "in" ? "in" : "out"] += amt;
         if (out.length < 500) out.push({ ...r, bill_numbers });
       }
-      const r2 = (n: number) => Math.round(n * 100) / 100;
-      return json({ ok: true, rows: out, total, sumIn: r2(sumIn), sumOut: r2(sumOut) });
+      const accounts = Object.values(accs).map((A: any) => ({ ...A, opening: r2(A.opening), balance: r2(A.balance), in: r2(A.in), out: r2(A.out) }));
+      for (const k of Object.keys(byKind)) { byKind[k].in = r2(byKind[k].in); byKind[k].out = r2(byKind[k].out); }
+      return json({ ok: true, rows: out, total, sumIn: r2(sumIn), sumOut: r2(sumOut), accounts, byKind });
+    }
+
+    // فاتورة/مرتجع مورد: بياناتها + سجل تعديلاتها + المدفوع/المخصوم عليها
+    if (action === "treasury-get-bill") {
+      if (!body.billId) bad("billId required");
+      const b: any = must(await supabase.from("supplier_bills").select("*").eq("id", body.billId).maybeSingle());
+      if (!b) return json({ error: "الفاتورة غير موجودة" }, 404);
+      const [edits, pays, allocs] = await Promise.all([
+        supabase.from("supplier_bill_edits").select("*").eq("bill_id", body.billId).order("edited_at", { ascending: false }),
+        supabase.from("treasury_entries").select("amount").eq("bill_id", body.billId),
+        supabase.from("supplier_payment_allocations").select("amount").eq("bill_id", body.billId),
+      ]);
+      const used = [...(must(pays) as any[]), ...(must(allocs) as any[])].reduce((t, x) => t + Number(x.amount), 0);
+      return json({ ok: true, bill: b, edits: must(edits), used: Math.round(used * 100) / 100 });
+    }
+
+    // تعديل التاريخ / القيمة / الرقم / البيان (بيتعدّل معاها تكلفة المشروع أو المصروف). سبب التعديل إجباري.
+    if (action === "treasury-edit-bill") {
+      if (!body.billId) bad("billId required");
+      const f = body.fields || {};
+      const reason = txt(String(body.reason || "").trim(), 300);
+      if (!reason) bad("اكتب سبب التعديل");
+      const p: Record<string, unknown> = {};
+      if ("billDate" in f) p.bill_date = dateOrNull(f.billDate) || bad("التاريخ مطلوب");
+      if ("amount" in f) p.amount = num(f.amount, "المبلغ");
+      if ("billNumber" in f) p.bill_number = txt(f.billNumber, 100);
+      if ("description" in f) p.description = txt(f.description, 500);
+      if (!Object.keys(p).length) bad("لا توجد حقول للتعديل");
+      const id = await rpc("finance_edit_bill", { p_id: body.billId, p, p_reason: reason });
+      await logAudit("edit_supplier_bill", "supplier_bill", Number(body.billId), reason, null, p);
+      return json({ ok: true, editId: id });
     }
 
     return json({ error: "unknown_action" }, 400);
