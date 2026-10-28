@@ -117,7 +117,7 @@
     const seller = opts.seller || {};
     return {
       from: rep.from, to: rep.to, periodText: periodLabel(rep.from, rep.to),
-      seller: { name: seller.name || '', vat: seller.vat || seller.vatNumber || '' },
+      seller: { name: seller.name || '', vat: seller.vat || seller.vatNumber || '', nameEn: seller.nameEn || '', cr: seller.cr || seller.crNumber || '', crNo: seller.crNo || seller.commercialReg || '', phone: seller.phone || '', email: seller.email || '', logoUrl: seller.logoUrl || '' },
       rows: tableRows(rows, opts.payLabels), summary: summarize(rows),
       pendingCount: Number(rep.pendingCount) || 0, gaps: icvGaps(rows),
       trial: !!rep.trialMode || !!opts.trial, generatedAt: opts.generatedAt || riyadhDate(new Date()),
@@ -129,6 +129,11 @@
   const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
   // ---------- HTML للطباعة / PDF ----------
+  function logoSrc(m) {
+    const l = (m.seller && m.seller.logoUrl) || 'assets/logo.png';
+    if (/^(https?:|data:)/.test(l) || typeof location === 'undefined') return l;
+    return location.href.replace(/[^\/]*$/, '') + l;
+  }
   function reportHtml(m) {
     const s = m.summary;
     const head = ['#', 'رقم المستند', 'التاريخ', 'النوع', 'العميل', 'الرقم الضريبي للعميل', 'قبل الضريبة', 'الضريبة', 'الإجمالي', 'السداد'];
@@ -143,21 +148,27 @@
     if (m.pendingCount) notes.push(`⏳ يوجد ${m.pendingCount} فاتورة بانتظار الاعتماد — غير محسوبة في الأرقام أعلاه.`);
     if (m.gaps.length) notes.push(`ℹ️ أرقام ICV غير ظاهرة في الفترة: ${m.gaps.join('، ')} (قد تكون بانتظار الاعتماد أو محذوفة في الوضع التجريبي).`);
     return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>حصر الفواتير ${esc(m.from)} إلى ${esc(m.to)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 @page{size:A4 landscape;margin:12mm}
+:root{--ink:#122436;--night:#0D3452;--teal-dark:#0B7A66;--muted:#63736F;--sand:#F6F8F7;--line:#DEE7E4}
+.topBar{height:8px;background:var(--teal-dark);border-radius:3px;margin-bottom:10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.head2{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:6px}
+.coName{font-weight:800;font-size:15px}.coMeta{font-size:10px;color:var(--muted);margin-top:4px;line-height:1.7}
+.logoBlock img{width:56px;height:56px;object-fit:contain}
 *{box-sizing:border-box}
-body{font-family:Cairo,Tahoma,Arial,sans-serif;color:#111;font-size:11px;margin:0;${m.trial ? 'background:linear-gradient(transparent,transparent);' : ''}}
-h1{font-size:18px;margin:0 0 2px}
+body{font-family:'Cairo',Tahoma,Arial,sans-serif;color:var(--ink);font-size:11px;-webkit-print-color-adjust:exact;print-color-adjust:exact;margin:0;${m.trial ? 'background:linear-gradient(transparent,transparent);' : ''}}
+h1{font-size:20px;margin:6px 0 2px;text-align:center;color:var(--teal-dark);font-weight:800}
 .meta{color:#444;margin-bottom:8px;line-height:1.7}
 .trial{border:2px dashed #c0392b;color:#c0392b;font-weight:800;text-align:center;padding:5px;margin:6px 0}
 .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0 10px}
-.k{border:1px solid #bbb;border-radius:6px;padding:6px 8px}
+.k{border:1px solid var(--line);background:var(--sand);border-radius:10px;padding:6px 10px}
 .k .v{font-size:15px;font-weight:800}
 .k .l{color:#444}
 .sub{font-size:9.5px;color:#666}
 table{width:100%;border-collapse:collapse}
 thead{display:table-header-group}
-th{background:#1F4E5F;color:#fff;padding:5px 4px;font-size:10.5px;text-align:center;border:1px solid #1F4E5F}
+th{background:var(--night);color:#fff;padding:5px 4px;font-size:10.5px;text-align:center;border:1px solid var(--night)}
 td{padding:4px;border:1px solid #bbb;vertical-align:top}
 td.n{text-align:left;direction:ltr;font-variant-numeric:tabular-nums}
 tr{page-break-inside:avoid}
@@ -166,8 +177,10 @@ tfoot td{font-weight:800;background:#f1f1f1}
 .notes{margin-top:8px;line-height:1.9}
 .foot{margin-top:10px;color:#666;font-size:9.5px}
 </style></head><body>
+<div class="topBar"></div>
+<div class="head2"><div><div class="coName">${esc(m.seller.name)}</div><div class="coMeta">${[m.seller.nameEn, m.seller.cr ? 'الرقم الوطني الموحد: ' + m.seller.cr : '', m.seller.crNo ? 'السجل التجاري: ' + m.seller.crNo : '', m.seller.vat ? 'الرقم الضريبي: ' + m.seller.vat : ''].filter(Boolean).map(esc).join(' · ')}</div></div><div class="logoBlock"><img src="${esc(logoSrc(m))}" alt="logo" onerror="this.style.display='none'"></div></div>
 <h1>حصر الفواتير الصادرة — ${esc(m.periodText)}</h1>
-<div class="meta">${esc(m.seller.name)}${m.seller.vat ? ` · الرقم الضريبي: <span dir="ltr">${esc(m.seller.vat)}</span>` : ''}<br>
+<div class="meta" style="text-align:center">
 الفترة: <span dir="ltr">${esc(m.from)}</span> إلى <span dir="ltr">${esc(m.to)}</span> · تاريخ إعداد التقرير: <span dir="ltr">${esc(m.generatedAt)}</span></div>
 ${m.trial ? '<div class="trial">نسخة تجريبية — غير صالحة للإقرار الضريبي</div>' : ''}
 <div class="kpis">

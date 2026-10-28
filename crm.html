@@ -799,7 +799,7 @@ const PIPELINE_FN = SUPABASE_URL + '/functions/v1/crm-pipeline'; // pipeline boa
 const QUOTES_FN = SUPABASE_URL + '/functions/v1/crm-quotes'; // كل العروض (حتى غير المربوطة بعميل)
 const QUOTES_ACTIONS = new Set(['admin-crm-list-quotes']);
 const TREASURY_EDIT_FN = SUPABASE_URL + '/functions/v1/finance-treasury-edit'; // تعديل حركات الخزنة (أدمن فقط)
-const TREASURY_EDIT_ACTIONS = new Set(['treasury-get-entry','treasury-edit-entry','treasury-ledger-search','treasury-get-bill','treasury-edit-bill']);
+const TREASURY_EDIT_ACTIONS = new Set(['treasury-get-entry','treasury-edit-entry','treasury-ledger-search','treasury-get-bill','treasury-edit-bill','treasury-split-payment','treasury-split-payment-delete','treasury-split-bill']);
 const PROCUREMENT_FN = SUPABASE_URL + '/functions/v1/finance-procurement'; // طلبات عروض الأسعار وكشف حساب المورد (أدمن فقط) — actions بتبدأ بـ proc-
 const PURCHASING_FN = SUPABASE_URL + '/functions/v1/finance-purchasing'; // المشتريات: أوامر الشراء وفواتير الموردين (أدمن فقط) — actions بتبدأ بـ purchasing-
 const TREASURY_FN = SUPABASE_URL + '/functions/v1/finance-treasury'; // الخزنة والموردين (أدمن فقط) — actions بتبدأ بـ treasury-
@@ -1346,6 +1346,8 @@ function trOpen(kind, pre={}){ finRun(async()=>{
     <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>${dt}${notes}${btn}</form>
     <div class="emptyNote">أمثلة: تسليم عهدة = من الخزنة إلى حساب العهدة. إيداع نقدية في البنك = من الخزنة إلى البنك. رد باقي العهدة = من العهدة إلى الخزنة.</div>`;
   trShow(h);
+  if(kind==='supplier_payment'||kind==='bill'){ const f=document.querySelector('#finModal form'); if(f){ const b=document.createElement('div'); b.style.gridColumn='1/-1';
+    b.innerHTML = kind==='bill' ? '<button type="button" class="btn ghost small" onclick="trSplitBill()">⇄ الفاتورة دي لأكتر من مشروع — وزّعها</button>' : '<button type="button" class="btn ghost small" onclick="trSplitPay()">⇄ التحويل ده لأكتر من مشروع / فاتورة — وزّعه</button>'; f.appendChild(b); } }
   if((kind==='bill'||kind==='credit_note') && pre.poId) trPoChange(pre.poId);
   if(kind==='supplier_payment'){ trSupChange(pre.supplierId||'', pre.billId); }
 }); }
@@ -1362,6 +1364,93 @@ function trSupChange(sid, billId){
 }
 function trAdvPoChange(){ const o=document.getElementById('trPoSel').selectedOptions[0]; if(o && o.dataset.proj) document.getElementById('trAdvProj').value=o.dataset.proj; }
 function trBillChange(){ const o=document.getElementById('trBill'); const rem=o.selectedOptions[0]?.dataset.rem; if(rem) document.getElementById('trAmt').value=rem; const adv=document.getElementById('trAdvBox'); if(adv) adv.style.display = o.value ? 'none' : 'grid'; }
+
+/* ============ تحويل / فاتورة موزّعة على أكتر من مشروع (التوزيع بمبالغ بتكتبها بنفسك) ============ */
+/* كل جزء بيتسجّل كحركة/فاتورة عادية بمشروعها (فمفيش تغيير في الحسابات)، وبتتجمّع بمعرّف مجموعة عشان تتحذف مع بعض. */
+let spKind = 'pay';
+const spN = v => Math.round((Number(v)||0)*100)/100;
+const spBillOpts = sid => '<option value="">دفعة على الحساب (بدون فاتورة)</option>' + (finLK.openBills||[]).filter(b=>String(b.supplier_id)===String(sid)).map(b=>`<option value="${b.bill_id}" data-rem="${b.remaining}">فاتورة ${escapeHtml(b.bill_number||('#'+b.bill_id))} — ${escapeHtml(b.project_number||'عام')} — متبقي ${finN(b.remaining)}</option>`).join('');
+const spPoOpts = sid => (finPO||[]).filter(o=>!sid||String(o.supplier_id)===String(sid)).map(o=>`<option value="${o.po_id}" data-proj="${o.project_id||''}">${escapeHtml(o.po_number)} — ${escapeHtml(o.project_number||'عام')}</option>`).join('');
+function spRowHtml(sid){
+  const del = `<button type="button" class="btn danger small" onclick="this.closest('.spRow').remove();spSum()">✕</button>`;
+  if(spKind==='pay') return `<div class="spRow" style="display:grid;grid-template-columns:2fr 1.5fr 1.5fr 1fr auto;gap:6px;align-items:end">
+   <div><label>على فاتورة</label><select class="spBill" onchange="spRowSync(this)">${spBillOpts(sid)}</select></div>
+   <div><label>المشروع</label><select class="spProj">${trProjOpts('','بدون مشروع')}</select></div>
+   <div><label>أمر شراء</label><select class="spPo" onchange="spPoSync(this)"><option value="">بدون</option>${spPoOpts(sid)}</select></div>
+   <div><label>المبلغ</label><input class="spAmt" type="number" step="0.01" min="0.01" oninput="spSum()"></div>${del}</div>`;
+  return `<div class="spRow" style="display:grid;grid-template-columns:2fr 2fr 1fr auto;gap:6px;align-items:end">
+   <div><label>المشروع</label><select class="spProj">${trProjOpts('','مشتريات عامة (مصروف)')}</select></div>
+   <div><label>أمر شراء</label><select class="spPo" onchange="spPoSync(this)"><option value="">بدون</option>${spPoOpts(sid)}</select></div>
+   <div><label>المبلغ</label><input class="spAmt" type="number" step="0.01" min="0.01" oninput="spSum()"></div>${del}</div>`;
+}
+function spRowSync(sel){ const row=sel.closest('.spRow'), has=!!sel.value; row.querySelector('.spProj').disabled=has; row.querySelector('.spPo').disabled=has;
+  const rem=sel.selectedOptions[0]&&sel.selectedOptions[0].dataset.rem; if(rem){ const a=row.querySelector('.spAmt'); if(!a.value) a.value=rem; } spSum(); }
+function spPoSync(sel){ const o=sel.selectedOptions[0]; if(o&&o.dataset.proj){ sel.closest('.spRow').querySelector('.spProj').value=o.dataset.proj; } }
+function spCurSup(){ const el=document.querySelector('#finModal select[name=supplierId]'); return el?el.value:''; }
+function spAddRow(){ const box=document.getElementById('spLines'); if(!box) return; box.insertAdjacentHTML('beforeend', spRowHtml(spCurSup())); spSum(); }
+function spSupChange(){ const box=document.getElementById('spLines'); if(!box) return; box.innerHTML=''; spAddRow(); spAddRow(); }
+function spSum(){ const f=document.querySelector('#finModal form'); if(!f) return; const tEl=f.querySelector('[name=total],[name=amount]'); const t=spN(tEl&&tEl.value);
+  const s=spN([...f.querySelectorAll('.spAmt')].reduce((a,i)=>a+(Number(i.value)||0),0)), n=document.getElementById('spSumNote'); if(!n) return; const d=spN(t-s);
+  n.innerHTML = `موزّع ${finN(s)}`+(t?` من ${finN(t)} — `+(Math.abs(d)<0.005?'<b style="color:var(--teal-dark)">✓ مطابق</b>':d>0?`<b style="color:#B0432C">باقي ${finN(d)} من غير توزيع</b>`:`<b style="color:#B0432C">زيادة ${finN(-d)}</b>`):''); }
+function trSplitPay(){ finRun(async()=>{
+  if(!finLK) finLK = await crmApi('treasury-lookups');
+  const sid = spCurSup();
+  finPO = (await crmApi('purchasing-orders',{})).orders.filter(o=>o.status==='open');
+  spKind='pay';
+  trShow(trHead('تحويل واحد لمورد — موزّع على أكتر من مشروع / فاتورة') + `<form class="finForm" onsubmit="trSplitPaySubmit(event)">
+   <div><label>المورد</label><select name="supplierId" required onchange="spSupChange()">${trSupOpts(sid)}</select></div>
+   <div><label>دفعه (الحساب)</label><select name="accountId" required>${trAccOpts('')}</select></div>
+   <div><label>إجمالي التحويل</label><input name="total" type="number" step="0.01" min="0.01" required oninput="spSum()"></div>
+   ${trPM()}<div><label>التاريخ</label><input name="entryDate" type="date" value="${todayStr()}"></div>
+   <div><label>رقم مرجع / إيصال التحويل</label><input name="reference"></div>
+   <div style="grid-column:1/-1"><label>ملاحظات</label><input name="notes"></div>
+   <div style="grid-column:1/-1"><b>التوزيع — اكتب مبلغ كل جزء (على فاتورة، أو على مشروع / أمر شراء كدفعة مقدّمة)</b>
+    <div id="spLines" style="display:grid;gap:8px;margin-top:6px"></div>
+    <button type="button" class="btn ghost small" style="margin-top:8px" onclick="spAddRow()">+ سطر</button>
+    <div class="emptyNote" id="spSumNote" style="color:var(--ink)"></div></div>
+   <div><button class="btn small teal">حفظ التحويل</button></div></form>`);
+  spAddRow(); spAddRow();
+}); }
+function trSplitPaySubmit(e){ const d=finFd(e); finRun(async()=>{
+  const lines=[...document.querySelectorAll('#spLines .spRow')].map(r=>{ const bill=r.querySelector('.spBill').value;
+    return { amount:r.querySelector('.spAmt').value, billId:bill||null, projectId:bill?null:(r.querySelector('.spProj').value||null), poId:bill?null:(r.querySelector('.spPo').value||null) }; }).filter(l=>Number(l.amount)>0);
+  if(!lines.length) throw new Error('اكتب مبلغ سطر واحد على الأقل');
+  const sum=spN(lines.reduce((t,l)=>t+Number(l.amount),0));
+  if(Math.abs(sum-spN(d.total))>0.005) throw new Error(`مجموع الأجزاء (${finN(sum)}) لازم يساوي إجمالي التحويل (${finN(d.total)})`);
+  await crmApi('treasury-split-payment',{supplierId:d.supplierId, accountId:d.accountId, entryDate:d.entryDate, method:d.method, reference:d.reference, notes:d.notes, total:d.total, lines});
+  finOverlay.classList.remove('show'); finLK=null; finDone('تم تسجيل التحويل الموزّع');
+}); }
+function trSplitBill(){ finRun(async()=>{
+  if(!finLK) finLK = await crmApi('treasury-lookups');
+  const sid = spCurSup();
+  finPO = (await crmApi('purchasing-orders',{openOnly:true})).orders;
+  spKind='bill';
+  trShow(trHead('فاتورة مورد واحدة — موزّعة على أكتر من مشروع') + `<form class="finForm" onsubmit="trSplitBillSubmit(event)">
+   <div><label>المورد</label><select name="supplierId" onchange="spSupChange()">${trSupOpts(sid)}</select></div>
+   <div><label>أو مورد جديد (اكتب الاسم)</label><input name="supplierName"></div>
+   <div><label>رقم فاتورة المورد</label><input name="billNumber"></div><div><label>تاريخ الفاتورة</label><input name="billDate" type="date" value="${todayStr()}"></div>
+   <div><label>نوع التكلفة (للمشاريع)</label><select name="costType">${optHtml(SETTINGS.costTypes,'')}</select></div>
+   <div><label>إجمالي الفاتورة</label><input name="amount" type="number" step="0.01" min="0.01" required oninput="spSum()"></div>
+   ${finTaxBox()}<div style="grid-column:1/-1"><label>البيان</label><input name="description"></div>
+   <div style="grid-column:1/-1"><b>التوزيع على المشاريع — اكتب نصيب كل مشروع (بنفس أساس الضريبة اللي اخترته فوق)</b>
+    <div id="spLines" style="display:grid;gap:8px;margin-top:6px"></div>
+    <button type="button" class="btn ghost small" style="margin-top:8px" onclick="spAddRow()">+ سطر</button>
+    <div class="emptyNote" id="spSumNote" style="color:var(--ink)"></div></div>
+   <div><button class="btn small teal">حفظ الفاتورة الموزّعة</button></div></form>`);
+  spAddRow(); spAddRow();
+}); }
+function trSplitBillSubmit(e){ const d=finFd(e); finRun(async()=>{
+  const tot=finVat(d);   // بيتحقق من الإجمالي ووضع الضريبة
+  if(!d.supplierId && !String(d.supplierName||'').trim()) throw new Error('اختر المورد أو اكتب اسم مورد جديد');
+  const rows=[...document.querySelectorAll('#spLines .spRow')].map(r=>({ a:Number(r.querySelector('.spAmt').value), projectId:r.querySelector('.spProj').value||null, poId:r.querySelector('.spPo').value||null })).filter(l=>l.a>0);
+  if(!rows.length) throw new Error('اكتب مبلغ سطر واحد على الأقل');
+  const sum=spN(rows.reduce((t,l)=>t+l.a,0));
+  if(Math.abs(sum-spN(d.amount))>0.005) throw new Error(`مجموع الأجزاء (${finN(sum)}) لازم يساوي إجمالي الفاتورة (${finN(d.amount)})`);
+  const lines=rows.map(l=>({ amount:finVat({amount:l.a,vatMode:d.vatMode,validInvoice:d.validInvoice}).amount, projectId:l.projectId, poId:l.poId }));
+  await crmApi('treasury-split-bill',{supplierId:d.supplierId, supplierName:d.supplierName, billNumber:d.billNumber, billDate:d.billDate, costType:d.costType, description:d.description, taxTreatment:tot.tax, lines});
+  finOverlay.classList.remove('show'); finLK=null; finDone('تم تسجيل الفاتورة الموزّعة');
+}); }
+const trDelGroup = g => confirm('هيتحذف التحويل كله بكل أجزائه (كل المشاريع/الفواتير). متأكد؟') && finRun(async()=>{ await crmApi('treasury-split-payment-delete',{group:g}); finDone('تم حذف التحويل الموزّع'); });
 async function trSubmit(e, kind){ const d=finFd(e); finRun(async()=>{
   if(kind==='transfer') await crmApi('treasury-record-transfer',d);
   else {
@@ -1449,10 +1538,10 @@ async function trLedgerLoad(){
     if(sum) sum.innerHTML = `${l.total} حركة${l.total>l.rows.length?` (معروض أحدث ${l.rows.length} — ضيّق البحث لباقي النتائج)`:''} · وارد <b>${finN(l.sumIn)}</b> · صادر <b>${finN(l.sumOut)}</b> · الصافي <b>${finN(l.sumIn-l.sumOut)}</b>`;
     box.innerHTML = l.rows.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>الحساب</th><th>البيان</th><th>الطريقة</th><th>وارد</th><th>صادر</th><th>الرصيد</th><th></th></tr></thead><tbody>
     ${l.rows.map(r=>`<tr style="cursor:default"><td>${fmtDate(r.entry_date)}</td><td>${escapeHtml(r.account_name)}</td>
-     <td><b>${TR_KIND[r.kind]||r.kind}</b> ${escapeHtml([r.customer_name,r.supplier_name,r.project_number,(r.bill_numbers&&r.bill_numbers.length)?('فاتورة '+r.bill_numbers.join('، ')):'',r.reference,r.notes].filter(Boolean).join(' · '))}</td>
+     <td>${r.payment_group?'<span class="tag" title="جزء من تحويل واحد موزّع على أكتر من مشروع/فاتورة">تحويل موزّع</span> ':''}<b>${TR_KIND[r.kind]||r.kind}</b> ${escapeHtml([r.customer_name,r.supplier_name,r.project_number,(r.bill_numbers&&r.bill_numbers.length)?('فاتورة '+r.bill_numbers.join('، ')):'',r.reference,r.notes].filter(Boolean).join(' · '))}</td>
      <td>${escapeHtml(labelOf(SETTINGS.paymentMethods,r.method,r.method||''))}</td>
      <td class="num">${r.direction==='in'?finN(r.amount):''}</td><td class="num">${r.direction==='out'?finN(r.amount):''}</td><td class="num">${finS(r.running_balance)}</td>
-     <td style="white-space:nowrap"><button class="btn ghost small" onclick="trEditEntry(${r.id})">تعديل</button> <button class="btn danger small" onclick="trDelEntry(${r.id},'${r.kind}')">حذف</button></td></tr>`).join('')}</tbody></table>` : `<div class="loadingNote">${(trFilter.q||trFilter.kind||trFilter.from||trFilter.to||trFilter.accountId||trFilter.projectId||trFilter.supplierId)?'مفيش حركات مطابقة للبحث':'مفيش حركات لسه'}</div>`;
+     <td style="white-space:nowrap"><button class="btn ghost small" onclick="trEditEntry(${r.id})">تعديل</button> <button class="btn danger small" onclick="trDelEntry(${r.id},'${r.kind}')">حذف</button>${r.payment_group?` <button class="btn danger small" title="حذف كل أجزاء التحويل" onclick="trDelGroup('${r.payment_group}')">حذف الكل</button>`:''}</td></tr>`).join('')}</tbody></table>` : `<div class="loadingNote">${(trFilter.q||trFilter.kind||trFilter.from||trFilter.to||trFilter.accountId||trFilter.projectId||trFilter.supplierId)?'مفيش حركات مطابقة للبحث':'مفيش حركات لسه'}</div>`;
   }catch(e){ if(kpi) kpi.style.opacity=''; if(my===trLedgerSeq) box.innerHTML = `<div class="loadingNote">${escapeHtml(e.message||'حصل خطأ')}</div>`; }
 }
 /* ============ تعديل حركة خزنة: الحساب / التاريخ / المبلغ / المشروع / أمر الشراء / المرجع / الملاحظات (أدمن) ============ */
@@ -1683,27 +1772,27 @@ function trPoChange(id){ const po=finPO.find(x=>String(x.po_id)===String(id)); i
 const RFQ_ST = { draft:'مسودة', sent:'اتبعت للمورد', quoted:'رد المورد', accepted:'مقبول', rejected:'مرفوض', cancelled:'ملغي' };
 const RFQ_VAT = { incl:'الأسعار شاملة الضريبة', excl:'الأسعار غير شاملة (الضريبة بتتضاف)', none:'بدون ضريبة' };
 const rfqTag = st => `<span class="tag${st==='rejected'||st==='cancelled'?' warn':''}">${RFQ_ST[st]||st}</span>`;
-let rfqDraft = { quote:null, items:[] }, rfqCur = null;
+let rfqDraft = { blocks:[] }, rfqCur = null;
 
 PUR_VIEWS.rfqs = async function(){
   const [r, lk] = await Promise.all([ crmApi('proc-rfqs'), crmApi('treasury-lookups') ]); finLK = lk;
   finBody().innerHTML = `<div class="card"><button class="btn teal small" onclick="rfqNew()">+ طلب عرض سعر جديد</button>
     <div class="emptyNote" style="margin-top:8px">اختار عرض السعر اللي قدمته للعميل، والنظام يسحب البنود والكميات (من غير أسعار البيع) ويطلّع طلب للمورد. المورد يرد بأسعاره، تسجّلها هنا، وتقبل أو ترفض. القبول بيطلّع <b>أمر شراء</b>، والفاتورة بتتسجل لما المورد يصدرها.</div></div>
   <div class="card" style="padding:0;overflow:auto">${r.rfqs.length ? `<table class="admtable"><thead><tr><th>الطلب</th><th>التاريخ</th><th>المورد</th><th>عرض العميل</th><th>المشروع</th><th>البنود</th><th>إجمالي عرض المورد (شامل)</th><th>الحالة</th></tr></thead><tbody>
-  ${r.rfqs.map(x=>`<tr onclick="rfqOpen(${x.rfq_id})"><td><b>${escapeHtml(x.rfq_number)}</b></td><td>${fmtDate(x.created_at)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.quote_ref||'')}</td><td>${escapeHtml(x.project_number||'')}</td><td>${x.items_count}</td><td>${x.total_gross!=null?finN(x.total_gross):'—'}${x.lump_total!=null?' <span class="mut">(إجمالي)</span>':(Number(x.priced_count)>0&&Number(x.priced_count)<Number(x.items_count)?` <span class="mut">(${x.priced_count}/${x.items_count} بند)</span>`:'')}</td><td>${rfqTag(x.status)}</td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش طلبات عروض أسعار لسه</div>'}</div>`;
+  ${r.rfqs.map(x=>`<tr onclick="rfqOpen(${x.rfq_id})"><td><b>${escapeHtml(x.rfq_number)}</b></td><td>${fmtDate(x.created_at)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${x.is_multi?'<span class="tag">طلب مشترك</span>':escapeHtml(x.quote_ref||'')}</td><td>${x.is_multi?'عدة مشاريع':escapeHtml(x.project_number||'')}</td><td>${x.items_count}</td><td>${x.total_gross!=null?finN(x.total_gross):'—'}${x.lump_total!=null?' <span class="mut">(إجمالي)</span>':(Number(x.priced_count)>0&&Number(x.priced_count)<Number(x.items_count)?` <span class="mut">(${x.priced_count}/${x.items_count} بند)</span>`:'')}</td><td>${rfqTag(x.status)}</td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش طلبات عروض أسعار لسه</div>'}</div>`;
 };
 
 /* --- إنشاء طلب جديد: مورد + عرض سعر العميل → سحب البنود → اختيار وتعديل الكميات --- */
 function rfqNew(){ finRun(async()=>{
   if(!finLK) finLK = await crmApi('treasury-lookups');
   const act = finLK.suppliers.filter(s=>s.active), only = act.length===1 ? act[0].supplier_id : '';
-  rfqDraft = { quote:null, items:[] };
+  rfqDraft = { blocks:[] };
   trShow(trHead('طلب عرض سعر جديد من المورد') + `<div class="finForm">
     <div><label>المورد</label><select id="rfqSup">${trSupOpts(only)}</select></div>
     <div><label>أو مورد جديد (اكتب الاسم)</label><input id="rfqSupNew"></div>
-    <div><label>المشروع (اختياري)</label><select id="rfqProj">${trProjOpts('','بدون مشروع')}</select></div>
-    <div style="grid-column:1/-1"><label>عرض السعر اللي اتقدّم للعميل</label><input id="rfqQSearch" placeholder="ابحث باسم العميل أو كود العرض..." oninput="rfqQuotes()"><select id="rfqQ" size="7" style="width:100%;margin-top:6px"></select></div>
-    <div><button class="btn small" type="button" onclick="rfqPull()">سحب البنود</button></div></div><div id="rfqItems"></div>`);
+    <div><label>المشروع (للعرض اللي هتسحبه)</label><select id="rfqProj">${trProjOpts('','بدون مشروع')}</select></div>
+    <div style="grid-column:1/-1"><label>عرض السعر اللي اتقدّم للعميل — تقدر تسحب أكتر من عرض (أكتر من مشروع) في طلب واحد للمورد</label><input id="rfqQSearch" placeholder="ابحث باسم العميل أو كود العرض..." oninput="rfqQuotes()"><select id="rfqQ" size="7" style="width:100%;margin-top:6px"></select></div>
+    <div><button class="btn small" type="button" onclick="rfqPull()">سحب البنود / إضافة عرض آخر</button></div></div><div id="rfqItems"></div>`);
   rfqQuotes();
 }); }
 let rfqQT = null;
@@ -1711,20 +1800,45 @@ function rfqQuotes(){ clearTimeout(rfqQT); rfqQT = setTimeout(()=>finRun(async()
   const r = await crmApi('proc-quotes',{search:document.getElementById('rfqQSearch').value});
   document.getElementById('rfqQ').innerHTML = r.quotes.map(q=>`<option value="${q.id}">${escapeHtml(q.ql_code||q.ref_code||('#'+q.id))} — ${escapeHtml(q.client_name||'')}${q.revision_no?' (تعديل '+q.revision_no+')':''} — ${fmtDate(q.created_at)}</option>`).join('') || '<option disabled>مفيش نتائج</option>';
 }), 250); }
+function rfqCapture(){ document.querySelectorAll('#rfqItems input[type=checkbox][data-b]').forEach(cb=>{ const b=+cb.dataset.b, i=+cb.dataset.i, it=rfqDraft.blocks[b]&&rfqDraft.blocks[b].items[i]; if(!it) return;
+  it.selected=cb.checked; it.qty=document.querySelector(`#rfqItems [data-q="${b}_${i}"]`).value; it.unit=document.querySelector(`#rfqItems [data-u="${b}_${i}"]`).value; }); }
 function rfqPull(){ finRun(async()=>{
   const qid = document.getElementById('rfqQ').value; if(!qid) throw new Error('اختار عرض سعر الأول');
-  const r = await crmApi('proc-quote-items',{quoteId:qid}); rfqDraft = { quote:r.quote, items:r.items };
-  document.getElementById('rfqItems').innerHTML = `<h3 style="margin:14px 0 6px"><span class="lbl">بنود عرض ${escapeHtml(r.quote.ref||'')} — اختار اللي هيتبعت للمورد</span></h3>
-  <div class="emptyNote">أسعار البيع للعميل مش بتتسحب ولا بتظهر للمورد. بنود الخدمات (نقل، تركيب، أعمال ميدانية) غير مختارة تلقائيًا. البنود اللي كميتها مش رقم (زي "مطابق للمخطط") اكتب لها كمية أو سيبها.</div>
-  <form onsubmit="rfqSave(event)"><table class="admtable"><thead><tr><th style="width:36px"></th><th>البند</th><th style="width:120px">الكمية</th><th style="width:70px">الوحدة</th><th>ملاحظة</th></tr></thead><tbody>
-  ${r.items.map((it,i)=>`<tr style="cursor:default"><td><input type="checkbox" data-i="${i}" style="width:auto"${it.selected?' checked':''}></td><td>${escapeHtml(it.label)}</td><td><input type="number" step="0.001" min="0" data-q="${i}" value="${it.qty??''}" placeholder="الكمية"></td><td><input data-u="${i}" value="${escapeHtml(it.unit||'')}"></td><td class="mut">${escapeHtml(it.qty_note||'')}</td></tr>`).join('')}</tbody></table>
-  <div class="finForm" style="margin-top:10px"><div style="grid-column:1/-1"><label>ملاحظات للمورد (اختياري)</label><input id="rfqNotes"></div><div><button class="btn small teal">حفظ الطلب</button></div></form>`;
+  if(rfqDraft.blocks.some(b=>String(b.quote.id)===String(qid))) throw new Error('العرض ده مضاف بالفعل للطلب');
+  rfqCapture();
+  const r = await crmApi('proc-quote-items',{quoteId:qid});
+  rfqDraft.blocks.push({ quote:r.quote, items:r.items, projectId:document.getElementById('rfqProj').value||'' });
+  rfqRender();
 }); }
+function rfqRender(){
+  const notes = (document.getElementById('rfqNotes')||{}).value||'', B = rfqDraft.blocks, multi = B.length>1;
+  document.getElementById('rfqItems').innerHTML = !B.length ? '' : `<div class="emptyNote" style="margin-top:12px">أسعار البيع للعميل مش بتتسحب ولا بتظهر للمورد. بنود الخدمات (نقل، تركيب، أعمال ميدانية) غير مختارة تلقائيًا. البنود اللي كميتها مش رقم (زي "مطابق للمخطط") اكتب لها كمية أو سيبها.</div>
+  ${multi?`<div class="emptyNote" style="color:var(--ink);background:var(--sand);padding:10px;border-radius:10px"><b>طلب مشترك لأكتر من مشروع:</b> البنود المتشابهة (بنفس الاسم) بتتجمّع في بند واحد للمورد بإجمالي الكميات، وكل مشروع ليه نصيبه. لما تقبل عرض المورد بيتعمل <b>أمر شراء لكل مشروع</b> بنصيبه. اختار مشروع كل عرض.</div>`:''}
+  <form onsubmit="rfqSave(event)">${B.map((b,bi)=>`<h3 style="margin:14px 0 6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="lbl">بنود عرض ${escapeHtml(b.quote.ref||'')} — ${escapeHtml(b.quote.client_name||'')}</span>
+   <select style="width:auto" onchange="rfqDraft.blocks[${bi}].projectId=this.value">${trProjOpts(b.projectId,'بدون مشروع')}</select>
+   <button type="button" class="btn danger small" onclick="rfqCapture();rfqDraft.blocks.splice(${bi},1);rfqRender()">إزالة العرض</button></h3>
+  <table class="admtable"><thead><tr><th style="width:36px"></th><th>البند</th><th style="width:120px">الكمية</th><th style="width:70px">الوحدة</th><th>ملاحظة</th></tr></thead><tbody>
+  ${b.items.map((it,i)=>`<tr style="cursor:default"><td><input type="checkbox" data-b="${bi}" data-i="${i}" style="width:auto"${it.selected?' checked':''}></td><td>${escapeHtml(it.label)}</td><td><input type="number" step="0.001" min="0" data-q="${bi}_${i}" value="${it.qty??''}" placeholder="الكمية"></td><td><input data-u="${bi}_${i}" value="${escapeHtml(it.unit||'')}"></td><td class="mut">${escapeHtml(it.qty_note||'')}</td></tr>`).join('')}</tbody></table>`).join('')}
+  <div class="finForm" style="margin-top:10px"><div style="grid-column:1/-1"><label>ملاحظات للمورد (اختياري)</label><input id="rfqNotes" value="${escapeHtml(notes)}"></div><div><button class="btn small teal">حفظ الطلب</button></div></div></form>`;
+}
+const rfqKey = l => String(l||'').toLowerCase().replace(/[ً-ْ]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').trim();
 function rfqSave(e){ e.preventDefault(); finRun(async()=>{
-  const items=[]; document.querySelectorAll('#rfqItems input[type=checkbox][data-i]').forEach(cb=>{ if(!cb.checked) return; const i=+cb.dataset.i, it=rfqDraft.items[i];
-    items.push({label:it.label, qty:document.querySelector(`#rfqItems [data-q="${i}"]`).value, unit:document.querySelector(`#rfqItems [data-u="${i}"]`).value, qty_note:it.qty_note}); });
-  if(!items.length) throw new Error('اختار بند واحد على الأقل');
-  const r = await crmApi('proc-create-rfq',{supplierId:document.getElementById('rfqSup').value, supplierName:document.getElementById('rfqSupNew').value, projectId:document.getElementById('rfqProj').value, quoteId:rfqDraft.quote.id, notes:document.getElementById('rfqNotes').value, items});
+  rfqCapture(); const B = rfqDraft.blocks; if(!B.length) throw new Error('اسحب بنود عرض سعر الأول');
+  const base = { supplierId:document.getElementById('rfqSup').value, supplierName:document.getElementById('rfqSupNew').value, notes:document.getElementById('rfqNotes').value };
+  let payload;
+  if(B.length===1){
+    const items = B[0].items.filter(it=>it.selected).map(it=>({label:it.label, qty:it.qty, unit:it.unit, qty_note:it.qty_note}));
+    if(!items.length) throw new Error('اختار بند واحد على الأقل');
+    payload = { ...base, projectId:B[0].projectId, quoteId:B[0].quote.id, items };
+  } else {
+    const m = new Map();
+    B.forEach(b=>b.items.forEach(it=>{ if(!it.selected || !(Number(it.qty)>0)) return; const k=rfqKey(it.label);
+      if(!m.has(k)) m.set(k,{label:it.label, unit:it.unit, qty_note:it.qty_note, alloc:[]});
+      const x=m.get(k); if(!x.unit && it.unit) x.unit=it.unit; x.alloc.push({quoteId:b.quote.id, projectId:b.projectId||null, qty:Number(it.qty)}); }));
+    const items=[...m.values()]; if(!items.length) throw new Error('اختار بند واحد على الأقل وبكمية');
+    payload = { ...base, items };
+  }
+  const r = await crmApi('proc-create-rfq',payload);
   finLK=null; toast('تم إنشاء طلب عرض السعر'); finLoad(); rfqOpen(r.rfqId);
 }); }
 
@@ -1734,38 +1848,42 @@ function rfqOpen(id, openPrices){ return finRun(async()=>{
  const d = await crmApi('proc-rfq',{rfqId:id}), r = d.rfq, it = d.items; rfqCur = d;
  if(!finLK) finLK = await crmApi('treasury-lookups');
  const lump = r.lump_total!=null, nPriced = Number(r.priced_count||0), anyPrice = lump || nPriced>0, partial = !lump && anyPrice && nPriced < it.length;
- const poLocked = r.status==='accepted' && d.po && (Number(d.po.billed)>0 || Number(d.po.paid)>0);
+ const pos = d.pos||[], multi = !!r.is_multi, prjNo = pid => (pid ? ((finLK.projects||[]).find(p=>String(p.project_id)===String(pid))||{}).project_number||('#'+pid) : 'بدون مشروع');
+ const poLocked = r.status==='accepted' && (pos.length ? pos.some(p=>Number(p.billed)>0||Number(p.paid)>0) : (d.po && (Number(d.po.billed)>0 || Number(d.po.paid)>0)));
  const canEdit = ['draft','sent','quoted'].includes(r.status) || (r.status==='accepted' && !poLocked);
  const net = Number(r.net_total||0), gross = Number(r.total_gross||0);
  const priceBtn = canEdit ? `<button class="btn ${anyPrice?'ghost':'teal'} small" onclick="rfqPrices(${id})">${anyPrice?'✏️ تعديل رد المورد':'تسجيل رد المورد (الأسعار)'}</button>` : '';
  const acts = r.status==='draft'||r.status==='sent' ? `<button class="btn small" onclick="rfqPrint(${id})">🖨 طباعة / PDF</button> <button class="btn small" onclick="rfqWhatsApp(${id})">واتساب</button> ${r.status==='draft'?`<button class="btn ghost small" onclick="rfqSent(${id})">تم الإرسال</button> `:''}${priceBtn} <button class="btn danger small" onclick="rfqDel(${id})">حذف</button>`
   : r.status==='quoted' ? `<button class="btn small" onclick="rfqPrint(${id})">🖨 طباعة</button> ${priceBtn} <button class="btn danger small" onclick="rfqReject(${id})">رفض</button>`
-  : r.status==='accepted' ? `${d.po?`<button class="btn small" onclick="poPrintMenu(${d.po.po_id})">🖨 طباعة أمر الشراء</button> `:''}${priceBtn}`
+  : r.status==='accepted' ? `${multi ? pos.map(p=>`<button class="btn small" onclick="poPrintMenu(${p.po_id})">🖨 ${escapeHtml(p.po_number)} — ${escapeHtml(p.project_number||'عام')}</button>`).join(' ')+' ' : (d.po?`<button class="btn small" onclick="poPrintMenu(${d.po.po_id})">🖨 طباعة أمر الشراء</button> `:'')}${priceBtn}`
   : r.status==='rejected' ? `<button class="btn danger small" onclick="rfqDel(${id})">حذف</button>` : '';
  trShow(`${trHead(escapeHtml(r.rfq_number)+' — '+escapeHtml(r.supplier_name))}
- <div class="emptyNote" style="color:var(--ink)">${rfqTag(r.status)} · عرض العميل: <b>${escapeHtml(r.quote_ref||'—')}</b> · المشروع: <b>${escapeHtml(r.project_number||'—')}</b> · ${fmtDate(r.created_at)}${r.supplier_quote_ref?` · رقم عرض المورد: <b>${escapeHtml(r.supplier_quote_ref)}</b>`:''}</div>
+ <div class="emptyNote" style="color:var(--ink)">${rfqTag(r.status)} · عرض العميل: <b>${escapeHtml(r.quote_ref||'—')}</b> · المشروع: <b>${multi?'طلب مشترك — عدة مشاريع':escapeHtml(r.project_number||'—')}</b> · ${fmtDate(r.created_at)}${r.supplier_quote_ref?` · رقم عرض المورد: <b>${escapeHtml(r.supplier_quote_ref)}</b>`:''}</div>
  <table class="admtable" style="margin-top:8px"><thead><tr><th>م</th><th>البند</th><th>الكمية</th><th>الوحدة</th>${anyPrice&&!lump?'<th>سعر الوحدة</th><th>الإجمالي</th>':''}<th>ملاحظة</th></tr></thead><tbody>
- ${it.map(x=>`<tr style="cursor:default"><td>${x.line_no}</td><td>${escapeHtml(x.label)}</td><td>${Number(x.qty)}</td><td>${escapeHtml(x.unit||'')}</td>${anyPrice&&!lump?(x.unit_price!=null?`<td>${finN(x.unit_price)}</td><td>${finN(Number(x.qty)*Number(x.unit_price))}</td>`:'<td colspan="2" class="mut">لم يُسعَّر بعد</td>'):''}<td class="mut">${escapeHtml(x.qty_note||'')}</td></tr>`).join('')}</tbody></table>
+ ${it.map(x=>`<tr style="cursor:default"><td>${x.line_no}</td><td>${escapeHtml(x.label)}${x.alloc&&x.alloc.length?`<div class="mut" style="font-size:12px">التوزيع: ${x.alloc.map(a=>escapeHtml(prjNo(a.project_id))+' ← '+Number(a.qty)).join(' · ')}</div>`:''}</td><td>${Number(x.qty)}</td><td>${escapeHtml(x.unit||'')}</td>${anyPrice&&!lump?(x.unit_price!=null?`<td>${finN(x.unit_price)}</td><td>${finN(Number(x.qty)*Number(x.unit_price))}</td>`:'<td colspan="2" class="mut">لم يُسعَّر بعد</td>'):''}<td class="mut">${escapeHtml(x.qty_note||'')}</td></tr>`).join('')}</tbody></table>
  ${anyPrice?`<div class="emptyNote" style="color:var(--ink)">${lump?'<b>سعر إجمالي واحد</b> للطلب كله':`مسعّر <b>${nPriced}</b> من <b>${it.length}</b> بند`} · ${RFQ_VAT[r.vat_mode]||''} · ${lump?'الإجمالي':'مجموع الأسعار'}: <b>${finN(net)}</b> · <b>الإجمالي شامل الضريبة: ${finN(gross)}</b>${r.valid_invoice?'':' · (بدون فاتورة ضريبية صالحة — الضريبة مش بتتسترد)'}</div>`:''}
  ${r.status==='quoted'?`<div class="card" style="margin:10px 0;background:var(--sand)"><b>قبول عرض المورد</b><div class="emptyNote" style="color:var(--ink)">القبول بيطلّع <b>أمر شراء</b> بمبلغ ${finN(gross)} (شامل الضريبة). ده التزام بس، ومفيش أثر على الحسابات لحد ما فاتورة المورد توصل.${partial?` <b style="color:#B0432C">⚠ فيه ${it.length-nPriced} بند لسه من غير سعر — أمر الشراء هيتعمل بالبنود المسعّرة بس.</b>`:''}</div>
- <div class="finForm"><div><label>المشروع</label><select id="rfqAccProj">${trProjOpts(r.project_id,'مشتريات عامة (مش مرتبطة بمشروع)')}</select></div><div><button class="btn small teal" onclick="rfqAccept(${id})">قبول وإنشاء أمر شراء</button></div></div></div>`:''}
- ${r.status==='accepted'&&d.po?`<div class="emptyNote" style="color:var(--ink)">اتقبل ← أمر الشراء <b>${escapeHtml(d.po.po_number)}</b> (مبلغه ${finN(d.po.amount)} · مفوتر ${finN(d.po.billed)} · مدفوع ${finN(d.po.paid)}). ${poLocked?'اتسجّل عليه فواتير/دفعات، فتعديل الأسعار من هنا مقفول — عدّله من تبويب <b>أوامر الشراء</b>.':'لو عدّلت الأسعار، مبلغ أمر الشراء بيتحدّث تلقائيًا (طالما ماعليهوش فواتير أو دفعات).'} كمّل من تبويب <b>أوامر الشراء</b>: فاتورة ← دفع.</div>`:''}
+ ${multi ? `<div class="emptyNote" style="color:var(--ink)">هيتعمل <b>أمر شراء لكل مشروع</b> بنصيبه: ${rfqProjSplit(d).map(x=>`${escapeHtml(prjNo(x.pid))} = <b>${finN(x.gross)}</b>`).join(' · ')}</div><div class="finForm"><div><button class="btn small teal" onclick="rfqAccept(${id})">قبول وإنشاء أوامر الشراء</button></div></div></div>` : `<div class="finForm"><div><label>المشروع</label><select id="rfqAccProj">${trProjOpts(r.project_id,'مشتريات عامة (مش مرتبطة بمشروع)')}</select></div><div><button class="btn small teal" onclick="rfqAccept(${id})">قبول وإنشاء أمر شراء</button></div></div></div>`}`:''}
+ ${r.status==='accepted'&&multi&&pos.length?`<div class="emptyNote" style="color:var(--ink)">اتقبل ← أوامر الشراء: ${pos.map(p=>`<b>${escapeHtml(p.po_number)}</b> (${escapeHtml(p.project_number||'عام')} · ${finN(p.amount)} · مفوتر ${finN(p.billed)} · مدفوع ${finN(p.paid)})`).join(' — ')}. ${poLocked?'اتسجّل على واحد منها فواتير/دفعات، فتعديل الأسعار من هنا مقفول — عدّل من تبويب <b>أوامر الشراء</b>.':'لو عدّلت الأسعار، مبالغ أوامر الشراء بتتحدّث تلقائيًا (طالما مفيش عليها فواتير أو دفعات).'}</div>`:''}
+ ${r.status==='accepted'&&!multi&&d.po?`<div class="emptyNote" style="color:var(--ink)">اتقبل ← أمر الشراء <b>${escapeHtml(d.po.po_number)}</b> (مبلغه ${finN(d.po.amount)} · مفوتر ${finN(d.po.billed)} · مدفوع ${finN(d.po.paid)}). ${poLocked?'اتسجّل عليه فواتير/دفعات، فتعديل الأسعار من هنا مقفول — عدّله من تبويب <b>أوامر الشراء</b>.':'لو عدّلت الأسعار، مبلغ أمر الشراء بيتحدّث تلقائيًا (طالما ماعليهوش فواتير أو دفعات).'} كمّل من تبويب <b>أوامر الشراء</b>: فاتورة ← دفع.</div>`:''}
  <div id="rfqAct" style="margin:10px 0"></div><div style="display:flex;gap:8px;flex-wrap:wrap">${acts}</div>`);
  if(openPrices && canEdit) rfqPrices(id);
 }); }
+function rfqProjSplit(d){ const r=d.rfq, vr=finVatRate/100, m={}; d.items.forEach(x=>{ if(x.unit_price==null||!x.alloc) return; x.alloc.forEach(a=>{ const k=a.project_id||''; m[k]=(m[k]||0)+Number(a.qty)*Number(x.unit_price); }); });
+  return Object.entries(m).map(([k,v])=>({pid:k, gross:r.vat_mode==='excl'?v*(1+vr):v})); }
 const rfqSent = id => finRun(async()=>{ await crmApi('proc-mark-sent',{rfqId:id}); finLoad(); rfqOpen(id); });
 const rfqDel = id => confirm('حذف طلب عرض السعر؟') && finRun(async()=>{ await crmApi('proc-delete',{rfqId:id}); finOverlay.classList.remove('show'); finDone('تم الحذف'); });
 const rfqReject = id => confirm('رفض عرض المورد؟') && finRun(async()=>{ await crmApi('proc-reject',{rfqId:id}); finOverlay.classList.remove('show'); finDone('تم الرفض'); });
 const rfqAccept = id => finRun(async()=>{ const r=rfqCur.rfq, g=Number(r.total_gross), miss=rfqCur.items.length-Number(r.priced_count||0);
- if(!confirm(`هيتعمل أمر شراء بمبلغ ${finN(g)} (شامل الضريبة) للمورد ${r.supplier_name}${r.lump_total==null&&miss>0?`\nتنبيه: ${miss} بند من غير سعر مش داخلين في الأمر`:''}.\nده التزام بس ومفيش أثر محاسبي لحد ما الفاتورة توصل. متأكد؟`)) return;
- await crmApi('proc-accept',{rfqId:id,projectId:document.getElementById('rfqAccProj').value}); toast('اتقبل وطلع أمر شراء'); finLoad(); rfqOpen(id); });
+ if(!confirm(`هيتعمل ${r.is_multi?'أمر شراء لكل مشروع بإجمالي':'أمر شراء بمبلغ'} ${finN(g)} (شامل الضريبة) للمورد ${r.supplier_name}${r.lump_total==null&&miss>0?`\nتنبيه: ${miss} بند من غير سعر مش داخلين في الأمر`:''}.\nده التزام بس ومفيش أثر محاسبي لحد ما الفاتورة توصل. متأكد؟`)) return;
+ await crmApi('proc-accept',{rfqId:id,projectId:(document.getElementById('rfqAccProj')||{}).value||null}); toast('اتقبل وطلع أمر شراء'); finLoad(); rfqOpen(id); });
 
 /* --- تسجيل/تعديل رد المورد: وضعين (سعر لكل بند — أو سعر إجمالي) + وضع الضريبة صريح --- */
 function rfqPrices(id){ const d=rfqCur, r=d.rfq, lump=r.lump_total!=null;
  document.getElementById('rfqAct').innerHTML = `<form class="finForm" style="padding:10px;border:1px solid var(--line);border-radius:10px" onsubmit="rfqSavePrices(event,${id})" oninput="rfqPreview()">
  <div style="grid-column:1/-1"><b>رد المورد</b><div class="taxOpts" style="margin-top:6px">
   <label><input type="radio" name="qm" value="items"${lump?'':' checked'} onchange="rfqMode()"> المورد سعّر <b>كل بند لوحده</b></label>
-  <label><input type="radio" name="qm" value="lump"${lump?' checked':''} onchange="rfqMode()"> المورد بلّغ <b>سعر إجمالي واحد</b> للطلب</label></div></div>
+  ${r.is_multi?'':`<label><input type="radio" name="qm" value="lump"${lump?' checked':''} onchange="rfqMode()"> المورد بلّغ <b>سعر إجمالي واحد</b> للطلب</label>`}</div></div>
  <div id="rfqModeItems" style="grid-column:1/-1"><div class="emptyNote">اكتب سعر الوحدة للبنود اللي المورد سعّرها بس وسيب الباقي فاضي — وكمّل لما يرد. تقدر تحفظ كل بند لوحده بزر "حفظ البند"، ولو السعر غلط عدّله أو امسحه (فاضي = مش مسعّر).</div>
   <table class="admtable"><thead><tr><th>م</th><th>البند</th><th>الكمية</th><th style="width:150px">سعر الوحدة</th><th></th></tr></thead><tbody>
   ${d.items.map(x=>`<tr style="cursor:default"><td>${x.line_no}</td><td>${escapeHtml(x.label)}</td><td>${Number(x.qty)} ${escapeHtml(x.unit||'')}</td><td><input type="number" step="0.0001" min="0" name="p${x.line_no}" value="${x.unit_price??''}" placeholder="مش مسعّر"></td><td><button type="button" class="btn ghost small" onclick="rfqSaveOne(${id},${x.line_no})">حفظ البند</button></td></tr>`).join('')}</tbody></table></div>
@@ -1801,15 +1919,68 @@ function rfqSavePrices(e,id){ e.preventDefault(); const f=e.target; finRun(async
  toast('تم تسجيل رد المورد'); finLoad(); rfqOpen(id); }); }
 
 /* --- الإرسال: طباعة/PDF (من غير أسعار) وواتساب --- */
-function rfqPrint(id){ finRun(async()=>{ const d=await crmApi('proc-rfq',{rfqId:id}), r=d.rfq;
-  const w=window.open('','_blank'); if(!w) throw new Error('المتصفح منع النافذة — اسمح بالنوافذ المنبثقة');
-  w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${r.rfq_number}</title><style>body{font-family:Tahoma,Arial,sans-serif;padding:28px;color:#111}h1{margin:0 0 4px;font-size:20px}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #999;padding:8px;text-align:right;font-size:14px}th{background:#eee}.m{color:#555;font-size:13px}</style></head><body>
-  <h1>طلب عرض سعر — ${escapeHtml(r.rfq_number)}</h1><div class="m">HoloulEnergy — حلول الطاقة المتجددة والمقاولات</div>
-  <p>السادة / <b>${escapeHtml(r.supplier_name)}</b><br>التاريخ: ${fmtDate(r.created_at)}</p><p>نرجو التكرم بإفادتنا بعرض سعركم للبنود التالية:</p>
-  <table><thead><tr><th>م</th><th>البند</th><th>الكمية</th><th>الوحدة</th><th>سعر الوحدة</th><th>الإجمالي</th><th>ملاحظات</th></tr></thead><tbody>
-  ${d.items.map(x=>`<tr><td>${x.line_no}</td><td>${escapeHtml(x.label)}</td><td>${Number(x.qty)}</td><td>${escapeHtml(x.unit||'')}</td><td></td><td></td><td>${escapeHtml(x.qty_note||'')}</td></tr>`).join('')}</tbody></table>
-  <p class="m">${r.notes?escapeHtml(r.notes)+'<br>':''}يرجى بيان: هل الأسعار شاملة ضريبة القيمة المضافة، ومدة صلاحية العرض، ومدة التوريد.</p></body></html>`);
-  w.document.close(); w.focus(); setTimeout(()=>w.print(),400); }); }
+/* ============ هوية المستندات المطبوعة الموحّدة (نفس شكل الفاتورة وشهادة الضمان وعرض الحاسبة): شريط علوي + ترويسة المؤسسة واللوجو + عنوان المستند + بيانات + جدول + إجمالي + توقيع + تواصل ============ */
+function docShell(o){
+  const S = SELLER, e = escapeHtml, origin = location.href.replace(/[^\/]*$/, '');
+  const lg = sellerLogoSrc(S), logoSrc = /^(https?:|data:)/.test(lg) ? lg : origin + lg;
+  const a = S.address || {};
+  const addr = [a.buildingNo, a.street, a.district, a.city, a.postalCode, a.additionalNo ? ('الرقم الإضافي '+a.additionalNo) : '', a.country].filter(Boolean).join('، ');
+  const meta1 = [S.nameEn, S.cr?'الرقم الوطني الموحد: '+S.cr:'', S.crNo?'السجل التجاري: '+S.crNo:'', S.vat?'الرقم الضريبي: '+S.vat:''].filter(Boolean).map(e).join(' · ');
+  const meta2 = [S.nationalAddress?'العنوان الوطني: '+S.nationalAddress:'', addr].filter(Boolean).map(e).join(' — ');
+  const contact = [S.phone, S.email, S.website].filter(Boolean).map(e).join(' · ');
+  const css = `@page{size:A4;margin:10mm}*{box-sizing:border-box}
+  body{margin:0;background:#fff;font-family:'Cairo',Tahoma,Arial,sans-serif;color:var(--ink,#122436);-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .docSheet{max-width:800px;margin:0 auto;padding:14px 18px;font-size:12.5px}
+  .topBar{height:8px;background:var(--teal-dark,#0B7A66);border-radius:3px;margin-bottom:14px}
+  .head2{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+  .coName{font-weight:800;font-size:15px}.coMeta{font-size:10.5px;color:var(--muted,#63736F);margin-top:6px;line-height:1.8}
+  .logoBlock img{width:66px;height:66px;object-fit:contain}
+  .titleBlock{text-align:center;margin:14px 0 6px}.tAr{font-weight:800;font-size:20px;color:var(--teal-dark,#0B7A66)}.tEn{font-size:11.5px;color:var(--muted,#63736F);letter-spacing:1px;margin-top:2px}
+  .badge{display:inline-block;margin-top:6px;border:1px solid var(--line,#DEE7E4);background:var(--sun-tint,#FCF3DE);color:var(--sun-dark,#84630A);border-radius:999px;padding:2px 12px;font-size:11px;font-weight:700}
+  .certNo{text-align:center;font-size:11.5px;color:var(--muted,#63736F);margin:6px 0 14px}
+  .infoGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+  .infoGrid .box{background:var(--sand,#F6F8F7);border-radius:10px;padding:10px 14px}
+  .infoGrid .lbl{color:var(--muted,#63736F);font-size:10.5px;margin-bottom:1px}.infoGrid .val{font-weight:700;margin-bottom:7px}
+  .intro{font-size:13px;margin:8px 0 6px}
+  table.dt{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.dt th{text-align:right;color:var(--muted,#63736F);font-weight:600;font-size:11.5px;padding:7px 8px;border-bottom:2px solid var(--night,#0D3452)}
+  table.dt td{padding:7px 8px;border-bottom:1px solid #EFEBE0;vertical-align:top}
+  table.dt tr{page-break-inside:avoid}table.dt thead{display:table-header-group}
+  .c{text-align:center}.n{text-align:left;direction:ltr;white-space:nowrap}.m{color:var(--muted,#63736F);font-size:11.5px}
+  .t{text-align:left;font-weight:700;background:var(--sand,#F6F8F7)}
+  tr.g td{background:linear-gradient(135deg,#0D3452 0%,#155E85 100%);color:#fff;font-weight:800;font-size:14px;border-bottom:0}tr.g td.n{color:var(--sun-2,#F3CB56);font-size:17px}tr.g td.t{background:linear-gradient(135deg,#0D3452 0%,#155E85 100%);color:#BFE3D6}
+  .note{margin-top:12px;font-size:11.5px;color:var(--muted,#63736F);line-height:1.9}
+  .legal{margin-top:10px;font-size:11px;color:var(--bad,#B0432C);line-height:1.9}
+  .sig{display:flex;gap:40px;margin-top:46px;font-size:12px}.sig div{flex:1;border-top:1px solid var(--ink,#122436);padding-top:6px;text-align:center;color:var(--muted,#63736F)}
+  .contact{margin-top:22px;text-align:center;font-size:11px;color:var(--muted,#63736F);border-top:1px solid var(--line,#DEE7E4);padding-top:8px}`;
+  return `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${e(o.title||o.titleAr)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="${origin}assets/css/styles.css"><style>${css}</style></head><body><div class="docSheet">
+<div class="topBar"></div>
+<div class="head2"><div><div class="coName">${e(S.name)}</div><div class="coMeta">${meta1}${meta2?'<br>'+meta2:''}</div></div><div class="logoBlock"><img src="${e(logoSrc)}" alt="logo" onerror="this.style.display='none'"></div></div>
+<div class="titleBlock"><div class="tAr">${e(o.titleAr)}</div><div class="tEn">${e(o.titleEn||'')}</div>${o.badge?`<span class="badge">${e(o.badge)}</span>`:''}</div>
+${o.docNo?`<div class="certNo">${o.docNo}</div>`:''}
+${o.boxes&&o.boxes.length?`<div class="infoGrid">${o.boxes.map(b=>`<div class="box">${b.filter(Boolean).map(([l,v])=>`<div class="lbl">${e(l)}</div><div class="val">${v}</div>`).join('')}</div>`).join('')}</div>`:''}
+${o.body||''}
+${o.sign?`<div class="sig">${o.sign.map(x=>`<div>${e(x)}</div>`).join('')}</div>`:''}
+<div class="contact">${contact||''}</div>
+</div></body></html>`;
+}
+function docOpen(html, delay){
+  const w = window.open('','_blank'); if(!w) throw new Error('المتصفح منع النافذة — اسمح بالنوافذ المنبثقة');
+  w.document.open(); w.document.write(html); w.document.close();
+  w.addEventListener('load', ()=>{ setTimeout(()=>{ try{ w.focus(); w.print(); }catch(_){} }, delay||700); });
+  return w;
+}
+function rfqPrint(id){ finRun(async()=>{ const d=await crmApi('proc-rfq',{rfqId:id}), r=d.rfq, E=escapeHtml;
+  const body = `<p class="intro">السادة / <b>${E(r.supplier_name)}</b> — نرجو التكرم بإفادتنا بعرض سعركم للبنود التالية:</p>
+  <table class="dt"><thead><tr><th>م</th><th>البند</th><th class="c">الكمية</th><th class="c">الوحدة</th><th>سعر الوحدة</th><th>الإجمالي</th><th>ملاحظات</th></tr></thead><tbody>
+  ${d.items.map(x=>`<tr><td>${x.line_no}</td><td>${E(x.label)}</td><td class="c">${Number(x.qty)}</td><td class="c">${E(x.unit||'')}</td><td></td><td></td><td class="m">${E(x.qty_note||'')}</td></tr>`).join('')}</tbody></table>
+  <div class="note">${r.notes?E(r.notes)+'<br>':''}يرجى بيان: هل الأسعار شاملة ضريبة القيمة المضافة، ومدة صلاحية العرض، ومدة التوريد.</div>`;
+  docOpen(docShell({ title:r.rfq_number, titleAr:'طلب عرض سعر', titleEn:'REQUEST FOR QUOTATION', docNo:'رقم الطلب: '+E(r.rfq_number),
+    boxes:[[['المورد','<b>'+E(r.supplier_name)+'</b>'], r.supplier_phone?['هاتف المورد',E(r.supplier_phone)]:null], [['تاريخ الطلب',fmtDate(r.created_at)], r.quote_ref?['مرجع عرض العميل',E(r.quote_ref)]:null, r.project_number?['المشروع',E(r.project_number)]:null]],
+    body, sign:['اعتماد المشتريات'] }), 400); }); }
+
 
 /* ============ مقارنة التسعير: سعر البيع في عرض العميل مقابل سعر الشراء الفعلي (أوامر الشراء المقبولة) — على أساس صافي قبل الضريبة ============ */
 let pcTarget = 10;
@@ -1911,13 +2082,14 @@ function poPrintMenu(poId){ trShow(`${trHead('طباعة أمر الشراء')}
 async function poPrint(poId, withPrices){ finRun(async()=>{
   const w = window.open('','_blank'); if(!w) throw new Error('المتصفح منع النافذة — اسمح بالنوافذ المنبثقة');
   try{
-    const [ord, rf] = await Promise.all([ crmApi('purchasing-orders',{}), crmApi('proc-rfqs') ]);
+    const [ord, pl] = await Promise.all([ crmApi('purchasing-orders',{}), crmApi('proc-po-rfq',{poId}) ]);
     const po = ord.orders.find(o=>String(o.po_id)===String(poId)); if(!po) throw new Error('أمر الشراء غير موجود');
-    const link = rf.rfqs.find(x=>String(x.po_id)===String(poId));
-    const d = link ? await crmApi('proc-rfq',{rfqId:link.rfq_id}) : null;
+    const d = pl.rfqId ? await crmApi('proc-rfq',{rfqId:pl.rfqId}) : null;
     if(!finLK) finLK = await crmApi('treasury-lookups');
     const sup = (finLK.suppliers||[]).find(x=>String(x.supplier_id)===String(po.supplier_id)) || {};
-    const r = d ? d.rfq : null, items = d ? d.items : [];
+    const r = d ? d.rfq : null;
+    // طلب مشترك: أمر الشراء ده لمشروع واحد — بنعرض بنوده بكمية نصيب المشروع بس
+    const items = !d ? [] : !d.rfq.is_multi ? d.items : d.items.map(x=>({ ...x, qty:(x.alloc||[]).filter(a=>String(a.project_id||'')===String(po.project_id||'')).reduce((t,a)=>t+Number(a.qty),0) })).filter(x=>x.qty>0).map((x,i)=>({ ...x, line_no:i+1 }));
     const lump = !!(r && r.lump_total!=null), vm = r ? r.vat_mode : null, rate = finVatRate/100;
     const priced = items.filter(x=>x.unit_price!=null);
     const net = priced.reduce((t,x)=>t+Number(x.qty)*Number(x.unit_price),0);
@@ -1936,18 +2108,16 @@ async function poPrint(poId, withPrices){ finRun(async()=>{
       if(vm==='excl' && !lump && priced.length) totals = trow('مجموع البنود (قبل الضريبة)',net) + trow(`ضريبة القيمة المضافة ${finVatRate}%`,gross-net);
       totals += trow(`${lump?'السعر الإجمالي المتفق عليه':'إجمالي أمر الشراء'}${vm==='none'?'':' (شامل الضريبة)'}`,gross,'g');
     }
-    const css = `@page{size:A4;margin:14mm}body{font-family:Tahoma,Arial,sans-serif;color:#111;margin:0;padding:6px 4px}.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #E5A91A;padding-bottom:10px}.top img{height:54px}h1{margin:0;font-size:22px}.sub{color:#555;font-size:12px;margin-top:2px}.badge{display:inline-block;border:1px solid #111;border-radius:6px;padding:2px 10px;font-size:12px;margin-top:6px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;margin:14px 0;font-size:13.5px}.meta b{color:#333}table{width:100%;border-collapse:collapse;margin-top:6px}th,td{border:1px solid #888;padding:7px 8px;text-align:right;font-size:13.5px;vertical-align:top}th{background:#f0ece0}.c{text-align:center}.n{text-align:left;direction:ltr;white-space:nowrap}.m{color:#555;font-size:12px}.t{text-align:left;font-weight:700;background:#faf8f1}.g td{background:#fff3cf;font-weight:700;font-size:15px}.note{margin-top:12px;font-size:12.5px;color:#333;line-height:1.8}.sig{display:flex;justify-content:space-between;gap:40px;margin-top:44px;font-size:13px}.sig div{flex:1;border-top:1px solid #333;padding-top:6px;text-align:center}`;
+    const refLine = r ? E(r.rfq_number)+(r.supplier_quote_ref?' — عرض المورد رقم '+E(r.supplier_quote_ref):'')+(r.supplier_quote_date?' بتاريخ '+fmtDate(r.supplier_quote_date):'') : '';
+    const body = `<p class="intro">نرجو التكرم بتوريد البنود التالية${withPrices?' بالأسعار المتفق عليها':''}:</p>
+    <table class="dt"><thead><tr>${colHead}</tr></thead><tbody>${rows}${totals}</tbody></table>
+    <div class="note">${withPrices&&vatTxt?E(vatTxt)+'.<br>':''}${withPrices&&lump?'السعر المتفق عليه إجمالي واحد للأمر كله.<br>':''}${withPrices&&hasItems&&!lump&&priced.length<items.length?'بعض البنود غير مسعّرة وغير داخلة في قيمة الأمر.<br>':''}${po.notes?E(po.notes)+'<br>':''}${!hasItems?'<b>ملاحظة:</b> أمر الشراء ده اتسجّل يدويًا بدون قائمة بنود تفصيلية.<br>':''}يرجى تأكيد استلام هذا الأمر وموعد التوريد، وإرفاق رقم أمر الشراء على الفاتورة.</div>`;
     w.document.open();
-    w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>${E(po.po_number)}</title><style>${css}</style></head><body>
-    <div class="top"><div><h1>أمر شراء — ${E(po.po_number)}</h1><div class="sub">HoloulEnergy — حلول الطاقة المتجددة والمقاولات</div><span class="badge">${withPrices?'النسخة المسعّرة':'قائمة المكونات والكميات (بدون أسعار)'}</span></div><img src="assets/logo.png" alt="" onerror="this.style.display='none'"></div>
-    <div class="meta"><div><b>السادة / المورد:</b> ${E(po.supplier_name)}</div><div><b>تاريخ الأمر:</b> ${fmtDate(po.order_date)}</div>
-     ${sup.vat_number?`<div><b>الرقم الضريبي للمورد:</b> ${E(sup.vat_number)}</div>`:''}${(r&&r.supplier_phone)||sup.phone?`<div><b>هاتف المورد:</b> ${E((r&&r.supplier_phone)||sup.phone)}</div>`:''}
-     <div><b>المشروع:</b> ${E(po.project_number||'مشتريات عامة')}</div>${r?`<div><b>مرجع طلب عرض السعر:</b> ${E(r.rfq_number)}${r.supplier_quote_ref?' — عرض المورد رقم '+E(r.supplier_quote_ref):''}${r.supplier_quote_date?' بتاريخ '+fmtDate(r.supplier_quote_date):''}</div>`:''}</div>
-    <p style="font-size:14px;margin:8px 0">نرجو التكرم بتوريد البنود التالية${withPrices?' بالأسعار المتفق عليها':''}:</p>
-    <table><thead><tr>${colHead}</tr></thead><tbody>${rows}${totals}</tbody></table>
-    <div class="note">${withPrices&&vatTxt?E(vatTxt)+'.<br>':''}${withPrices&&lump?'السعر المتفق عليه إجمالي واحد للأمر كله.<br>':''}${withPrices&&hasItems&&!lump&&priced.length<items.length?'بعض البنود غير مسعّرة وغير داخلة في قيمة الأمر.<br>':''}${po.notes?E(po.notes)+'<br>':''}${!hasItems?'<b>ملاحظة:</b> أمر الشراء ده اتسجّل يدويًا بدون قائمة بنود تفصيلية.<br>':''}يرجى تأكيد استلام هذا الأمر وموعد التوريد، وإرفاق رقم أمر الشراء على الفاتورة.</div>
-    <div class="sig"><div>اعتماد المشتريات</div><div>اعتماد المورد / الختم</div></div></body></html>`);
-    w.document.close(); w.focus(); setTimeout(()=>w.print(),500);
+    w.document.write(docShell({ title:po.po_number, titleAr:'أمر شراء', titleEn:'PURCHASE ORDER', badge: withPrices ? 'النسخة المسعّرة' : 'قائمة المكونات والكميات (بدون أسعار)', docNo:'رقم الأمر: '+E(po.po_number),
+      boxes:[[['المورد','<b>'+E(po.supplier_name)+'</b>'], sup.vat_number?['الرقم الضريبي للمورد',E(sup.vat_number)]:null, ((r&&r.supplier_phone)||sup.phone)?['هاتف المورد',E((r&&r.supplier_phone)||sup.phone)]:null],
+             [['تاريخ الأمر',fmtDate(po.order_date)], ['المشروع',E(po.project_number||'مشتريات عامة')], refLine?['مرجع طلب عرض السعر',refLine]:null]],
+      body, sign:['اعتماد المشتريات','اعتماد المورد / الختم'] }));
+    w.document.close(); w.focus(); setTimeout(()=>w.print(),700);
     finOverlay.classList.remove('show');
   }catch(e){ w.close(); throw e; }
 }); }

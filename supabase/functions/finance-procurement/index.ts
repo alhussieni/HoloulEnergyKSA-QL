@@ -109,14 +109,39 @@ const r1 = (n: number) => Math.round(n * 10) / 10;
 async function buildPricing(projectId?: number) {
   let rq = supabase.from("rfqs").select("id, supplier_id, quote_id, project_id, vat_mode, lump_total, po_id").eq("status", "accepted").not("project_id", "is", null).not("quote_id", "is", null);
   if (projectId) rq = rq.eq("project_id", projectId);
-  const rfqs = must(await rq) as any[];
+  let rfqs = must(await rq) as any[];
+  // طلبات مشتركة (أكتر من عرض/مشروع): بنفكّها لطلبات افتراضية — واحد لكل (مشروع، عرض) بكميات نصيبه وأمر شراء المشروع
+  const multi = must(await supabase.from("rfqs").select("id, supplier_id, vat_mode").eq("status", "accepted").eq("is_multi", true)) as any[];
+  const virtItems: Record<string, any[]> = {};
+  if (multi.length) {
+    const mIds = multi.map((m) => m.id);
+    const [mItems, mPos] = await Promise.all([
+      supabase.from("rfq_items").select("rfq_id, line_no, label, qty, unit, unit_price, alloc").in("rfq_id", mIds).order("line_no"),
+      supabase.from("purchase_orders").select("id, rfq_id, project_id").in("rfq_id", mIds),
+    ]);
+    const poOf: Record<string, number> = {}; for (const o of must(mPos) as any[]) poOf[`${o.rfq_id}:${o.project_id}`] = o.id;
+    for (const m of multi) {
+      const its = (must(mItems) as any[]).filter((i) => i.rfq_id === m.id);
+      const combos = new Map<string, { project_id: number; quote_id: number }>();
+      for (const i of its) for (const a of (Array.isArray(i.alloc) ? i.alloc : [])) if (a.project_id && a.quote_id) combos.set(`${a.project_id}:${a.quote_id}`, { project_id: Number(a.project_id), quote_id: Number(a.quote_id) });
+      for (const [k, c] of combos) {
+        if (projectId && c.project_id !== projectId) continue;
+        const vid = `${m.id}:${k}`;
+        rfqs.push({ id: vid, supplier_id: m.supplier_id, quote_id: c.quote_id, project_id: c.project_id, vat_mode: m.vat_mode, lump_total: null, po_id: poOf[`${m.id}:${c.project_id}`] ?? null });
+        virtItems[vid] = its.map((i) => {
+          const q = (Array.isArray(i.alloc) ? i.alloc : []).filter((a: any) => Number(a.project_id) === c.project_id && Number(a.quote_id) === c.quote_id).reduce((t: number, a: any) => t + Number(a.qty), 0);
+          return q > 0 ? { ...i, rfq_id: vid, qty: q } : null;
+        }).filter(Boolean);
+      }
+    }
+  }
   const uniq = (a: any[]) => [...new Set(a.filter((x) => x != null))];
-  const rfqIds = rfqs.map((r) => r.id), poIds = uniq(rfqs.map((r) => r.po_id)), supIds = uniq(rfqs.map((r) => r.supplier_id)),
+  const rfqIds = rfqs.map((r) => r.id).filter((x) => typeof x === "number"), poIds = uniq(rfqs.map((r) => r.po_id)), supIds = uniq(rfqs.map((r) => r.supplier_id)),
     quoteIds = uniq(rfqs.map((r) => r.quote_id)), projIds = uniq(rfqs.map((r) => r.project_id));
   const none = { vatRate: 15, target: PRICING_TARGET_MARGIN, projects: [] as any[], items: [] as any[] };
   if (!rfqs.length) return none;
   const [itemsR, supsR, posR, quotesR, profR, stR] = await Promise.all([
-    supabase.from("rfq_items").select("rfq_id, line_no, label, qty, unit, unit_price").in("rfq_id", rfqIds).order("line_no"),
+    rfqIds.length ? supabase.from("rfq_items").select("rfq_id, line_no, label, qty, unit, unit_price").in("rfq_id", rfqIds).order("line_no") : Promise.resolve({ data: [], error: null }),
     supabase.from("suppliers").select("id, name").in("id", supIds),
     poIds.length ? supabase.from("v_purchase_orders").select("po_id, po_number, amount, billed, paid, status, order_date").in("po_id", poIds) : Promise.resolve({ data: [], error: null }),
     supabase.from("quotes").select("id, ref_code, ql_code, client_name, frozen:snapshot->frozenItems").in("id", quoteIds),
@@ -129,6 +154,7 @@ async function buildPricing(projectId?: number) {
   const quoteBy: Record<string, any> = {}; for (const x of must(quotesR) as any[]) quoteBy[String(x.id)] = x;
   const profBy: Record<string, any> = {}; for (const x of must(profR) as any[]) profBy[String(x.project_id)] = x;
   const itemsBy: Record<string, any[]> = {}; for (const x of must(itemsR) as any[]) (itemsBy[String(x.rfq_id)] ||= []).push(x);
+  for (const [k, v] of Object.entries(virtItems)) itemsBy[k] = v;
 
   const projects: Record<string, any> = {};
   for (const rf of rfqs) {
@@ -152,7 +178,9 @@ async function buildPricing(projectId?: number) {
     } else {
       for (const it of its) if (it.unit_price != null) addBuy(it, Number(it.qty), Number(it.unit_price) * f, Number(it.qty) * Number(it.unit_price) * f, false);
     }
-    if (po) P.pos.push({ ...base, amount: Number(po.amount), billed: Number(po.billed), paid: Number(po.paid), net: r2(poNet), vat_mode: rf.vat_mode, invoice_diff: Number(po.billed) > 0 ? r2(Number(po.billed) - Number(po.amount)) : null });
+    const prevPo = po ? P.pos.find((x: any) => x.po_id === rf.po_id) : null;
+    if (prevPo) prevPo.net = r2(prevPo.net + poNet);
+    else if (po) P.pos.push({ ...base, amount: Number(po.amount), billed: Number(po.billed), paid: Number(po.paid), net: r2(poNet), vat_mode: rf.vat_mode, invoice_diff: Number(po.billed) > 0 ? r2(Number(po.billed) - Number(po.amount)) : null });
   }
 
   const aggr: Record<string, any> = {};
@@ -280,7 +308,9 @@ Deno.serve(async (req: Request) => {
       if (!rfq) return json({ error: "طلب عرض السعر غير موجود" }, 404);
       let po = null;
       if (rfq.po_id) po = must(await supabase.from("v_purchase_orders").select("po_id, po_number, amount, billed, paid").eq("po_id", rfq.po_id).maybeSingle());
-      return json({ ok: true, rfq, items: must(items), po });
+      const poIdsOf = (must(await supabase.from("purchase_orders").select("id").eq("rfq_id", body.rfqId)) as any[]).map((x) => x.id);
+      const pos = poIdsOf.length ? must(await supabase.from("v_purchase_orders").select("po_id, po_number, amount, billed, paid, project_id, project_number").in("po_id", poIdsOf).order("po_id")) : [];
+      return json({ ok: true, rfq, items: must(items), po, pos });
     }
 
     if (action === "proc-create-rfq") {
@@ -291,6 +321,7 @@ Deno.serve(async (req: Request) => {
       }
       const items = (Array.isArray(body.items) ? body.items : []).map((i: any) => ({
         label: txt(i.label, 200), qty: i.qty, unit: txt(i.unit, 20), qty_note: txt(i.qty_note, 200),
+        ...(Array.isArray(i.alloc) ? { alloc: i.alloc.map((a: any) => ({ quote_id: a.quoteId ?? a.quote_id ?? null, project_id: a.projectId ?? a.project_id ?? null, qty: a.qty })) } : {}),
       }));
       const p = {
         supplier_id: body.supplierId || null, supplier_name: txt(body.supplierName, 150), quote_id: body.quoteId || null, quote_ref: quoteRef,
@@ -302,6 +333,13 @@ Deno.serve(async (req: Request) => {
     }
 
     // رد المورد: سعر كل بند لوحده (مش شرط كلهم — والسعر الفاضي بيمسح السعر) أو سعر إجمالي واحد. تقدر تعدّله بعد كده.
+    // أمر الشراء ده طالع من أنهي طلب عرض سعر؟ (الطلب المشترك بيطلّع أمر لكل مشروع)
+    if (action === "proc-po-rfq") {
+      if (!body.poId) bad("poId required");
+      const o: any = must(await supabase.from("purchase_orders").select("rfq_id").eq("id", body.poId).maybeSingle());
+      return json({ ok: true, rfqId: o?.rfq_id ?? null });
+    }
+
     if (action === "proc-record-quote") {
       if (!body.rfqId) bad("rfqId required");
       const lump = body.mode === "lump";

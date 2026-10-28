@@ -234,6 +234,47 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, editId: id });
     }
 
+    // تحويل واحد لمورد موزّع على أكتر من مشروع / فاتورة / أمر شراء (كل سطر = حركة بمشروعها، وبتتجمّع بمعرّف مجموعة)
+    if (action === "treasury-split-payment") {
+      const lines = (Array.isArray(body.lines) ? body.lines : []).map((l: any) => ({
+        amount: num(l.amount, "مبلغ السطر"), project_id: l.projectId || null, po_id: l.poId || null, bill_id: l.billId || null, notes: txt(l.notes, 500),
+      }));
+      if (!lines.length) bad("أضف سطر واحد على الأقل");
+      if (!body.supplierId) bad("اختر المورد");
+      if (!body.accountId) bad("اختر الحساب");
+      const p = {
+        supplier_id: body.supplierId, account_id: body.accountId, entry_date: dateOrNull(body.entryDate) || bad("التاريخ مطلوب"),
+        method: txt(body.method, 50), reference: txt(body.reference, 100), notes: txt(body.notes, 500),
+        total: body.total ? num(body.total, "مبلغ التحويل") : 0, lines,
+      };
+      const group = await rpc("finance_record_split_payment", { p });
+      await logAudit("add_split_payment", "treasury_entry", null, String(group), null, { lines: lines.length, total: lines.reduce((t: number, l: any) => t + l.amount, 0) });
+      return json({ ok: true, group });
+    }
+
+    if (action === "treasury-split-payment-delete") {
+      if (!body.group) bad("group required");
+      const n = await rpc("finance_delete_split_payment", { p_group: body.group });
+      await logAudit("delete_split_payment", "treasury_entry", null, String(body.group), null, { entries: n });
+      return json({ ok: true, deleted: n });
+    }
+
+    // فاتورة واحدة من المورد موزّعة على أكتر من مشروع (كل سطر = فاتورة بمشروعها بنفس الرقم، وبتتجمّع بمعرّف مجموعة)
+    if (action === "treasury-split-bill") {
+      const lines = (Array.isArray(body.lines) ? body.lines : []).map((l: any) => ({
+        amount: num(l.amount, "مبلغ السطر"), project_id: l.projectId || null, po_id: l.poId || null, description: txt(l.description, 500), cost_type: txt(l.costType, 50),
+      }));
+      if (!lines.length) bad("أضف سطر واحد على الأقل");
+      const p = {
+        supplier_id: body.supplierId || null, supplier_name: txt(body.supplierName, 150), bill_date: dateOrNull(body.billDate) || bad("التاريخ مطلوب"),
+        tax_treatment: body.taxTreatment || null, description: txt(body.description, 500), bill_number: txt(body.billNumber, 100), cost_type: txt(body.costType, 50),
+        doc_type: body.docType === "credit_note" ? "credit_note" : "invoice", total: body.total ? num(body.total, "قيمة الفاتورة") : 0, lines,
+      };
+      const group = await rpc("finance_record_split_bill", { p });
+      await logAudit("add_split_bill", "supplier_bill", null, String(group), null, { lines: lines.length, total: lines.reduce((t: number, l: any) => t + l.amount, 0) });
+      return json({ ok: true, group });
+    }
+
     return json({ error: "unknown_action" }, 400);
   } catch (err) {
     if (err instanceof BadRequest) return json({ error: err.message }, 400);
