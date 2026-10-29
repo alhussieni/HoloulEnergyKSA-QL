@@ -228,10 +228,28 @@ Deno.serve(async (req: Request) => {
       if ("amount" in f) p.amount = num(f.amount, "المبلغ");
       if ("billNumber" in f) p.bill_number = txt(f.billNumber, 100);
       if ("description" in f) p.description = txt(f.description, 500);
-      if (!Object.keys(p).length) bad("لا توجد حقول للتعديل");
-      const id = await rpc("finance_edit_bill", { p_id: body.billId, p, p_reason: reason });
+      const hasProj = "projectId" in f;
+      if (!Object.keys(p).length && !hasProj) bad("لا توجد حقول للتعديل");
+      let id: unknown = null;
+      if (Object.keys(p).length) id = await rpc("finance_edit_bill", { p_id: body.billId, p, p_reason: reason });
+      if (hasProj) {   // تغيير المشروع (أو إزالته ← مصروف عام): بتتنقل معاه التكلفة
+        await rpc("finance_set_bill_project", { p_id: body.billId, p_project: f.projectId || null, p_reason: reason });
+        p.project_id = f.projectId || null;
+      }
       await logAudit("edit_supplier_bill", "supplier_bill", Number(body.billId), reason, null, p);
       return json({ ok: true, editId: id });
+    }
+
+    // تقسيم فاتورة موجودة على أكتر من مشروع (مجموع الأسطر = قيمة الفاتورة). السطر الأول بيفضل على نفس الفاتورة.
+    if (action === "treasury-split-existing-bill") {
+      if (!body.billId) bad("billId required");
+      const reason = txt(String(body.reason || "").trim(), 300);
+      if (!reason) bad("اكتب سبب التقسيم");
+      const lines = (Array.isArray(body.lines) ? body.lines : []).map((l: any) => ({ project_id: l.projectId || null, amount: num(l.amount, "مبلغ السطر") }));
+      if (lines.length < 2) bad("التقسيم محتاج سطرين على الأقل");
+      const group = await rpc("finance_split_existing_bill", { p_id: body.billId, p: { lines }, p_reason: reason });
+      await logAudit("split_supplier_bill", "supplier_bill", Number(body.billId), reason, null, { lines });
+      return json({ ok: true, group });
     }
 
     // تحويل واحد لمورد موزّع على أكتر من مشروع / فاتورة / أمر شراء (كل سطر = حركة بمشروعها، وبتتجمّع بمعرّف مجموعة)
@@ -273,6 +291,25 @@ Deno.serve(async (req: Request) => {
       const group = await rpc("finance_record_split_bill", { p });
       await logAudit("add_split_bill", "supplier_bill", null, String(group), null, { lines: lines.length, total: lines.reduce((t: number, l: any) => t + l.amount, 0) });
       return json({ ok: true, group });
+    }
+
+    // بيانات كشف حساب المشروع / العميل (كل مشاريعه) للطباعة: التعاقد + الدفعات + الخصومات (+ التكاليف لو includeCosts)
+    if (action === "treasury-statement") {
+      let q = supabase.from("v_project_profit").select("*").order("project_id");
+      if (body.customerId) q = q.eq("customer_id", body.customerId);
+      else if (body.projectId) q = q.eq("project_id", body.projectId);
+      else bad("projectId أو customerId مطلوب");
+      const projects = must(await q) as any[];
+      if (!projects.length) return json({ error: "مفيش مشاريع" }, 404);
+      const ids = projects.map((p) => p.project_id);
+      const [pays, discs, costs] = await Promise.all([
+        supabase.from("payments").select("*").in("project_id", ids).order("payment_date"),
+        supabase.from("project_discounts").select("*").in("project_id", ids).order("created_at"),
+        body.includeCosts ? supabase.from("project_costs").select("*").in("project_id", ids).order("cost_date") : Promise.resolve({ data: [], error: null }),
+      ]);
+      const by = (rows: any[]) => { const m: Record<string, any[]> = {}; for (const r of rows) (m[String(r.project_id)] ||= []).push(r); return m; };
+      const P = by(must(pays) as any[]), D = by(must(discs) as any[]), C = by(must(costs) as any[]);
+      return json({ ok: true, projects: projects.map((p) => ({ ...p, payments: P[String(p.project_id)] || [], discounts: D[String(p.project_id)] || [], costs: C[String(p.project_id)] || [] })) });
     }
 
     return json({ error: "unknown_action" }, 400);

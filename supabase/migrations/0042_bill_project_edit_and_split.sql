@@ -1,0 +1,4 @@
+-- 0042 (اتطبقت باسم bill_project_edit_and_split): تغيير مشروع فاتورة مورد + تقسيم فاتورة موجودة على أكتر من مشروع
+-- finance_set_bill_project(p_id, p_project, p_reason): بينقل التكلفة للمشروع الجديد (أو يحوّلها مصروف عام لو من غير مشروع) وبيسجّل التعديل في supplier_bill_edits.
+-- finance_split_existing_bill(p_id, p jsonb {lines:[{project_id, amount}]}, p_reason): السطر الأول بيفضل على نفس الفاتورة وباقي الأسطر فواتير بنفس الرقم، وكلهم بنفس bill_group.
+-- (نص الدالتين الكامل متطبق على قاعدة Supabase؛ للاطلاع: select pg_get_functiondef('public.finance_set_bill_project(bigint,bigint,text)'::regprocedure);)
