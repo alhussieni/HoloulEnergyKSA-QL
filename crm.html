@@ -2290,8 +2290,12 @@ function stProjBlock(p, internal){
     <table class="dt" style="margin-top:10px"><thead><tr><th>البند</th><th>الصافي</th><th>الضريبة</th><th>الإجمالي (شامل)</th></tr></thead><tbody>
     <tr><td>التعاقد</td><td class="n">${finN(p.contract_net)}</td><td class="n">${finN(p.output_vat)}</td><td class="n">${finN(p.contract_gross)}</td></tr>
     <tr><td>التكاليف</td><td class="n">${finN(p.cost_net)}</td><td class="n">${finN(p.input_vat)}</td><td class="n">${finN(p.cost_gross)}</td></tr>
-    <tr class="g"><td>الربح</td><td class="n">${finN(p.actual_profit)}</td><td class="n">${finN(pv)}</td><td class="n">${finN(pg)}</td></tr></tbody></table>
-    <div class="note">الربح الصافي ${finN(p.actual_profit)} (هامش ${p.margin_pct ?? '-'}%). ضريبة الربح = ضريبة المبيعات − ضريبة المشتريات، وهي مستحقة للهيئة وليست ربحًا قابلًا للتوزيع.</div>`;
+    <tr class="g"><td>${Number(p.actual_profit)<0?'الخسارة':'الربح'}</td><td class="n">${finN(p.actual_profit)}</td><td class="n">${finN(pv)}</td><td class="n">${finN(pg)}</td></tr></tbody></table>
+    <table class="dt" style="margin-top:10px"><thead><tr><th colspan="2">الموقف النقدي حتى تاريخ الكشف (شامل الضريبة)</th></tr></thead><tbody>
+    <tr><td>إجمالي المحصّل من العميل</td><td class="n">${finN(p.collected)}</td></tr>
+    <tr><td>إجمالي المصروفات الفعلية</td><td class="n">${finN(p.cost_gross)}</td></tr>
+    <tr class="g"><td>${(Number(p.collected)-Number(p.cost_gross))<0?'العجز النقدي (المصروف أكبر من المحصّل)':'الفائض النقدي (المحصّل − المصروفات)'}</td><td class="n">${finN(Number(p.collected)-Number(p.cost_gross))}</td></tr></tbody></table>
+    <div class="note">${Number(p.actual_profit)<0?'صافي الخسارة':'الربح الصافي'} ${finN(p.actual_profit)} (هامش ${p.margin_pct ?? '-'}%). ضريبة الربح = ضريبة المبيعات − ضريبة المشتريات، وهي مستحقة للهيئة وليست ربحًا قابلًا للتوزيع.</div>`;
   }
   return h;
 }
@@ -4907,8 +4911,8 @@ async function renderProjectPanel(wrap, opportunityId, opp){
     <div class="section">
       <h4>التكاليف الفعلية ${p.total_cost!=null?`— الإجمالي: ${fmtMoney(p.total_cost)} ﷼ · الربح: ${fmtMoney(p.gross_profit)} ﷼ (${p.gross_margin.toFixed(1)}%)`:''}</h4>
       <div id="costsList">
-        ${(data.costs||[]).length ? data.costs.map(c=>`
-          <div class="quoteRow" data-cost-id="${c.id}"><div class="top"><span>${labelOf(SETTINGS.costTypes,c.cost_type)}</span><span>${fmtMoney(c.amount)} ﷼</span></div>
+        ${(data.costs||[]).length ? data.costs.slice().sort((a,b)=>{ const da=String(a.cost_date||a.created_at||'').slice(0,10), db=String(b.cost_date||b.created_at||'').slice(0,10); return da===db ? (Number(b.id)||0)-(Number(a.id)||0) : (da<db?1:-1); }).map(c=>`
+          <div class="quoteRow" data-cost-id="${c.id}"><div class="top"><span>${fmtDate(c.cost_date||c.created_at)} · ${labelOf(SETTINGS.costTypes,c.cost_type)}${c.supplier?' · '+escapeHtml(c.supplier):''}</span><span>${fmtMoney(c.amount)} ﷼</span></div>
           ${c.description?`<div>${escapeHtml(c.description)}</div>`:''}
           <button class="btn danger small delCostBtn" style="padding:3px 8px;margin-top:4px;">حذف</button></div>`).join('')
           : '<div class="emptyNote">لسه مفيش تكاليف مسجلة</div>'}
@@ -4918,7 +4922,7 @@ async function renderProjectPanel(wrap, opportunityId, opp){
         <div><label>المبلغ (﷼)</label><input type="number" id="cost_amount"></div>
         <div style="grid-column:1/-1;"><label>وصف</label><input type="text" id="cost_desc"></div>
       </div>
-      <div class="saveBar" style="margin-top:0;"><div></div><div class="right"><button class="btn ghost small" id="addCostBtn" type="button">+ إضافة تكلفة</button></div></div>
+      <div class="saveBar" style="margin-top:0;"><div><button class="btn small" id="printProjStatementBtn" type="button">🖨️ طباعة كشف حساب المشروع (المحصّل / المصروفات / الربح أو الخسارة)</button></div><div class="right"><button class="btn ghost small" id="addCostBtn" type="button">+ إضافة تكلفة</button></div></div>
     </div>` : ''}
   `;
 
@@ -4997,6 +5001,8 @@ async function renderProjectPanel(wrap, opportunityId, opp){
       renderProjectPanel(wrap, opportunityId, opp);
     }catch(err){ toast('خطأ: '+err.message); }
   });
+  const printStBtn = wrap.querySelector('#printProjStatementBtn');
+  if(printStBtn) printStBtn.addEventListener('click', ()=>stProjPrint('internal', p.id, p.customer_id));
   const addCostBtn = wrap.querySelector('#addCostBtn');
   if(addCostBtn) addCostBtn.addEventListener('click', async ()=>{
     const amount = wrap.querySelector('#cost_amount').value;
