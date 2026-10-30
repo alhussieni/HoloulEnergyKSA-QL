@@ -706,6 +706,17 @@ body.printing-cert #certPrintArea{display:block!important;}
     </section>
 
     <section id="view-settings" class="view">
+      <div class="card" id="adminCredCard">
+        <h3><span class="lbl">بيانات دخول الأدمن (اسم المستخدم وكلمة المرور)</span></h3>
+        <p class="emptyNote" style="margin-bottom:10px;">بعد الحفظ، الدخول بيبقى باسم المستخدم + كلمة المرور في الـ CRM ولوحة التحكم والحاسبة. لو هتحدد اسم مستخدم بس من غير تغيير الباسورد اكتب نفس الباسورد الحالي. الحفظ بيطلّع باقي الأجهزة من الجلسة.</p>
+        <div class="grid2">
+          <div><label>اسم المستخدم</label><input type="text" id="acUser" autocomplete="off" placeholder="حروف وأرقام بدون نقطتين (:)"></div>
+          <div></div>
+          <div><label>كلمة المرور (6 خانات على الأقل)</label><input type="password" id="acPass" autocomplete="new-password"></div>
+          <div><label>تأكيد كلمة المرور</label><input type="password" id="acPass2" autocomplete="new-password"></div>
+        </div>
+        <div class="saveBar"><div></div><div class="right"><button class="btn teal" id="acSaveBtn" type="button">حفظ بيانات الدخول</button></div></div>
+      </div>
       <div class="card">
         <h3><span class="lbl">إعدادات قوائم الـCRM</span></h3>
         <p class="emptyNote" style="margin-bottom:14px;">هنا تقدر تضيف/تعدّل/تحذف الخيارات اللي بتظهر في نموذج متابعة العميل (الحالة، أسباب توقف التنفيذ، رأي العميل في السعر، الأولوية، نوع التواصل) — من غير أي تعديل في الكود.</p>
@@ -735,6 +746,11 @@ body.printing-cert #certPrintArea{display:block!important;}
     </section>
 
     <section id="view-audit" class="view">
+      <div class="card" id="undoCard">
+        <h3><span class="lbl">↩︎ الرجوع عن آخر 6 إضافات / تعديلات (للأدمن فقط)</span></h3>
+        <p class="emptyNote" style="margin-bottom:10px;">الرجوع بيتم من الأحدث للأقدم، وبيشمل الإضافة والتعديل والحذف في المشاريع والمدفوعات والتكاليف والخزينة والموردين. العمليات اللي بعد تفعيل الميزة بس هي اللي بتظهر هنا. لو الصف اتغيّر بعد العملية الرجوع بيتوقف ويوضحلك السبب بدل ما يكتب فوق شغل أحدث. الفواتير الإلكترونية وشهادات الضمان خارج الرجوع عمدًا.</p>
+        <div id="undoList"><div class="loadingNote">بيحمّل...</div></div>
+      </div>
       <div class="filterBar">
         <input type="text" id="auditSearchInput" placeholder="دور باسم المستخدم أو اسم العنصر...">
         <select id="auditEntityFilter">
@@ -801,6 +817,8 @@ const QUOTES_FN = SUPABASE_URL + '/functions/v1/crm-quotes'; // كل العرو�
 const QUOTES_ACTIONS = new Set(['admin-crm-list-quotes']);
 const TREASURY_EDIT_FN = SUPABASE_URL + '/functions/v1/finance-treasury-edit'; // تعديل حركات الخزنة (أدمن فقط)
 const TREASURY_EDIT_ACTIONS = new Set(['treasury-get-entry','treasury-edit-entry','treasury-ledger-search','treasury-get-bill','treasury-edit-bill','treasury-split-payment','treasury-split-payment-delete','treasury-split-bill','treasury-statement','treasury-split-existing-bill']);
+const UNDO_FN = SUPABASE_URL + '/functions/v1/admin-undo'; // الرجوع عن آخر 6 عمليات (أدمن فقط)
+const UNDO_ACTIONS = new Set(['admin-undo-list','admin-undo-apply']);
 const PROCUREMENT_FN = SUPABASE_URL + '/functions/v1/finance-procurement'; // طلبات عروض الأسعار وكشف حساب المورد (أدمن فقط) — actions بتبدأ بـ proc-
 const PURCHASING_FN = SUPABASE_URL + '/functions/v1/finance-purchasing'; // المشتريات: أوامر الشراء وفواتير الموردين (أدمن فقط) — actions بتبدأ بـ purchasing-
 const TREASURY_FN = SUPABASE_URL + '/functions/v1/finance-treasury'; // الخزنة والموردين (أدمن فقط) — actions بتبدأ بـ treasury-
@@ -841,6 +859,13 @@ function readSharedAdminSession(){
 }
 function clearSharedAdminSession(){ localStorage.removeItem(ADMIN_SSO_KEY); }
 
+// بيانات دخول الأدمن: السيرفر بيحفظ بصمة «اسم المستخدم:كلمة المرور» فقط، فاسم المستخدم مفروض من السيرفر.
+// لو اسم المستخدم فاضي بنبعت كلمة المرور لوحدها (متوافق مع الوضع القديم لحد ما يتم تحديد اسم مستخدم).
+function adminCred(username, password){
+  const u = String(username||'').trim().toLowerCase();
+  return u ? (u + ':' + password) : password;
+}
+
 let SESSION = null; // { role, token, displayName }
 let loginRole = 'rep';
 
@@ -857,7 +882,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch(TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
+  const res = await fetch(UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -888,8 +913,8 @@ document.querySelectorAll('.roleTab').forEach(t=>{
     document.querySelectorAll('.roleTab').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
     loginRole = t.dataset.role;
-    document.getElementById('userField').style.display = loginRole==='admin' ? 'none' : 'block';
     document.getElementById('loginUser').required = loginRole !== 'admin';
+    document.getElementById('loginUser').placeholder = loginRole==='admin' ? 'اسم مستخدم الأدمن' : '';
   });
 });
 
@@ -901,7 +926,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   try{
     let body;
     if(loginRole === 'admin'){
-      body = { action:'admin-login', adminPassword: password };
+      body = { action:'admin-login', adminPassword: adminCred(document.getElementById('loginUser').value, password) };
     } else {
       const username = document.getElementById('loginUser').value.trim();
       body = { action:'rep-login', username, password };
@@ -912,7 +937,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
       body: JSON.stringify(body)
     });
     const data = await res.json();
-    if(data.error || !data.token){ errEl.textContent = loginRole==='admin' ? "كلمة السر غير صحيحة" : "بيانات الدخول غير صحيحة"; return; }
+    if(data.error || !data.token){ errEl.textContent = loginRole==='admin' ? "اسم المستخدم أو كلمة السر غير صحيحة" : "بيانات الدخول غير صحيحة"; return; }
     SESSION = { role: loginRole, token: data.token, displayName: loginRole==='admin' ? 'الأدمن' : data.displayName };
     sessionStorage.setItem('holoul_crm_session', JSON.stringify(SESSION));
     if(loginRole === 'admin') shareAdminSession(data.token); // let index.html's لوحة التحكم pick this up too
@@ -1015,7 +1040,7 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='maintenance') loadMaintenance();
   if(tab==='invoices'){ if(SESSION.role==='admin') loadInvReport(); else loadInvoices(); }
   if(tab==='settings') loadSettingsScreen();
-  if(tab==='audit') loadAuditLog();
+  if(tab==='audit'){ loadUndoPanel(); loadAuditLog(); }
   if(tab==='segments') loadSegments();
   if(tab==='finance') loadFinance();
   if(tab==='purchases') loadPurchases();
@@ -5489,11 +5514,12 @@ async function openMaintContractEditor(contractId, presetCustomerId){
 
 /* ============ AUDIT LOG (admin only) ============ */
 const AUDIT_ENTITY_LABELS = {
-  customer:'عميل', opportunity:'صفقة', quotation:'عرض سعر', project:'مشروع', payment_milestone:'دفعة خطة سداد',
+  customer:'عميل', opportunity:'صفقة', quotation:'عرض سعر', project:'مشروع', payment_milestone:'دفعة خطة سداد', change_journal:'سجل التغييرات',
 };
 const AUDIT_ACTION_LABELS = {
   stage_change:'تغيير المرحلة', status_change:'تغيير الحالة', create_version:'إنشاء نسخة جديدة',
   delete:'حذف', update:'تعديل', add_cost:'إضافة تكلفة', delete_cost:'حذف تكلفة', add_payment:'تسجيل دفعة',
+  undo_operation:'رجوع عن عملية',
 };
 let auditSearchDebounce;
 document.getElementById('auditSearchInput').addEventListener('input', ()=>{
@@ -5524,6 +5550,60 @@ function summarizeAuditChange(entry){
   return '';
 }
 
+/* ============ الرجوع عن آخر 6 عمليات (أدمن فقط) ============ */
+const UNDO_TABLE_LABELS = {
+  customers:'عميل', contacts:'جهة اتصال', sites:'موقع', opportunities:'صفقة', activities:'نشاط', crm_interactions:'تواصل',
+  projects:'مشروع', project_costs:'تكلفة مشروع', payments:'دفعة عميل', payment_milestones:'دفعة في خطة السداد', project_discounts:'خصم مشروع',
+  assets:'معدة', maintenance_contracts:'عقد صيانة', service_tickets:'بلاغ عطل', site_surveys:'معاينة موقع', technical_studies:'دراسة فنية', quotations:'عرض سعر رسمي',
+  expenses:'مصروف', recurring_expenses:'مصروف متكرر', partners:'شريك', partner_shares:'حصة شريك', partner_distributions:'توزيع أرباح',
+  suppliers:'مورد', supplier_bills:'فاتورة مورد', supplier_payment_allocations:'تخصيص دفعة مورد', purchase_orders:'أمر شراء', rfqs:'طلب عرض أسعار', rfq_items:'بند طلب عرض أسعار',
+  treasury_accounts:'حساب خزينة', treasury_entries:'حركة خزينة'
+};
+const UNDO_OP_LABELS = { INSERT:'إضافة', UPDATE:'تعديل', DELETE:'حذف' };
+function undoBriefText(b){
+  if(!b) return '';
+  const parts = [];
+  for(const k of ['name','title','project_number','customer_name','bill_number','cost_type','description','status','stage','entry_type']){
+    if(b[k]!=null && b[k]!=='') parts.push(escapeHtml(String(b[k]).slice(0,60)));
+  }
+  for(const k of ['amount','contract_value']){ if(b[k]!=null) parts.push(fmtMoney(b[k])+' ﷼'); }
+  for(const k of ['payment_date','cost_date']){ if(b[k]) parts.push(fmtDate(String(b[k]))); }
+  return parts.slice(0,5).join(' · ');
+}
+async function loadUndoPanel(){
+  const card = document.getElementById('undoCard'), wrap = document.getElementById('undoList');
+  if(!SESSION || SESSION.role !== 'admin'){ card.style.display = 'none'; return; }
+  card.style.display = '';
+  wrap.innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  try{
+    const d = await crmApi('admin-undo-list');
+    const ops = d.operations || [];
+    if(!ops.length){ wrap.innerHTML = '<div class="emptyNote">لسه مفيش عمليات مسجّلة للرجوع عنها. أي إضافة أو تعديل أو حذف من دلوقتي هتظهر هنا.</div>'; return; }
+    wrap.innerHTML = ops.map(o=>{
+      const when = new Date(o.at).toLocaleString('ar-EG',{dateStyle:'short',timeStyle:'short'});
+      const badge = o.undone ? '<span class="tag" style="background:#93a89c22;color:#6b7c72">اتراجع عنها</span>'
+                  : o.undoable ? '<span class="tag" style="background:#1e8e5a22;color:#1e8e5a">جاهزة للرجوع</span>'
+                  : '<span class="tag" style="background:#B5720B22;color:#B5720B">ارجع للأحدث الأول</span>';
+      const changes = (o.changes||[]).map(c=>`<div style="font-size:12.5px;">${UNDO_OP_LABELS[c.op]||c.op} · <b>${UNDO_TABLE_LABELS[c.tbl]||escapeHtml(c.tbl)}</b>${undoBriefText(c.brief)?' — '+undoBriefText(c.brief):''}</div>`).join('');
+      return `<div class="quoteRow" style="${o.undone?'opacity:.55;':''}">
+        <div class="top"><span>${when}</span>${badge}</div>
+        ${changes}
+        ${o.undoable ? `<button class="btn danger small undoApplyBtn" data-txid="${o.txid}" type="button" style="margin-top:8px;">↩︎ الرجوع عن هذه العملية</button>` : ''}
+      </div>`;
+    }).join('');
+    wrap.querySelectorAll('.undoApplyBtn').forEach(btn=>btn.addEventListener('click', async ()=>{
+      if(!confirm('هترجّع العملية دي لحالتها قبل ما تتم. تكمّل؟')) return;
+      btn.disabled = true;
+      try{
+        const r = await crmApi('admin-undo-apply', { txid: Number(btn.dataset.txid) });
+        toast('تم الرجوع ✅ ('+r.rows+' تغيير)');
+      }catch(err){ toast('تعذر الرجوع: '+err.message); }
+      loadUndoPanel();
+      loadAuditLog();
+    }));
+  }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+escapeHtml(err.message)+'</div>'; }
+}
+
 async function loadAuditLog(){
   const wrap = document.getElementById('auditLogWrap');
   wrap.innerHTML = '<div class="loadingNote">بيحمّل السجل...</div>';
@@ -5547,6 +5627,31 @@ async function loadAuditLog(){
       </tbody></table>`;
   }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
 }
+
+/* ============ بيانات دخول الأدمن (اسم المستخدم + كلمة المرور) ============ */
+document.getElementById('acSaveBtn').addEventListener('click', async ()=>{
+  if(!SESSION || SESSION.role !== 'admin'){ toast('الصفحة دي للأدمن فقط'); return; }
+  const u = document.getElementById('acUser').value.trim().toLowerCase();
+  const p = document.getElementById('acPass').value, p2 = document.getElementById('acPass2').value;
+  if(!u){ toast('اكتب اسم المستخدم'); return; }
+  if(u.includes(':')){ toast('اسم المستخدم ما ينفعش يحتوي على النقطتين (:)'); return; }
+  if(p.length < 6){ toast('كلمة المرور 6 خانات على الأقل'); return; }
+  if(p !== p2){ toast('تأكيد كلمة المرور مش مطابق'); return; }
+  if(!confirm('هتتغيّر بيانات دخول الأدمن لـ «'+u+'» وكلمة المرور اللي كتبتها. باقي الأجهزة هتتسجل خروج. تكمّل؟')) return;
+  const post = async body => {
+    const res = await fetch(ENGINE_FN, { method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+SUPABASE_ANON_KEY,'apikey':SUPABASE_ANON_KEY}, body: JSON.stringify(body) });
+    return res.json();
+  };
+  try{
+    const d = await post({ action:'change-admin-password', adminToken: SESSION.token, newPassword: adminCred(u, p) });
+    if(d.error || !d.token) throw new Error(d.error || 'تعذر الحفظ');
+    SESSION.token = d.token; sessionStorage.setItem('holoul_crm_session', JSON.stringify(SESSION)); shareAdminSession(d.token);
+    const chk = await post({ action:'admin-login', adminPassword: adminCred(u, p) }); // تأكيد إن الدخول الجديد شغّال
+    if(!chk.token) throw new Error('اتحفظت لكن تعذر التحقق من الدخول الجديد — جرّب تسجّل خروج وتدخل');
+    ['acUser','acPass','acPass2'].forEach(id=>document.getElementById(id).value='');
+    toast('اتحفظت بيانات الدخول ✅ — الدخول الجاي باسم المستخدم + كلمة المرور');
+  }catch(err){ toast('خطأ: '+err.message); }
+});
 
 const SETTINGS_GROUPS = [
   {key:'statuses', title:'حالات العميل', hasColor:true},

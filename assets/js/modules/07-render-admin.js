@@ -2485,9 +2485,11 @@ ${renderCompanySection()}
 <section class="admsec ${currentAdminSection==='security'?'active':''}" data-admsec="security">
   <div class="card no-print">
     <h3>الحماية</h3>
-    <label>كلمة مرور جديدة</label>
+    <label>اسم مستخدم الأدمن</label>
+    <input type="text" id="adm_newuser" autocomplete="off" placeholder="حروف وأرقام بدون نقطتين (:)">
+    <label>كلمة المرور (اكتب الحالية لو هتغيّر اسم المستخدم بس)</label>
     <input type="password" id="adm_newpass" placeholder="6 خانات على الأقل">
-    <button class="btn ghost small" id="adm_changecred" style="margin-top:10px">تحديث كلمة المرور</button>
+    <button class="btn ghost small" id="adm_changecred" style="margin-top:10px">تحديث بيانات الدخول</button>
     <button class="btn ghost small" id="adm_logout" style="margin-top:10px">🚪 تسجيل الخروج</button>
   </div>
 

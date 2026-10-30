@@ -21,6 +21,13 @@ function normalizeAdminConfig(cfg){
   return cfg;
 }
 
+// بيانات دخول الأدمن: السيرفر بيحفظ بصمة «اسم المستخدم:كلمة المرور» فقط، فاسم المستخدم مفروض من السيرفر.
+// لو اسم المستخدم فاضي بنبعت كلمة المرور لوحدها (متوافق مع الوضع القديم لحد ما يتم تحديد اسم مستخدم).
+function adminCred(username, password){
+  const u = String(username||'').trim().toLowerCase();
+  return u ? (u + ':' + password) : password;
+}
+
 function adminPasswordGate(cb){
   if(adminTokenMem){ cb(); return; }
   const shared = readSharedAdminSession();
@@ -32,16 +39,18 @@ function adminPasswordGate(cb){
     }).catch(()=>{ adminTokenMem = null; clearSharedAdminSession(); adminPasswordGate(cb); });
     return;
   }
+  const u = prompt('اسم مستخدم الأدمن (اتركه فاضي لو لسه ما اتحددش):');
+  if(u==null) return;
   const p = prompt('كلمة سر الأدمن:');
   if(p==null) return;
-  callEngine('admin-login', { adminPassword: p }).then(loginData=>{
+  callEngine('admin-login', { adminPassword: adminCred(u, p) }).then(loginData=>{
     adminTokenMem = loginData.token;
     shareAdminSession(adminTokenMem);
     return callEngine('admin-config', { adminToken: adminTokenMem });
   }).then(data=>{
     adminConfig = normalizeAdminConfig(data.config);
     cb();
-  }).catch(()=>{ adminTokenMem = null; alert('كلمة السر غير صحيحة'); });
+  }).catch(()=>{ adminTokenMem = null; alert('اسم المستخدم أو كلمة السر غير صحيحة'); });
 }
 
 /* IRR via bisection on a cash-flow array where cf[0] is the year-0 outlay */

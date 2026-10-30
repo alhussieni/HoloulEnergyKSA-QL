@@ -121,8 +121,10 @@ let adminAuthed = false;
 function renderAdminLogin(){
   return `<div class="card" style="max-width:360px;margin:40px auto">
     <h3>دخول لوحة التحكم</h3>
+    <label>اسم المستخدم</label>
+    <input type="text" id="adm_user" autocomplete="username" placeholder="اتركه فاضي لو لسه ما اتحددش">
     <label>كلمة المرور</label>
-    <input type="password" id="adm_pass">
+    <input type="password" id="adm_pass" autocomplete="current-password">
     <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;cursor:pointer">
       <input type="checkbox" id="adm_remember"> تذكرني على هذا الجهاز لمدة أسبوعين
     </label>
@@ -193,7 +195,7 @@ function wire(){
       const p=document.getElementById('adm_pass').value;
       const remember = document.getElementById('adm_remember').checked;
       try{
-        const loginData = await callEngine('admin-login', { adminPassword: p, rememberMe: remember });
+        const loginData = await callEngine('admin-login', { adminPassword: adminCred(document.getElementById('adm_user').value, p), rememberMe: remember });
         adminTokenMem = loginData.token;
         const data = await callEngine('admin-config', { adminToken: adminTokenMem });
         adminConfig = normalizeAdminConfig(data.config); adminAuthed = true;
@@ -208,7 +210,7 @@ function wire(){
         }
         shareAdminSession(adminTokenMem); // let crm.html pick this session up too, no re-login needed there
         render();
-      }catch(e){ adminTokenMem = null; alert('كلمة المرور غير صحيحة'); }
+      }catch(e){ adminTokenMem = null; alert('اسم المستخدم أو كلمة المرور غير صحيحة'); }
     };
     return;
   }
@@ -963,9 +965,12 @@ function wire(){
     if(!overviewStats && !overviewStatsLoading && !overviewStatsError) loadOverviewStats();
     document.getElementById('adm_changecred').onclick = async ()=>{
       const np=document.getElementById('adm_newpass').value;
-      if(!np){ alert('اكتب كلمة مرور جديدة أولاً'); return; }
+      const nu=(document.getElementById('adm_newuser')||{value:''}).value.trim();
+      if(!np){ alert('اكتب كلمة المرور (الحالية أو الجديدة) أولاً'); return; }
+      if(nu.includes(':')){ alert('اسم المستخدم ما ينفعش يحتوي على النقطتين (:)'); return; }
+      if(!nu && !confirm('من غير اسم مستخدم هيرجع الدخول بكلمة المرور فقط. تكمّل؟')) return;
       try{
-        const data = await callEngine('change-admin-password', { adminToken: adminTokenMem, newPassword: np });
+        const data = await callEngine('change-admin-password', { adminToken: adminTokenMem, newPassword: adminCred(nu, np) });
         adminTokenMem = data.token; // server rotates the session; old tokens elsewhere are now invalid
         if(localStorage.getItem(ADMIN_REMEMBER_KEY)) localStorage.setItem(ADMIN_REMEMBER_KEY, JSON.stringify({token: adminTokenMem, expiresAt: Date.now() + 14*24*3600*1000}));
         shareAdminSession(adminTokenMem); // keep crm.html's copy of the session in sync with the rotated token
