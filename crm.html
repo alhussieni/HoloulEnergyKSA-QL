@@ -625,6 +625,7 @@ body.printing-cert #certPrintArea{display:block!important;}
     </section>
 
     <section id="view-projects" class="view">
+      <div class="kpiGrid" id="projectsKpiGrid" style="grid-template-columns:repeat(2,minmax(0,1fr));"></div>
       <div class="filterBar">
         <input type="text" id="projectSearchInput" placeholder="دور برقم الجوال أو رقم المشروع...">
         <select id="projectStatusFilter"><option value="">كل الحالات</option></select>
@@ -5034,11 +5035,24 @@ async function loadProjects(){
     const search = document.getElementById('projectSearchInput').value.trim();
     const params = {}; if(status) params.status = status; if(search) params.search = search;
     const d = await crmApi('admin-crm-list-projects', params);
-    if(!d.projects.length){ wrap.innerHTML = '<div class="loadingNote">مفيش مشاريع مسجلة</div>'; return; }
+    // الترتيب حسب تاريخ التوقيع: الأحدث أولًا، والمشاريع بدون تاريخ توقيع في الآخر
+    const projects = (d.projects || []).slice().sort((a,b)=>{
+      const da = String(a.contract_signed_date||'').slice(0,10), db = String(b.contract_signed_date||'').slice(0,10);
+      if(da !== db){ if(!da) return 1; if(!db) return -1; return da < db ? 1 : -1; }
+      return (Number(b.id)||0) - (Number(a.id)||0);
+    });
+    // داشبورد صغير: إجمالي عدد العقود وإجمالي قيمتها
+    const kpi = document.getElementById('projectsKpiGrid');
+    if(kpi){
+      const totalValue = projects.reduce((s,p)=>s+(Number(p.contract_value)||0),0);
+      kpi.innerHTML = `<div class="stat"><div class="v">${projects.length.toLocaleString('ar-EG')}</div><div class="l">إجمالي عدد العقود</div></div>
+        <div class="stat sun"><div class="v">${fmtMoney(totalValue)} ﷼</div><div class="l">إجمالي قيمة العقود</div></div>`;
+    }
+    if(!projects.length){ wrap.innerHTML = '<div class="loadingNote">مفيش مشاريع مسجلة</div>'; return; }
     wrap.innerHTML = `<table class="admtable"><thead><tr>
       <th>رقم المشروع</th><th>العميل</th><th>الحالة</th><th>قيمة العقد</th><th>مدير المشروع</th><th>تاريخ التوقيع</th>
       </tr></thead><tbody>
-      ${d.projects.map(p=>{
+      ${projects.map(p=>{
         const sm = metaOf(SETTINGS.projectStatuses, p.status) || {label:p.status, color:'#93a89c'};
         return `<tr data-opp-id="${p.opportunity_id}">
           <td>${p.project_number}</td>
