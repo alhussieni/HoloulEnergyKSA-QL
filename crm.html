@@ -708,6 +708,17 @@ body.printing-cert #certPrintArea{display:block!important;}
     </section>
 
     <section id="view-settings" class="view">
+      <div class="card" id="viewersCard">
+        <h3><span class="lbl">حسابات المتابعين (شركاء — عرض فقط)</span></h3>
+        <p class="emptyNote" style="margin-bottom:10px;">المتابع يدخل من «دخول كمتابع» ويشوف المشاريع والموردين والخزنة فقط، بدون أي إضافة أو تعديل. حسابات المناديب بتتضاف من لوحة التحكم.</p>
+        <div id="viewersList"><div class="loadingNote">بيحمّل...</div></div>
+        <form class="finForm" id="viewerForm" onsubmit="viewerAdd(event)" autocomplete="off">
+          <div><label>الاسم</label><input name="displayName" required placeholder="مثال: مبارك"></div>
+          <div><label>اسم المستخدم (إنجليزي)</label><input name="username" required pattern="[A-Za-z0-9_.\-]{3,30}" placeholder="mubark"></div>
+          <div><label>كلمة المرور (6 خانات على الأقل)</label><input name="password" type="password" required minlength="6" autocomplete="new-password"></div>
+          <div><button class="btn small teal">+ إضافة متابع</button></div>
+        </form>
+      </div>
       <div class="card" id="adminCredCard">
         <h3><span class="lbl">بيانات دخول الأدمن (اسم المستخدم وكلمة المرور)</span></h3>
         <p class="emptyNote" style="margin-bottom:10px;">بعد الحفظ، الدخول بيبقى باسم المستخدم + كلمة المرور في الـ CRM ولوحة التحكم والحاسبة. لو هتحدد اسم مستخدم بس من غير تغيير الباسورد اكتب نفس الباسورد الحالي. الحفظ بيطلّع باقي الأجهزة من الجلسة.</p>
@@ -5785,7 +5796,41 @@ const SETTINGS_GROUPS = [
   {key:'maintenanceContractStatuses', title:'حالات عقود الصيانة', hasColor:true},
   {key:'milestoneStatuses', title:'حالات دفعات خطة السداد', hasColor:true},
 ];
+/* ===== حسابات المتابعين (أدمن فقط) ===== */
+const VIEWERS_FN = SUPABASE_URL + '/functions/v1/viewers-admin';
+async function viewersApi(action, payload={}){
+  const res = await fetch(VIEWERS_FN, { method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY },
+    body: JSON.stringify(Object.assign({action, adminToken: SESSION.token}, payload)) });
+  let data; try{ data = await res.json(); }catch(e){ throw new Error('رد غير متوقع من السيرفر'); }
+  if(data.error) throw new Error(data.error);
+  return data;
+}
+async function loadViewers(){
+  const card = document.getElementById('viewersCard'); if(!card) return;
+  if(!SESSION || SESSION.role !== 'admin'){ card.style.display = 'none'; return; }
+  const box = document.getElementById('viewersList');
+  try{
+    const { viewers } = await viewersApi('viewers-list');
+    box.innerHTML = viewers.length ? `<table class="admtable"><thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الحالة</th><th></th></tr></thead><tbody>
+      ${viewers.map(v=>`<tr style="cursor:default"><td>${escapeHtml(v.display_name)}</td><td dir="ltr" style="text-align:right">${escapeHtml(v.username)}</td>
+        <td>${v.active?'<span class="tag" style="background:var(--ok-tint,#e3f6f1);color:#0b7a66">نشط</span>':'<span class="tag warn">موقوف</span>'}</td>
+        <td style="white-space:nowrap"><button class="btn ghost small" type="button" onclick="viewerPass(${v.id})">كلمة سر جديدة</button>
+        <button class="btn ghost small" type="button" onclick="viewerToggle(${v.id},${!v.active})">${v.active?'إيقاف':'تفعيل'}</button>
+        <button class="btn danger small" type="button" onclick="viewerDel(${v.id})">حذف</button></td></tr>`).join('')}</tbody></table>`
+      : '<div class="emptyNote">مفيش متابعين لسه.</div>';
+  }catch(e){ box.innerHTML = `<div class="emptyNote">${escapeHtml(e.message||'حصل خطأ')}</div>`; }
+}
+const viewerRun = async (f, msg) => { try{ await f(); if(msg) toast(msg); loadViewers(); }catch(e){ toast(e.message||'حصل خطأ'); } };
+function viewerAdd(e){ e.preventDefault(); const f=e.target, d=Object.fromEntries(new FormData(f));
+  viewerRun(async()=>{ await viewersApi('viewers-save', d); f.reset(); }, 'تمت إضافة المتابع'); }
+function viewerPass(id){ const p = prompt('اكتب كلمة المرور الجديدة (6 خانات على الأقل). هتفصل أي جلسة مفتوحة للمتابع.'); if(!p) return;
+  viewerRun(()=>viewersApi('viewers-save',{id, password:p}), 'تم تغيير كلمة المرور'); }
+function viewerToggle(id, active){ viewerRun(()=>viewersApi('viewers-save',{id, active}), active?'تم التفعيل':'تم الإيقاف'); }
+function viewerDel(id){ if(!confirm('حذف حساب المتابع نهائيًا؟')) return; viewerRun(()=>viewersApi('viewers-delete',{id}), 'تم الحذف'); }
+
 function loadSettingsScreen(){
+  loadViewers();
   const wrap = document.getElementById('settingsGroups');
   wrap.innerHTML = SETTINGS_GROUPS.map(g=>`
     <div class="settingsGroup" data-key="${g.key}">
