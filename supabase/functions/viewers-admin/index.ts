@@ -68,6 +68,7 @@ async function logAudit(actionType: string, id: number | null, label: string | n
 class BadRequest extends Error {}
 const bad = (m: string): never => { throw new BadRequest(m); };
 const USER_RE = /^[A-Za-z0-9_.-]{3,30}$/;
+const ROLES = ["viewer", "accountant"];
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
@@ -81,7 +82,7 @@ Deno.serve(async (req: Request) => {
 
   try {
     if (action === "viewers-list") {
-      const { data, error } = await supabase.from("viewers").select("id, username, display_name, active, created_at").order("id");
+      const { data, error } = await supabase.from("viewers").select("id, username, display_name, active, role, created_at").order("id");
       if (error) throw error;
       return json({ ok: true, viewers: data || [] });
     }
@@ -97,6 +98,7 @@ Deno.serve(async (req: Request) => {
         const update: Record<string, unknown> = {};
         if (displayName) update.display_name = displayName;
         if ("active" in body) update.active = !!body.active;
+        if (body.role !== undefined) { if (!ROLES.includes(String(body.role))) bad("نوع الحساب غير صالح"); update.role = String(body.role); }
         if (password) {
           const { data: cur } = await supabase.from("viewers").select("session_version").eq("id", id).maybeSingle();
           if (!cur) bad("الحساب غير موجود");
@@ -112,12 +114,14 @@ Deno.serve(async (req: Request) => {
 
       const username = String(body.username ?? "").trim();
       if (!USER_RE.test(username)) bad("اسم المستخدم حروف إنجليزية وأرقام فقط (3 إلى 30)، ممكن _ . -");
+      const role = body.role === undefined || body.role === "" ? "viewer" : String(body.role);
+      if (!ROLES.includes(role)) bad("نوع الحساب غير صالح");
       if (!displayName) bad("الاسم مطلوب");
       if (!password) bad("كلمة المرور مطلوبة");
       const { data, error } = await supabase.from("viewers")
-        .insert({ username, display_name: displayName, password_hash: await sha256Hex(password) }).select("id").single();
+        .insert({ username, display_name: displayName, role, password_hash: await sha256Hex(password) }).select("id").single();
       if (error) { if ((error as any).code === "23505") bad("اسم المستخدم ده مستخدم قبل كده"); throw error; }
-      await logAudit("add_viewer", data.id, username, { display_name: displayName });
+      await logAudit("add_viewer", data.id, username, { display_name: displayName, role });
       return json({ ok: true, id: data.id });
     }
 

@@ -1,7 +1,8 @@
 // HoloulEnergy — costs-api Edge Function (READ-ONLY)
 //
-// Serves "viewer" accounts (read-only partners/followers, table `viewers`)
-// and the admin. Rep tokens are NOT accepted here.
+// Serves read-only accounts (table `viewers`, type `viewer` = partner or
+// `accountant`) and the admin. Rep tokens are NOT accepted here. What each type
+// may call is enforced server-side (ACCESS below), read from the DB per request.
 //
 //   * viewer-login  : username + password -> signed token (sub = "viewer:<user>").
 //                     That token type is rejected by crm-api, compute-quote and
@@ -73,24 +74,35 @@ async function readToken(token: unknown): Promise<{ sub: string; ver: number; ex
 
 const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-async function authenticate(body: any): Promise<boolean> {
+type Role = "admin" | "viewer" | "accountant";
+
+async function authenticate(body: any): Promise<Role | null> {
   if (body.adminToken) {
     const p = await readToken(body.adminToken);
     if (p && p.sub === "admin") {
       const { data, error } = await supabase.from("admin_secret").select("session_version").eq("id", 1).single();
-      if (!error && data && p.ver === data.session_version) return true;
+      if (!error && data && p.ver === data.session_version) return "admin";
     }
   }
   if (body.token) {
     const p = await readToken(body.token);
     if (p && p.sub.startsWith("viewer:")) {
       const { data, error } = await supabase.from("viewers")
-        .select("active, session_version").eq("username", p.sub.slice(7)).single();
-      if (!error && data && data.active && p.ver === data.session_version) return true;
+        .select("active, session_version, role").eq("username", p.sub.slice(7)).single();
+      if (!error && data && data.active && p.ver === data.session_version) {
+        return data.role === "accountant" ? "accountant" : "viewer";
+      }
     }
   }
-  return false;
+  return null;
 }
+
+// Which actions each account type may call.
+const ACCESS: Record<Role, string[] | "all"> = {
+  admin: "all",
+  viewer: ["costs-projects", "costs-project-detail", "costs-suppliers", "costs-supplier-statement", "costs-treasury"],
+  accountant: ["costs-suppliers", "costs-supplier-statement", "costs-treasury", "costs-customers", "costs-customer-statement"],
+};
 
 class BadRequest extends Error {}
 const bad = (m: string): never => { throw new BadRequest(m); };
@@ -110,6 +122,8 @@ const idOf = (v: unknown, label: string): number => {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
 // Columns of v_project_profit a viewer may see. NO actual_profit, NO margin_pct.
+// Accountant sees contract / collected / remaining per customer — no cost, no profit.
+const CUSTOMER_COLS = "project_id, project_number, customer_id, customer_name, status, contract_gross, collected, remaining";
 const PROJECT_COLS = "project_id, project_number, customer_name, status, is_completed, completion_date, contract_gross, cost_gross, cost_net, collected, remaining";
 
 Deno.serve(async (req: Request) => {
@@ -126,14 +140,17 @@ Deno.serve(async (req: Request) => {
     const password = String(body.password || "");
     if (!username || !password) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
     const { data } = await supabase.from("viewers")
-      .select("username, password_hash, display_name, active, session_version").eq("username", username).maybeSingle();
+      .select("username, password_hash, display_name, active, session_version, role").eq("username", username).maybeSingle();
     const ok = data && data.active && safeEq(await sha256Hex(password), data.password_hash);
     if (!ok) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
     const token = await issueToken(`viewer:${data!.username}`, data!.session_version, 12 * 3600);
-    return json({ ok: true, token, displayName: data!.display_name });
+    return json({ ok: true, token, displayName: data!.display_name, role: data!.role === "accountant" ? "accountant" : "viewer" });
   }
 
-  if (!(await authenticate(body))) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
+  const role = await authenticate(body);
+  if (!role) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
+  const allowed = ACCESS[role];
+  if (allowed !== "all" && !allowed.includes(action)) return json({ error: "ليس لديك صلاحية على هذه الشاشة" }, 403);
 
   try {
     if (action === "costs-projects") {
@@ -180,6 +197,46 @@ Deno.serve(async (req: Request) => {
       const s = must(sup);
       if (!s) return json({ error: "المورد غير موجود" }, 404);
       return json({ ok: true, supplier: s, bills: must(bills) || [], statement: must(stmt) || [], projects: must(projs) || [] });
+    }
+
+    if (action === "costs-customers") {
+      const rows = (must(await supabase.from("v_project_profit").select(CUSTOMER_COLS).limit(5000)) || []) as any[];
+      const by = new Map<number, any>();
+      for (const r of rows) {
+        const k = Number(r.customer_id);
+        const c = by.get(k) || { customer_id: k, name: r.customer_name, projects: 0, contract: 0, collected: 0, remaining: 0 };
+        c.projects += 1; c.contract += Number(r.contract_gross) || 0; c.collected += Number(r.collected) || 0; c.remaining += Number(r.remaining) || 0;
+        by.set(k, c);
+      }
+      const customers = [...by.values()].map((c) => ({ ...c, contract: r2(c.contract), collected: r2(c.collected), remaining: r2(c.remaining) }))
+        .sort((a, b) => b.remaining - a.remaining);
+      return json({
+        ok: true, customers,
+        totals: {
+          contract: r2(customers.reduce((t, c) => t + c.contract, 0)),
+          collected: r2(customers.reduce((t, c) => t + c.collected, 0)),
+          remaining: r2(customers.reduce((t, c) => t + c.remaining, 0)),
+        },
+      });
+    }
+
+    if (action === "costs-customer-statement") {
+      const cid = idOf(body.customerId, "customerId");
+      const projects = (must(await supabase.from("v_project_profit").select(CUSTOMER_COLS).eq("customer_id", cid).order("project_id", { ascending: false })) || []) as any[];
+      if (!projects.length) return json({ error: "العميل غير موجود أو ليس له مشاريع" }, 404);
+      const ids = projects.map((p) => p.project_id);
+      const pays = (must(await supabase.from("payments").select("id, project_id, amount, payment_date, method, notes").in("project_id", ids).order("payment_date", { ascending: false })) || []) as any[];
+      const num: Record<string, string> = Object.fromEntries(projects.map((p) => [String(p.project_id), p.project_number]));
+      return json({
+        ok: true,
+        customer: {
+          customer_id: cid, name: projects[0].customer_name,
+          contract: r2(projects.reduce((t, p) => t + (Number(p.contract_gross) || 0), 0)),
+          collected: r2(projects.reduce((t, p) => t + (Number(p.collected) || 0), 0)),
+          remaining: r2(projects.reduce((t, p) => t + (Number(p.remaining) || 0), 0)),
+        },
+        projects, payments: pays.map((x) => ({ ...x, project_number: num[String(x.project_id)] || null })),
+      });
     }
 
     if (action === "costs-treasury") {

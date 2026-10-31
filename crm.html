@@ -473,7 +473,7 @@ body.printing-cert #certPrintArea{display:block!important;}
     <div class="roleTabs">
       <div class="roleTab active" data-role="rep">دخول كمندوب</div>
       <div class="roleTab" data-role="admin">دخول كأدمن</div>
-      <div class="roleTab" data-role="viewer">دخول كمتابع</div>
+      <div class="roleTab" data-role="viewer">متابع / محاسب</div>
     </div>
     <form id="loginForm">
       <div id="userField">
@@ -709,10 +709,11 @@ body.printing-cert #certPrintArea{display:block!important;}
 
     <section id="view-settings" class="view">
       <div class="card" id="viewersCard">
-        <h3><span class="lbl">حسابات المتابعين (شركاء — عرض فقط)</span></h3>
-        <p class="emptyNote" style="margin-bottom:10px;">المتابع يدخل من «دخول كمتابع» ويشوف المشاريع والموردين والخزنة فقط، بدون أي إضافة أو تعديل. حسابات المناديب بتتضاف من لوحة التحكم.</p>
+        <h3><span class="lbl">حسابات المتابعين والمحاسبين (عرض فقط)</span></h3>
+        <p class="emptyNote" style="margin-bottom:10px;">الدخول من تبويب «متابع / محاسب». <b>متابع (شريك)</b>: المشاريع والموردين والخزنة. <b>محاسب</b>: الخزنة وحركة الموردين والعملاء. الاتنين عرض فقط بدون أي إضافة أو تعديل. حسابات المناديب بتتضاف من لوحة التحكم.</p>
         <div id="viewersList"><div class="loadingNote">بيحمّل...</div></div>
         <form class="finForm" id="viewerForm" onsubmit="viewerAdd(event)" autocomplete="off">
+          <div><label>النوع</label><select name="role"><option value="viewer">متابع (شريك)</option><option value="accountant">محاسب</option></select></div>
           <div><label>الاسم</label><input name="displayName" required placeholder="مثال: مبارك"></div>
           <div><label>اسم المستخدم (إنجليزي)</label><input name="username" required pattern="[A-Za-z0-9_.\-]{3,30}" placeholder="mubark"></div>
           <div><label>كلمة المرور (6 خانات على الأقل)</label><input name="password" type="password" required minlength="6" autocomplete="new-password"></div>
@@ -956,7 +957,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
     });
     const data = await res.json();
     if(data.error || !data.token){ errEl.textContent = loginRole==='admin' ? "اسم المستخدم أو كلمة السر غير صحيحة" : "بيانات الدخول غير صحيحة"; return; }
-    SESSION = { role: loginRole, token: data.token, displayName: loginRole==='admin' ? 'الأدمن' : data.displayName };
+    SESSION = { role: loginRole, token: data.token, displayName: loginRole==='admin' ? 'الأدمن' : data.displayName, vrole: data.role || null };
     sessionStorage.setItem('holoul_crm_session', JSON.stringify(SESSION));
     if(loginRole === 'admin') shareAdminSession(data.token); // let index.html's لوحة التحكم pick this up too
     enterApp();
@@ -1070,7 +1071,9 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
 /* الصلاحية بتتفرض في السيرفر (costs-api). الواجهة بتخفي التبويب بس. كله قراءة — مفيش أي تعديل. */
 const COSTS_FN = SUPABASE_URL + '/functions/v1/costs-api';
 let costsTab = 'projects';
-const COSTS_TABS = { projects:'المشاريع', suppliers:'الموردون', treasury:'الخزنة' };
+const COSTS_ALL_TABS = { projects:'المشاريع', suppliers:'الموردون', treasury:'الخزنة', customers:'العملاء' };
+/* المتابع (شريك): مشاريع + موردين + خزنة. المحاسب: خزنة + موردين + عملاء. الصلاحية الفعلية في السيرفر. */
+const costsTabs = () => { const k = SESSION && SESSION.vrole==='accountant' ? ['treasury','suppliers','customers'] : ['projects','suppliers','treasury']; return Object.fromEntries(k.map(x=>[x,COSTS_ALL_TABS[x]])); };
 const cN = v => Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 async function costsApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
@@ -1085,11 +1088,14 @@ async function costsApi(action, payload={}){
 function enterViewerApp(){
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  document.getElementById('repNameChip').textContent = SESSION.displayName + ' (متابع)';
+  const isAcc = SESSION.vrole === 'accountant';
+  costsTab = isAcc ? 'treasury' : 'projects';
+  document.getElementById('repNameChip').textContent = SESSION.displayName + (isAcc ? ' (محاسب)' : ' (متابع)');
   const costsBtn = document.getElementById('costsTabBtn');
   document.querySelectorAll('#tabsNav .grp').forEach(g=>g.classList.toggle('hidden', !g.contains(costsBtn)));
   document.querySelectorAll('#tabsNav button').forEach(b=>b.classList.add('hidden'));
   costsBtn.classList.remove('hidden'); costsBtn.classList.add('active');
+  costsBtn.lastChild.textContent = isAcc ? 'الحسابات (عرض فقط)' : 'التكاليف (عرض فقط)';
   document.querySelectorAll('section.view').forEach(v=>v.classList.remove('active'));
   document.getElementById('view-costs').classList.add('active');
   const gs = document.querySelector('.gSearchWrap'); if(gs) gs.classList.add('hidden');
@@ -1100,7 +1106,7 @@ function loadCosts(){
   const nav = document.getElementById('costsSubnav');
   if(!nav.dataset.ready){
     nav.dataset.ready = '1';
-    nav.innerHTML = Object.entries(COSTS_TABS).map(([k,v])=>`<button class="btn small" data-cs="${k}" type="button">${v}</button>`).join('');
+    nav.innerHTML = Object.entries(costsTabs()).map(([k,v])=>`<button class="btn small" data-cs="${k}" type="button">${v}</button>`).join('');
     nav.addEventListener('click', e=>{ const b=e.target.closest('button[data-cs]'); if(!b) return; costsTab=b.dataset.cs; costsLoad(); });
   }
   costsLoad();
@@ -1124,6 +1130,13 @@ async suppliers(){
   <div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>المورد</th><th>إجمالي الفواتير</th><th>المدفوع</th><th>الرصيد</th><th>مقدّم</th></tr></thead><tbody>
   ${d.suppliers.map(s=>`<tr onclick="costsOpenSupplier(${s.supplier_id})"><td>${escapeHtml(s.name)}</td><td>${cN(s.total_bills)}</td><td>${cN(s.total_paid)}</td><td>${supBal(s.balance)}</td><td>${supAdv(s.advance_open)}</td></tr>`).join('')}</tbody></table></div>`;
 },
+async customers(){
+  const d = await costsApi('costs-customers');
+  costsBody().innerHTML = `<div class="kpiGrid"><div class="stat"><div class="v">${cN(d.totals.contract)}</div><div class="l">إجمالي التعاقدات (شامل الضريبة)</div></div><div class="stat"><div class="v">${cN(d.totals.collected)}</div><div class="l">المحصّل</div></div><div class="stat bad"><div class="v">${cN(d.totals.remaining)}</div><div class="l">المتبقي على العملاء</div></div></div>
+  <div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>العميل</th><th>المشاريع</th><th>التعاقد</th><th>المحصّل</th><th>المتبقي</th></tr></thead><tbody>
+  ${d.customers.map(c=>`<tr onclick="costsOpenCustomer(${c.customer_id})"><td>${escapeHtml(c.name||'-')}</td><td>${c.projects}</td><td>${cN(c.contract)}</td><td>${cN(c.collected)}</td><td><b>${cN(c.remaining)}</b></td></tr>`).join('')}</tbody></table></div>
+  <div class="emptyNote">عرض فقط. اضغط على عميل لتشوف مشاريعه ودفعاته.</div>`;
+},
 async treasury(){
   const d = await costsApi('costs-treasury');
   costsBody().innerHTML = `<div class="kpiGrid"><div class="stat sun"><div class="v">${finS(d.totalBalance)}</div><div class="l">إجمالي الرصيد (خزنة + بنك + عهد)</div></div>
@@ -1143,6 +1156,19 @@ async function costsOpenProject(id){
     <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">بنود التكاليف</span></h3></div>${d.costs.length?`<table class="admtable"><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>المورد</th><th>المبلغ</th></tr></thead><tbody>${d.costs.map(c=>`<tr style="cursor:default"><td>${fmtDate(c.cost_date||c.created_at)}</td><td>${escapeHtml(c.cost_type)}</td><td>${escapeHtml(c.description||'')}</td><td>${escapeHtml(c.supplier||'')}</td><td><b>${cN(c.amount)}</b></td></tr>`).join('')}</tbody></table>`:'<div class="loadingNote">مفيش تكاليف مسجلة</div>'}</div>
     <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">فواتير الموردين</span></h3></div>${d.bills.length?`<table class="admtable"><thead><tr><th>التاريخ</th><th>المورد</th><th>رقم الفاتورة</th><th>المبلغ</th><th>المدفوع</th><th>المتبقي</th></tr></thead><tbody>${d.bills.map(b=>`<tr style="cursor:default"><td>${fmtDate(b.bill_date)}</td><td>${escapeHtml(b.supplier_name)}</td><td>${escapeHtml(b.bill_number||'')}</td><td>${cN(b.amount)}</td><td>${cN(b.paid)}</td><td>${cN(b.remaining)}</td></tr>`).join('')}</tbody></table>`:'<div class="loadingNote">لا يوجد</div>'}</div>
     <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">أوامر الشراء</span></h3></div>${d.orders.length?`<table class="admtable"><thead><tr><th>الأمر</th><th>المورد</th><th>التاريخ</th><th>المبلغ</th><th>المفوتر</th><th>المدفوع</th></tr></thead><tbody>${d.orders.map(o=>`<tr style="cursor:default"><td>${escapeHtml(o.po_number||'')}</td><td>${escapeHtml(o.supplier_name)}</td><td>${fmtDate(o.order_date)}</td><td>${cN(o.amount)}</td><td>${cN(o.billed)}</td><td>${cN(o.paid)}</td></tr>`).join('')}</tbody></table>`:'<div class="loadingNote">لا يوجد</div>'}</div>`;
+  }catch(e){ toast(e.message||'حصل خطأ'); costsLoad(); }
+}
+async function costsOpenCustomer(id){
+  costsBody().innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  try{
+    const d = await costsApi('costs-customer-statement',{customerId:id}), c = d.customer;
+    costsBody().innerHTML = `<button class="btn small ghost" type="button" onclick="costsLoad()">↩ رجوع</button>
+    <div class="card"><h3><span class="lbl">${escapeHtml(c.name||'-')}</span></h3><div class="kpiGrid">
+      <div class="stat"><div class="v">${cN(c.contract)}</div><div class="l">التعاقد</div></div>
+      <div class="stat"><div class="v">${cN(c.collected)}</div><div class="l">المحصّل</div></div>
+      <div class="stat bad"><div class="v">${cN(c.remaining)}</div><div class="l">المتبقي</div></div></div></div>
+    <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">المشاريع</span></h3></div><table class="admtable"><thead><tr><th>المشروع</th><th>التعاقد</th><th>المحصّل</th><th>المتبقي</th></tr></thead><tbody>${d.projects.map(p=>`<tr style="cursor:default"><td>${escapeHtml(p.project_number)}</td><td>${cN(p.contract_gross)}</td><td>${cN(p.collected)}</td><td><b>${cN(p.remaining)}</b></td></tr>`).join('')}</tbody></table></div>
+    <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">الدفعات المحصّلة</span></h3></div>${d.payments.length?`<table class="admtable"><thead><tr><th>التاريخ</th><th>المشروع</th><th>طريقة الدفع</th><th>المبلغ</th><th>ملاحظات</th></tr></thead><tbody>${d.payments.map(x=>`<tr style="cursor:default"><td>${fmtDate(x.payment_date)}</td><td>${escapeHtml(x.project_number||'')}</td><td>${escapeHtml(labelOf(SETTINGS.paymentMethods,x.method,x.method||''))}</td><td><b>${cN(x.amount)}</b></td><td>${escapeHtml(x.notes||'')}</td></tr>`).join('')}</tbody></table>`:'<div class="loadingNote">مفيش دفعات</div>'}</div>`;
   }catch(e){ toast(e.message||'حصل خطأ'); costsLoad(); }
 }
 async function costsOpenSupplier(id){
@@ -5812,10 +5838,11 @@ async function loadViewers(){
   const box = document.getElementById('viewersList');
   try{
     const { viewers } = await viewersApi('viewers-list');
-    box.innerHTML = viewers.length ? `<table class="admtable"><thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الحالة</th><th></th></tr></thead><tbody>
-      ${viewers.map(v=>`<tr style="cursor:default"><td>${escapeHtml(v.display_name)}</td><td dir="ltr" style="text-align:right">${escapeHtml(v.username)}</td>
+    box.innerHTML = viewers.length ? `<table class="admtable"><thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>النوع</th><th>الحالة</th><th></th></tr></thead><tbody>
+      ${viewers.map(v=>`<tr style="cursor:default"><td>${escapeHtml(v.display_name)}</td><td dir="ltr" style="text-align:right">${escapeHtml(v.username)}</td><td>${v.role==='accountant'?'محاسب':'متابع (شريك)'}</td>
         <td>${v.active?'<span class="tag" style="background:var(--ok-tint,#e3f6f1);color:#0b7a66">نشط</span>':'<span class="tag warn">موقوف</span>'}</td>
         <td style="white-space:nowrap"><button class="btn ghost small" type="button" onclick="viewerPass(${v.id})">كلمة سر جديدة</button>
+        <button class="btn ghost small" type="button" onclick="viewerRole(${v.id},'${v.role==='accountant'?'viewer':'accountant'}')">${v.role==='accountant'?'تحويل لمتابع':'تحويل لمحاسب'}</button>
         <button class="btn ghost small" type="button" onclick="viewerToggle(${v.id},${!v.active})">${v.active?'إيقاف':'تفعيل'}</button>
         <button class="btn danger small" type="button" onclick="viewerDel(${v.id})">حذف</button></td></tr>`).join('')}</tbody></table>`
       : '<div class="emptyNote">مفيش متابعين لسه.</div>';
@@ -5826,6 +5853,7 @@ function viewerAdd(e){ e.preventDefault(); const f=e.target, d=Object.fromEntrie
   viewerRun(async()=>{ await viewersApi('viewers-save', d); f.reset(); }, 'تمت إضافة المتابع'); }
 function viewerPass(id){ const p = prompt('اكتب كلمة المرور الجديدة (6 خانات على الأقل). هتفصل أي جلسة مفتوحة للمتابع.'); if(!p) return;
   viewerRun(()=>viewersApi('viewers-save',{id, password:p}), 'تم تغيير كلمة المرور'); }
+function viewerRole(id, role){ viewerRun(()=>viewersApi('viewers-save',{id, role}), 'تم تغيير النوع'); }
 function viewerToggle(id, active){ viewerRun(()=>viewersApi('viewers-save',{id, active}), active?'تم التفعيل':'تم الإيقاف'); }
 function viewerDel(id){ if(!confirm('حذف حساب المتابع نهائيًا؟')) return; viewerRun(()=>viewersApi('viewers-delete',{id}), 'تم الحذف'); }
 
