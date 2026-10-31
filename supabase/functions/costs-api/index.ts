@@ -1,19 +1,18 @@
 // HoloulEnergy — costs-api Edge Function (READ-ONLY)
 //
-// Lets a rep who was explicitly granted `reps.can_view_costs = true` VIEW
-// costs: project costs, suppliers (balances / statements / bills) and the
-// treasury (account balances + ledger). Admin tokens are accepted too.
+// Serves "viewer" accounts (read-only partners/followers, table `viewers`)
+// and the admin. Rep tokens are NOT accepted here.
 //
-// Hard rules enforced here (never in the browser):
-//   * Valid signed session token (HMAC, SESSION_SECRET) + matching
-//     session_version + rep is active + can_view_costs === true.
-//   * Every action is a SELECT. There is no insert/update/delete/rpc anywhere
-//     in this file — keep it that way.
-//   * Profit / margin / partner data is deliberately NOT exposed:
-//     v_project_profit is read through an explicit column allow-list that
-//     leaves out actual_profit and margin_pct, and partner tables are never
-//     touched.
-//   * Same token scheme as crm-api / finance-* (rep tokens: sub = "rep:<user>").
+//   * viewer-login  : username + password -> signed token (sub = "viewer:<user>").
+//                     That token type is rejected by crm-api, compute-quote and
+//                     every finance-* function (they accept only "rep:" / "admin").
+//   * costs-*       : projects, suppliers, treasury — SELECT only.
+//
+// Hard rules:
+//   * This file never writes to the database: no insert/update/delete/
+//     upsert/rpc anywhere — keep it that way.
+//   * Profit / margin / partner data is NOT exposed: v_project_profit is read
+//     through an explicit column allow-list (no actual_profit, no margin_pct).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -26,6 +25,10 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...CORS_HEADERS, "Content-Type": "application/json" } });
 }
 
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 function b64urlToString(s: string): string {
   s = s.replace(/-/g, "+").replace(/_/g, "/");
   while (s.length % 4) s += "=";
@@ -45,10 +48,21 @@ function sessionSecret(): string {
   if (!s) throw new Error("SESSION_SECRET is not configured for this project");
   return s;
 }
+async function issueToken(sub: string, ver: number, ttlSeconds: number): Promise<string> {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const payloadB64 = b64urlFromBytes(new TextEncoder().encode(JSON.stringify({ sub, ver, exp })));
+  return `${payloadB64}.${await hmacSign(sessionSecret(), payloadB64)}`;
+}
+function safeEq(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
+}
 async function readToken(token: unknown): Promise<{ sub: string; ver: number; exp: number } | null> {
   if (typeof token !== "string" || token.split(".").length !== 2) return null;
   const [payloadB64, sig] = token.split(".");
-  if ((await hmacSign(sessionSecret(), payloadB64)) !== sig) return null;
+  if (!safeEq(await hmacSign(sessionSecret(), payloadB64), sig)) return null;
   try {
     const payload = JSON.parse(b64urlToString(payloadB64));
     if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) return null;
@@ -59,28 +73,23 @@ async function readToken(token: unknown): Promise<{ sub: string; ver: number; ex
 
 const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
-type Who = { kind: "admin" } | { kind: "rep"; username: string; allowed: boolean };
-
-async function authenticate(body: any): Promise<Who | null> {
+async function authenticate(body: any): Promise<boolean> {
   if (body.adminToken) {
     const p = await readToken(body.adminToken);
     if (p && p.sub === "admin") {
       const { data, error } = await supabase.from("admin_secret").select("session_version").eq("id", 1).single();
-      if (!error && data && p.ver === data.session_version) return { kind: "admin" };
+      if (!error && data && p.ver === data.session_version) return true;
     }
   }
   if (body.token) {
     const p = await readToken(body.token);
-    if (p && p.sub.startsWith("rep:")) {
-      const username = p.sub.slice(4);
-      const { data, error } = await supabase.from("reps")
-        .select("username, active, session_version, can_view_costs").eq("username", username).single();
-      if (!error && data && data.active && p.ver === data.session_version) {
-        return { kind: "rep", username: data.username, allowed: data.can_view_costs === true };
-      }
+    if (p && p.sub.startsWith("viewer:")) {
+      const { data, error } = await supabase.from("viewers")
+        .select("active, session_version").eq("username", p.sub.slice(7)).single();
+      if (!error && data && data.active && p.ver === data.session_version) return true;
     }
   }
-  return null;
+  return false;
 }
 
 class BadRequest extends Error {}
@@ -100,7 +109,7 @@ const idOf = (v: unknown, label: string): number => {
 };
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-// Columns of v_project_profit a cost-viewer may see. NO actual_profit, NO margin_pct.
+// Columns of v_project_profit a viewer may see. NO actual_profit, NO margin_pct.
 const PROJECT_COLS = "project_id, project_number, customer_name, status, is_completed, completion_date, contract_gross, cost_gross, cost_net, collected, remaining";
 
 Deno.serve(async (req: Request) => {
@@ -109,27 +118,28 @@ Deno.serve(async (req: Request) => {
 
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "invalid JSON body" }, 400); }
-
-  const who = await authenticate(body);
-  if (!who) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
-
   const action = body.action;
 
-  // Lets the UI decide whether to show the tab. Never an error for a valid
-  // session: a rep without the grant simply gets allowed:false.
-  if (action === "costs-access") {
-    return json({ ok: true, allowed: who.kind === "admin" || who.allowed });
+  // ---- login (the only unauthenticated action; reads `viewers`, writes nothing) ----
+  if (action === "viewer-login") {
+    const username = String(body.username || "").trim();
+    const password = String(body.password || "");
+    if (!username || !password) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
+    const { data } = await supabase.from("viewers")
+      .select("username, password_hash, display_name, active, session_version").eq("username", username).maybeSingle();
+    const ok = data && data.active && safeEq(await sha256Hex(password), data.password_hash);
+    if (!ok) return json({ error: "بيانات الدخول غير صحيحة" }, 401);
+    const token = await issueToken(`viewer:${data!.username}`, data!.session_version, 12 * 3600);
+    return json({ ok: true, token, displayName: data!.display_name });
   }
 
-  if (who.kind === "rep" && !who.allowed) {
-    return json({ error: "ليس لديك صلاحية عرض التكاليف" }, 403);
-  }
+  if (!(await authenticate(body))) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
 
   try {
-    // ------------------------------------------------------------ projects
     if (action === "costs-projects") {
       const rows = must(await supabase.from("v_project_profit").select(PROJECT_COLS).order("project_id", { ascending: false }).limit(1000));
-      return json({ ok: true, projects: rows || [] });
+      const st = await supabase.from("crm_settings").select("data->projectStatuses").eq("id", 1).maybeSingle();
+      return json({ ok: true, projects: rows || [], statuses: (st.data as any)?.projectStatuses || [] });
     }
 
     if (action === "costs-project-detail") {
@@ -145,7 +155,6 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, project: p, costs: must(costs) || [], bills: must(bills) || [], orders: must(orders) || [] });
     }
 
-    // ----------------------------------------------------------- suppliers
     if (action === "costs-suppliers") {
       const rows = must(await supabase.from("v_supplier_balances")
         .select("supplier_id, name, phone, active, total_bills, total_paid, balance, advance_open").order("name"));
@@ -173,7 +182,6 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, supplier: s, bills: must(bills) || [], statement: must(stmt) || [], projects: must(projs) || [] });
     }
 
-    // ------------------------------------------------------------ treasury
     if (action === "costs-treasury") {
       const accounts = must(await supabase.from("v_account_balances")
         .select("account_id, name, kind, holder, active, opening_balance, total_in, total_out, balance").order("account_id")) as any[];

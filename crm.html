@@ -473,6 +473,7 @@ body.printing-cert #certPrintArea{display:block!important;}
     <div class="roleTabs">
       <div class="roleTab active" data-role="rep">دخول كمندوب</div>
       <div class="roleTab" data-role="admin">دخول كأدمن</div>
+      <div class="roleTab" data-role="viewer">دخول كمتابع</div>
     </div>
     <form id="loginForm">
       <div id="userField">
@@ -935,9 +936,9 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
       body = { action:'admin-login', adminPassword: adminCred(document.getElementById('loginUser').value, password) };
     } else {
       const username = document.getElementById('loginUser').value.trim();
-      body = { action:'rep-login', username, password };
+      body = { action: loginRole==='viewer' ? 'viewer-login' : 'rep-login', username, password };
     }
-    const res = await fetch(ENGINE_FN, {
+    const res = await fetch(loginRole==='viewer' ? COSTS_FN : ENGINE_FN, {
       method:"POST",
       headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_ANON_KEY,"apikey":SUPABASE_ANON_KEY},
       body: JSON.stringify(body)
@@ -958,6 +959,7 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
 });
 
 async function enterApp(){
+  if(SESSION && SESSION.role === 'viewer'){ enterViewerApp(); return; } // متابع: شاشة التكاليف فقط، بدون أي استدعاء للـ CRM
   syncSellerFromServer(); // يحمّل بيانات البائع من السيرفر (مصدر واحد)
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
@@ -968,8 +970,6 @@ async function enterApp(){
     document.getElementById('segmentsTabBtn').classList.remove('hidden');
     document.getElementById('financeTabBtn').classList.remove('hidden');
     document.getElementById('purchasesTabBtn').classList.remove('hidden');
-  } else {
-    initCostsAccess(); // يظهر تبويب التكاليف (عرض فقط) لو المندوب عنده الصلاحية
   }
   try{
     const s = await crmApi('admin-crm-settings');
@@ -1070,9 +1070,20 @@ async function costsApi(action, payload={}){
   if(data.error) throw new Error(data.error);
   return data;
 }
-async function initCostsAccess(){
-  if(!SESSION || SESSION.role === 'admin') return; // الأدمن عنده التبويبات الكاملة
-  try{ const r = await costsApi('costs-access'); if(r.allowed) document.getElementById('costsTabBtn').classList.remove('hidden'); }catch(e){ /* مفيش صلاحية = التبويب يفضل مخفي */ }
+/* حساب «متابع» (شريك): يشوف شاشات التكاليف فقط. التوكن بتاعه مش مقبول في أي دالة تانية، فالقيد في السيرفر مش في الواجهة. */
+function enterViewerApp(){
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('repNameChip').textContent = SESSION.displayName + ' (متابع)';
+  const costsBtn = document.getElementById('costsTabBtn');
+  document.querySelectorAll('#tabsNav .grp').forEach(g=>g.classList.toggle('hidden', !g.contains(costsBtn)));
+  document.querySelectorAll('#tabsNav button').forEach(b=>b.classList.add('hidden'));
+  costsBtn.classList.remove('hidden'); costsBtn.classList.add('active');
+  document.querySelectorAll('section.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-costs').classList.add('active');
+  const gs = document.querySelector('.gSearchWrap'); if(gs) gs.classList.add('hidden');
+  const back = document.querySelector('header.top a[href="index.html"]'); if(back) back.classList.add('hidden');
+  loadCosts();
 }
 function loadCosts(){
   const nav = document.getElementById('costsSubnav');
@@ -1091,9 +1102,9 @@ function costsLoad(){
 const costsBody = () => document.getElementById('costsBody');
 const COSTS_VIEWS = {
 async projects(){
-  const { projects:p } = await costsApi('costs-projects');
+  const cd = await costsApi('costs-projects'), p = cd.projects;
   costsBody().innerHTML = `<div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>المشروع</th><th>العميل</th><th>الحالة</th><th>التعاقد (شامل الضريبة)</th><th>التكاليف (شامل)</th><th>المحصّل</th><th>المتبقي</th></tr></thead><tbody>
-  ${p.map(x=>`<tr onclick="costsOpenProject(${x.project_id})"><td>${escapeHtml(x.project_number)}</td><td>${escapeHtml(x.customer_name)}</td><td>${escapeHtml(labelOf(SETTINGS.projectStatuses,x.status))}</td><td>${cN(x.contract_gross)}</td><td><b>${cN(x.cost_gross)}</b></td><td>${cN(x.collected)}</td><td>${cN(x.remaining)}</td></tr>`).join('')}</tbody></table></div>
+  ${p.map(x=>`<tr onclick="costsOpenProject(${x.project_id})"><td>${escapeHtml(x.project_number)}</td><td>${escapeHtml(x.customer_name)}</td><td>${escapeHtml(labelOf(cd.statuses&&cd.statuses.length?cd.statuses:SETTINGS.projectStatuses,x.status))}</td><td>${cN(x.contract_gross)}</td><td><b>${cN(x.cost_gross)}</b></td><td>${cN(x.collected)}</td><td>${cN(x.remaining)}</td></tr>`).join('')}</tbody></table></div>
   <div class="emptyNote">عرض فقط. اضغط على مشروع لتشوف بنود التكاليف وفواتير الموردين وأوامر الشراء.</div>`;
 },
 async suppliers(){
