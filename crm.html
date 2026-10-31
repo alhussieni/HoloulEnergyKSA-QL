@@ -534,6 +534,7 @@ body.printing-cert #certPrintArea{display:block!important;}
       <div class="grp">
         <div class="gt">المالية</div>
         <button data-tab="finance" id="financeTabBtn" class="hidden"><span class="ic">💰</span>الخزنة والحسابات</button>
+        <button data-tab="costs" id="costsTabBtn" class="hidden"><span class="ic">🧮</span>التكاليف (عرض فقط)</button>
       </div>
       <div class="grp">
         <div class="gt">الإدارة</div>
@@ -738,6 +739,11 @@ body.printing-cert #certPrintArea{display:block!important;}
     <section id="view-purchases" class="view">
       <div class="filterBar" id="purSubnav"></div>
       <div id="purBody"><div class="loadingNote">بيحمّل...</div></div>
+    </section>
+
+    <section id="view-costs" class="view">
+      <div class="filterBar" id="costsSubnav"></div>
+      <div id="costsBody"><div class="loadingNote">بيحمّل...</div></div>
     </section>
 
     <section id="view-finance" class="view">
@@ -962,6 +968,8 @@ async function enterApp(){
     document.getElementById('segmentsTabBtn').classList.remove('hidden');
     document.getElementById('financeTabBtn').classList.remove('hidden');
     document.getElementById('purchasesTabBtn').classList.remove('hidden');
+  } else {
+    initCostsAccess(); // يظهر تبويب التكاليف (عرض فقط) لو المندوب عنده الصلاحية
   }
   try{
     const s = await crmApi('admin-crm-settings');
@@ -1044,7 +1052,90 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='segments') loadSegments();
   if(tab==='finance') loadFinance();
   if(tab==='purchases') loadPurchases();
+  if(tab==='costs') loadCosts();
 });
+
+/* ============ COSTS (read-only view for reps granted can_view_costs) ============ */
+/* الصلاحية بتتفرض في السيرفر (costs-api). الواجهة بتخفي التبويب بس. كله قراءة — مفيش أي تعديل. */
+const COSTS_FN = SUPABASE_URL + '/functions/v1/costs-api';
+let costsTab = 'projects';
+const COSTS_TABS = { projects:'المشاريع', suppliers:'الموردون', treasury:'الخزنة' };
+const cN = v => Number(v||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+async function costsApi(action, payload={}){
+  const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
+  const res = await fetch(COSTS_FN, { method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY },
+    body: JSON.stringify(Object.assign({action}, authField, payload)) });
+  let data; try{ data = await res.json(); }catch(e){ throw new Error('رد غير متوقع من السيرفر'); }
+  if(data.error) throw new Error(data.error);
+  return data;
+}
+async function initCostsAccess(){
+  if(!SESSION || SESSION.role === 'admin') return; // الأدمن عنده التبويبات الكاملة
+  try{ const r = await costsApi('costs-access'); if(r.allowed) document.getElementById('costsTabBtn').classList.remove('hidden'); }catch(e){ /* مفيش صلاحية = التبويب يفضل مخفي */ }
+}
+function loadCosts(){
+  const nav = document.getElementById('costsSubnav');
+  if(!nav.dataset.ready){
+    nav.dataset.ready = '1';
+    nav.innerHTML = Object.entries(COSTS_TABS).map(([k,v])=>`<button class="btn small" data-cs="${k}" type="button">${v}</button>`).join('');
+    nav.addEventListener('click', e=>{ const b=e.target.closest('button[data-cs]'); if(!b) return; costsTab=b.dataset.cs; costsLoad(); });
+  }
+  costsLoad();
+}
+function costsLoad(){
+  document.querySelectorAll('#costsSubnav button').forEach(b=>b.classList.toggle('ghost', b.dataset.cs!==costsTab));
+  document.getElementById('costsBody').innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  COSTS_VIEWS[costsTab]().catch(e=>{ document.getElementById('costsBody').innerHTML = `<div class="emptyNote">${escapeHtml(e.message||'حصل خطأ')}</div>`; });
+}
+const costsBody = () => document.getElementById('costsBody');
+const COSTS_VIEWS = {
+async projects(){
+  const { projects:p } = await costsApi('costs-projects');
+  costsBody().innerHTML = `<div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>المشروع</th><th>العميل</th><th>الحالة</th><th>التعاقد (شامل الضريبة)</th><th>التكاليف (شامل)</th><th>المحصّل</th><th>المتبقي</th></tr></thead><tbody>
+  ${p.map(x=>`<tr onclick="costsOpenProject(${x.project_id})"><td>${escapeHtml(x.project_number)}</td><td>${escapeHtml(x.customer_name)}</td><td>${escapeHtml(labelOf(SETTINGS.projectStatuses,x.status))}</td><td>${cN(x.contract_gross)}</td><td><b>${cN(x.cost_gross)}</b></td><td>${cN(x.collected)}</td><td>${cN(x.remaining)}</td></tr>`).join('')}</tbody></table></div>
+  <div class="emptyNote">عرض فقط. اضغط على مشروع لتشوف بنود التكاليف وفواتير الموردين وأوامر الشراء.</div>`;
+},
+async suppliers(){
+  const d = await costsApi('costs-suppliers');
+  costsBody().innerHTML = `<div class="kpiGrid"><div class="stat bad"><div class="v">${cN(d.totals.payable)}</div><div class="l">مستحق للموردين</div></div><div class="stat"><div class="v">${cN(d.totals.advances)}</div><div class="l">دفعات مقدّمة عند الموردين</div></div></div>
+  <div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>المورد</th><th>إجمالي الفواتير</th><th>المدفوع</th><th>الرصيد</th><th>مقدّم</th></tr></thead><tbody>
+  ${d.suppliers.map(s=>`<tr onclick="costsOpenSupplier(${s.supplier_id})"><td>${escapeHtml(s.name)}</td><td>${cN(s.total_bills)}</td><td>${cN(s.total_paid)}</td><td>${supBal(s.balance)}</td><td>${supAdv(s.advance_open)}</td></tr>`).join('')}</tbody></table></div>`;
+},
+async treasury(){
+  const d = await costsApi('costs-treasury');
+  costsBody().innerHTML = `<div class="kpiGrid"><div class="stat sun"><div class="v">${finS(d.totalBalance)}</div><div class="l">إجمالي الرصيد (خزنة + بنك + عهد)</div></div>
+  ${d.accounts.filter(a=>a.active).map(a=>`<div class="stat"><div class="v">${finS(a.balance)}</div><div class="l">${escapeHtml(a.name)}</div></div>`).join('')}</div>
+  <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">آخر الحركات (حد أقصى 500)</span></h3></div><table class="admtable"><thead><tr><th>التاريخ</th><th>الحساب</th><th>النوع</th><th>مدين/دائن</th><th>المبلغ</th><th>المشروع / المورد</th><th>ملاحظات</th><th>الرصيد</th></tr></thead><tbody>
+  ${d.ledger.map(r=>`<tr style="cursor:default"><td>${fmtDate(r.entry_date)}</td><td>${escapeHtml(r.account_name)}</td><td>${escapeHtml(r.kind)}</td><td>${r.direction==='in'?'وارد':'صادر'}</td><td><b>${cN(r.amount)}</b></td><td>${escapeHtml(r.project_number||r.supplier_name||r.customer_name||'')}</td><td>${escapeHtml(r.notes||r.reference||'')}</td><td>${cN(r.running_balance)}</td></tr>`).join('')}</tbody></table></div>`;
+}};
+async function costsOpenProject(id){
+  costsBody().innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  try{
+    const d = await costsApi('costs-project-detail',{projectId:id}), p = d.project;
+    costsBody().innerHTML = `<button class="btn small ghost" type="button" onclick="costsLoad()">↩ رجوع</button>
+    <div class="card"><h3><span class="lbl">${escapeHtml(p.project_number)} — ${escapeHtml(p.customer_name)}</span></h3><div class="kpiGrid">
+      <div class="stat"><div class="v">${cN(p.contract_gross)}</div><div class="l">التعاقد</div></div>
+      <div class="stat sun"><div class="v">${cN(p.cost_gross)}</div><div class="l">إجمالي التكاليف</div></div>
+      <div class="stat"><div class="v">${cN(p.collected)}</div><div class="l">المحصّل</div></div></div></div>
+    <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">بنود التكاليف</span></h3></div>${d.costs.length?`<table class="admtable"><thead><tr><th>التاريخ</th><th>النوع</th><th>البيان</th><th>المورد</th><th>المبلغ</th></tr></thead><tbody>${d.costs.map(c=>`<tr style="cursor:default"><td>${fmtDate(c.cost_date||c.created_at)}</td><td>${escapeHtml(c.cost_type)}</td><td>${escapeHtml(c.description||'')}</td><td>${escapeHtml(c.supplier||'')}</td><td><b>${cN(c.amount)}</b></td></tr>`).join('')}</tbody></table>`:'<div class="loadingNote">مفيش تكاليف مسجلة</div>'}</div>
+    <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">فواتير الموردين</span></h3></div>${d.bills.length?`<table class="admtable"><thead><tr><th>التاريخ</th><th>المورد</th><th>رقم الفاتورة</th><th>المبلغ</th><th>المدفوع</th><th>المتبقي</th></tr></thead><tbody>${d.bills.map(b=>`<tr style="cursor:default"><td>${fmtDate(b.bill_date)}</td><td>${escapeHtml(b.supplier_name)}</td><td>${escapeHtml(b.bill_number||'')}</td><td>${cN(b.amount)}</td><td>${cN(b.paid)}</td><td>${cN(b.remaining)}</td></tr>`).join('')}</tbody></table>`:'<div class="loadingNote">لا يوجد</div>'}</div>
+    <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">أوامر الشراء</span></h3></div>${d.orders.length?`<table class="admtable"><thead><tr><th>الأمر</th><th>المورد</th><th>التاريخ</th><th>المبلغ</th><th>المفوتر</th><th>المدفوع</th></tr></thead><tbody>${d.orders.map(o=>`<tr style="cursor:default"><td>${escapeHtml(o.po_number||'')}</td><td>${escapeHtml(o.supplier_name)}</td><td>${fmtDate(o.order_date)}</td><td>${cN(o.amount)}</td><td>${cN(o.billed)}</td><td>${cN(o.paid)}</td></tr>`).join('')}</tbody></table>`:'<div class="loadingNote">لا يوجد</div>'}</div>`;
+  }catch(e){ toast(e.message||'حصل خطأ'); costsLoad(); }
+}
+async function costsOpenSupplier(id){
+  costsBody().innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  try{
+    const d = await costsApi('costs-supplier-statement',{supplierId:id}), s = d.supplier;
+    costsBody().innerHTML = `<button class="btn small ghost" type="button" onclick="costsLoad()">↩ رجوع</button>
+    <div class="card"><h3><span class="lbl">${escapeHtml(s.name)}</span></h3><div class="kpiGrid">
+      <div class="stat"><div class="v">${cN(s.total_bills)}</div><div class="l">إجمالي الفواتير</div></div>
+      <div class="stat"><div class="v">${cN(s.total_paid)}</div><div class="l">المدفوع</div></div>
+      <div class="stat sun"><div class="v">${supBal(s.balance)}</div><div class="l">الرصيد</div></div></div></div>
+    <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">كشف الحساب</span></h3></div>${d.statement.length?`<table class="admtable"><thead><tr><th>التاريخ</th><th>النوع</th><th>المرجع</th><th>المشروع</th><th>المبلغ</th><th>الرصيد الجاري</th></tr></thead><tbody>${d.statement.map(r=>`<tr style="cursor:default"><td>${fmtDate(r.doc_date)}</td><td>${escapeHtml(r.doc_kind)}</td><td>${escapeHtml(r.ref||r.po_number||'')}</td><td>${escapeHtml(r.project_number||'')}</td><td>${cN(r.amount)}</td><td>${supRun(r.running_balance)}</td></tr>`).join('')}</tbody></table>`:'<div class="loadingNote">لا يوجد</div>'}</div>
+    <div class="card" style="padding:0;overflow:auto"><div style="padding:14px 18px 0"><h3><span class="lbl">حسب المشروع</span></h3></div>${d.projects.length?`<table class="admtable"><thead><tr><th>المشروع</th><th>المفوتر</th><th>المدفوع</th><th>الرصيد</th></tr></thead><tbody>${d.projects.map(r=>`<tr style="cursor:default"><td>${escapeHtml(r.project_number||'بدون مشروع')}</td><td>${cN(r.invoiced)}</td><td>${cN(r.paid)}</td><td>${supBal(r.balance)}</td></tr>`).join('')}</tbody></table>`:'<div class="loadingNote">لا يوجد</div>'}</div>`;
+  }catch(e){ toast(e.message||'حصل خطأ'); costsLoad(); }
+}
 
 /* ============ FINANCE (admin only) ============ */
 /* كل المبالغ بتتسجل زي ما اتدفعت (شامل الضريبة)، والسيرفر بيفصل الصافي والضريبة. */
