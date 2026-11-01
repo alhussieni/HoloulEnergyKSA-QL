@@ -1775,18 +1775,33 @@ function purLoad(){
   finBody().innerHTML = '<div class="loadingNote">بيحمّل...</div>';
   finRun(()=>PUR_VIEWS[purTab]());
 }
+/* فلاتر أوامر الشراء (الحالة / المورد / المشروع) — بتتطبّق على الشاشة بس من غير ما نطلب بيانات تاني */
+let purOrdAll = [], purOrdF = { status:'', supplier:'', project:'' };
+const purPoKey = o => o.status==='cancelled' ? 'cancelled' : (Number(o.remaining_to_bill)<=0 ? 'billed' : 'open');
+const purOrdRow = x => `<tr style="cursor:default"><td><b>${escapeHtml(x.po_number)}</b></td><td>${fmtDate(x.order_date)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${escapeHtml(x.description||'')}</td><td>${finN(x.amount)}</td><td>${finN(x.billed)}</td><td>${finN(x.paid)}</td><td>${finS(x.remaining_to_bill)}</td><td><b>${finS(x.remaining_to_pay)}</b></td><td>${purPoStatus(x)}</td>
+  <td>${x.status==='open'&&Number(x.remaining_to_bill)>0?`<button class="btn small" onclick="trOpen('bill',{poId:${x.po_id}})">فاتورة</button> `:''}${x.status==='open'?`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'cancelled')">إلغاء</button>`:`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'open')">تفعيل</button>`} <button class="btn ghost small" onclick="poPrintMenu(${x.po_id})">🖨 طباعة</button> <button class="btn danger small" onclick="purDelOrder(${x.po_id})">حذف</button></td></tr>`;
+function purOrdSet(k,v){ if(k==='reset') purOrdF = { status:'', supplier:'', project:'' }; else purOrdF[k] = v; if(k==='reset') return PUR_VIEWS.orders().catch(err=>toast(err.message||'حصل خطأ')); purOrdRender(); }
+function purOrdRender(){
+  const box = document.getElementById('purOrdList'); if(!box) return;
+  const f = purOrdF;
+  const list = purOrdAll.filter(x => (!f.status || purPoKey(x)===f.status) && (!f.supplier || x.supplier_name===f.supplier) && (!f.project || (x.project_number||'عام')===f.project));
+  const cnt = document.getElementById('purOrdCount'); if(cnt) cnt.textContent = (f.status||f.supplier||f.project) ? `${list.length} من ${purOrdAll.length}` : `${purOrdAll.length} أمر`;
+  box.innerHTML = list.length ? `<table class="admtable"><thead><tr><th>الطلب</th><th>التاريخ</th><th>المورد</th><th>المشروع</th><th>البيان</th><th>المطلوب</th><th>المفوتر</th><th>المدفوع</th><th>متبقي للفوترة</th><th>متبقي للدفع</th><th>الحالة</th><th></th></tr></thead><tbody>${list.map(purOrdRow).join('')}</tbody></table>` : `<div class="loadingNote">${purOrdAll.length ? 'مفيش أوامر شراء بالفلاتر دي' : 'مفيش أوامر شراء لسه'}</div>`;
+}
 const PUR_VIEWS = {
 async orders(){
   const [o, lk] = await Promise.all([ crmApi('purchasing-orders'), crmApi('treasury-lookups') ]); finLK = lk;
+  if(purOrdF.supplier && !o.orders.some(x=>x.supplier_name===purOrdF.supplier)) purOrdF.supplier='';
+  if(purOrdF.project && !o.orders.some(x=>(x.project_number||'عام')===purOrdF.project)) purOrdF.project='';
   finBody().innerHTML = `<div class="kpiGrid">
     <div class="stat sun"><div class="v">${finN(o.totals.committed_unbilled)}</div><div class="l">التزامات لسه ماتفوترتش</div></div>
     <div class="stat bad"><div class="v">${finN(o.totals.billed_unpaid)}</div><div class="l">مفوتر وماتدفعش</div></div>
     <div class="stat"><div class="v">${o.totals.open_count}</div><div class="l">طلبات مفتوحة</div></div></div>
   <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn teal small" onclick="purOpenOrder()">+ أمر شراء</button><button class="btn ghost small" onclick="trOpen('bill')">+ فاتورة مورد</button></div>
   <div class="emptyNote" style="margin-top:8px">أمر الشراء ده اتفاق على مبلغ (مثلًا مكونات المشروع) ومبيأثرش على الحسابات. لما الفاتورة توصل سجّلها على الطلب، وبعدين الدفع.</div></div>
-  <div class="card" style="padding:0;overflow:auto">${o.orders.length ? `<table class="admtable"><thead><tr><th>الطلب</th><th>التاريخ</th><th>المورد</th><th>المشروع</th><th>البيان</th><th>المطلوب</th><th>المفوتر</th><th>المدفوع</th><th>متبقي للفوترة</th><th>متبقي للدفع</th><th>الحالة</th><th></th></tr></thead><tbody>
-  ${o.orders.map(x=>`<tr style="cursor:default"><td><b>${escapeHtml(x.po_number)}</b></td><td>${fmtDate(x.order_date)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${escapeHtml(x.description||'')}</td><td>${finN(x.amount)}</td><td>${finN(x.billed)}</td><td>${finN(x.paid)}</td><td>${finS(x.remaining_to_bill)}</td><td><b>${finS(x.remaining_to_pay)}</b></td><td>${purPoStatus(x)}</td>
-  <td>${x.status==='open'&&Number(x.remaining_to_bill)>0?`<button class="btn small" onclick="trOpen('bill',{poId:${x.po_id}})">فاتورة</button> `:''}${x.status==='open'?`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'cancelled')">إلغاء</button>`:`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'open')">تفعيل</button>`} <button class="btn ghost small" onclick="poPrintMenu(${x.po_id})">🖨 طباعة</button> <button class="btn danger small" onclick="purDelOrder(${x.po_id})">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش أوامر شراء لسه</div>'}</div>`;
+  <div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="min-width:150px"><label>الحالة</label><select onchange="purOrdSet('status',this.value)">${[['','كل الحالات'],['open','مفتوح'],['billed','مفوتر بالكامل'],['cancelled','ملغي']].map(([k,v])=>`<option value="${k}"${purOrdF.status===k?' selected':''}>${v}</option>`).join('')}</select></div><div style="min-width:180px"><label>المورد</label><select onchange="purOrdSet('supplier',this.value)"><option value="">كل الموردين</option>${[...new Set(o.orders.map(x=>x.supplier_name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')).map(s=>`<option value="${escapeHtml(s)}"${purOrdF.supplier===s?' selected':''}>${escapeHtml(s)}</option>`).join('')}</select></div><div style="min-width:180px"><label>المشروع</label><select onchange="purOrdSet('project',this.value)"><option value="">كل المشاريع</option>${[...new Set(o.orders.map(x=>x.project_number||'عام'))].sort((a,b)=>a.localeCompare(b,'ar')).map(s=>`<option value="${escapeHtml(s)}"${purOrdF.project===s?' selected':''}>${escapeHtml(s)}</option>`).join('')}</select></div><button class="btn ghost small" type="button" onclick="purOrdSet('reset')">مسح الفلاتر</button><span id="purOrdCount" class="emptyNote" style="margin:0 auto 0 0"></span></div>
+  <div class="card" id="purOrdList" style="padding:0;overflow:auto"></div>`;
+  purOrdAll = o.orders; purOrdRender();
 },
 async bills(){
   const [b, lk] = await Promise.all([ crmApi('purchasing-bills',{openOnly:purOpenOnly}), crmApi('treasury-lookups') ]); finLK = lk;
