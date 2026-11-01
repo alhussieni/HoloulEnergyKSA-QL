@@ -821,6 +821,7 @@ const UNDO_FN = SUPABASE_URL + '/functions/v1/admin-undo'; // الرجوع عن 
 const UNDO_ACTIONS = new Set(['admin-undo-list','admin-undo-apply']);
 const PROCUREMENT_FN = SUPABASE_URL + '/functions/v1/finance-procurement'; // طلبات عروض الأسعار وكشف حساب المورد (أدمن فقط) — actions بتبدأ بـ proc-
 const PURCHASING_FN = SUPABASE_URL + '/functions/v1/finance-purchasing'; // المشتريات: أوامر الشراء وفواتير الموردين (أدمن فقط) — actions بتبدأ بـ purchasing-
+const ATTACH_FN = SUPABASE_URL + '/functions/v1/finance-attachments'; // مرفقات فواتير الموردين (صور / PDF) — أدمن فقط — actions بتبدأ بـ attach-
 const TREASURY_FN = SUPABASE_URL + '/functions/v1/finance-treasury'; // الخزنة والموردين (أدمن فقط) — actions بتبدأ بـ treasury-
 const FINANCE_FN = SUPABASE_URL + '/functions/v1/finance-api'; // المالية والمحاسبة (أدمن فقط) — كل actions بتبدأ بـ finance-
 const INVOICE_ACTIONS = new Set(['crm-create-pos-invoice','crm-list-pos-invoices','crm-create-credit-note','crm-delete-trial-invoice','crm-einvoice-go-live','crm-list-customer-quotations','crm-invoices-report','seller-info']);
@@ -882,7 +883,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch(UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
+  const res = await fetch(UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -1316,7 +1317,7 @@ const trHead = t => `<div class="mhead"><h2>${t}</h2><button class="closeX" type
 const trPM = () => `<div><label>طريقة الدفع</label><select name="method">${optHtml(SETTINGS.paymentMethods,'')}</select></div>`;
 function trOpen(kind, pre={}){ finRun(async()=>{
   if(!finLK) finLK = await crmApi('treasury-lookups');
-  trRetSup = pre._ret || null;
+  trRetSup = pre._ret || null; attStage = [];
   if(kind==='bill') finPO = (await crmApi('purchasing-orders',{openOnly:true})).orders;
   else if(kind==='credit_note' || kind==='supplier_payment') finPO = (await crmApi('purchasing-orders',{})).orders.filter(o=>o.status==='open');
   const dt = `<div><label>التاريخ</label><input name="entryDate" type="date" value="${todayStr()}"></div>`;
@@ -1351,7 +1352,7 @@ function trOpen(kind, pre={}){ finRun(async()=>{
     <div><label>نوع التكلفة (للمشروع)</label><select name="costType">${optHtml(SETTINGS.costTypes,'')}</select></div>
     <div><label>${kind==='bill'?'قيمة الفاتورة':'قيمة المرتجع (شامل الضريبة)'}</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
     <div><label>${kind==='bill'?'رقم فاتورة المورد':'رقم الإشعار الدائن / المرتجع'}</label><input name="billNumber"></div><div><label>${kind==='bill'?'تاريخ الفاتورة':'تاريخ المرتجع'}</label><input name="billDate" type="date" value="${todayStr()}"></div>
-    ${finTaxBox()}<div><label>البيان</label><input name="description"></div>${btn}</form>`;
+    ${finTaxBox()}<div><label>البيان</label><input name="description"></div>${attPickerHtml()}${btn}</form>`;
   else if(kind==='expense') h = trHead('مصروف') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
     <div style="grid-column:1/-1"><label>المشروع (اختياري)</label><select name="projectId" onchange="trExpProj(this.value)">${trProjOpts(pre.projectId,'مصروف عام للشركة (إيجار، راتب، مكتب...)')}</select></div>
     <div id="trCatWrap"><label>النوع</label><select name="category">${finOpt(FIN_CAT)}</select></div>
@@ -1481,14 +1482,20 @@ function trSplitBillSubmit(e){ const d=finFd(e); finRun(async()=>{
 }); }
 const trDelGroup = g => confirm('هيتحذف التحويل كله بكل أجزائه (كل المشاريع/الفواتير). متأكد؟') && finRun(async()=>{ await crmApi('treasury-split-payment-delete',{group:g}); finDone('تم حذف التحويل الموزّع'); });
 async function trSubmit(e, kind){ const d=finFd(e); finRun(async()=>{
+  let rec = null;
   if(kind==='transfer') await crmApi('treasury-record-transfer',d);
   else {
     // الضريبة بتتطبق على المصروف وفاتورة المورد بس (فيهم اختيار شامل/غير شامل). القبض والدفع للمورد وسحب الشريك حركات فلوس مفيهاش ضريبة.
     if(kind==='expense' || kind==='bill' || kind==='credit_note'){ const v=finVat(d); d.amount=v.amount; d.taxTreatment=v.tax; }
     if(kind==='expense' && d.projectId){ d.category=d.costType||'other'; delete d.costType; }
     if(kind==='supplier_payment' && d.billId){ delete d.poId; delete d.projectId; }
-    if(kind==='credit_note') await crmApi('treasury-record-bill',{...d,docType:'credit_note'});
-    else await crmApi(kind==='bill'?'purchasing-record-bill':'treasury-record-entry',{kind,...d});
+    if(kind==='credit_note') rec = await crmApi('treasury-record-bill',{...d,docType:'credit_note'});
+    else rec = await crmApi(kind==='bill'?'purchasing-record-bill':'treasury-record-entry',{kind,...d});
+  }
+  if(attStage.length && (kind==='bill' || kind==='credit_note')){
+    const bid = rec && (rec.billId || rec.bill_id || rec.id);
+    if(bid){ const up = await attUploadAll(bid); if(up.failed) toast(`الفاتورة اتسجّلت، بس ${up.failed} مرفق ماترفعش${up.lastErr?' ('+up.lastErr+')':''} — ضيفه من زر 📎 في قايمة الفواتير`); }
+    else { attStage = []; toast('الفاتورة اتسجّلت، بس مقدرتش أربط المرفقات — ضيفها من زر 📎 في قايمة الفواتير'); }
   }
   finOverlay.classList.remove('show'); finLK=null;
   if(trRetSup){ const sid=trRetSup; trRetSup=null; toast('تم التسجيل'); finLoad(); trSupplier(sid); } else finDone('تم التسجيل');
@@ -1755,6 +1762,84 @@ function trLinkAdvance(eid){
 }
 const trLinkSubmit = (e,eid,sid) => { const d=finFd(e); finRun(async()=>{ await crmApi('treasury-set-entry-link',{entryId:eid,projectId:d.projectId||null,poId:d.poId||null}); toast('تم الربط'); await trSupplier(sid); finLoad(); }); };
 
+/* ============ مرفقات الفواتير: تصوير / رفع صورة أو PDF ============ */
+/* الملفات في bucket خاص عن طريق دالة finance-attachments. الصور بتتصغّر وبتتضغط هنا قبل الرفع (JPEG) عشان الرفع يبقى سريع من الموبايل. */
+let attStage = [], attCounts = {};
+const ATT_MAX = 10, ATT_PDF_MAX = 6*1024*1024;
+const attSize = n => Number(n)>=1048576 ? (Number(n)/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(Number(n)/1024))+' KB';
+const attBadge = id => `<button class="btn ghost small" type="button" onclick="attOpen(${id})" title="مرفقات الفاتورة">📎${attCounts[id]?' '+attCounts[id]:''}</button>`;
+const attPickerHtml = () => `<div style="grid-column:1/-1"><label>صورة / ملف الفاتورة (اختياري)</label>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button type="button" class="btn ghost small" onclick="document.getElementById('attCam').click()">📷 تصوير الفاتورة</button>
+    <button type="button" class="btn ghost small" onclick="document.getElementById('attFile').click()">📎 رفع صورة / PDF</button>
+    <input type="file" id="attCam" accept="image/*" capture="environment" hidden onchange="attAdd(this)">
+    <input type="file" id="attFile" accept="image/*,application/pdf" multiple hidden onchange="attAdd(this)">
+  </div>
+  <div id="attStageList" class="emptyNote" style="margin-top:6px">لسه ماضفتش مرفقات</div>
+  <div class="emptyNote">تقدر تصوّر أكتر من صورة (كل مرة تضغط تصوير). الصور بتتضغط تلقائيًا، والـ PDF لحد 6 ميجا، ولحد ${ATT_MAX} مرفقات للفاتورة.</div></div>`;
+function attRenderStage(){ const el = document.getElementById('attStageList'); if(!el) return;
+  el.innerHTML = attStage.length ? attStage.map((f,i)=>`<span class="tag" style="margin:2px">${escapeHtml(f.name||'صورة')} (${attSize(f.size)}) <a href="#" onclick="attDrop(${i});return false" style="margin-inline-start:4px">✕</a></span>`).join('') : 'لسه ماضفتش مرفقات'; }
+function attDrop(i){ attStage.splice(i,1); attRenderStage(); }
+function attAdd(inp){
+  const files = [...inp.files]; inp.value = '';
+  for(const f of files){
+    const isImg = /^image\//.test(f.type), isPdf = f.type === 'application/pdf';
+    if(!isImg && !isPdf){ toast('نوع الملف غير مدعوم — صورة أو PDF بس'); continue; }
+    if(isPdf && f.size > ATT_PDF_MAX){ toast('الـ PDF أكبر من 6 ميجا: '+f.name); continue; }
+    if(attStage.length >= ATT_MAX){ toast('الحد الأقصى '+ATT_MAX+' مرفقات'); break; }
+    attStage.push(f);
+  }
+  attRenderStage();
+}
+async function attPrepare(file){
+  let blob = file, mime = file.type, name = file.name || 'invoice';
+  if(/^image\//.test(file.type)){
+    try{
+      const bmp = await createImageBitmap(file);
+      const sc = Math.min(1, 1800 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement('canvas'); c.width = Math.round(bmp.width*sc); c.height = Math.round(bmp.height*sc);
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      const out = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.82));
+      if(out && out.size < file.size){ blob = out; mime = 'image/jpeg'; name = name.replace(/\.[^.]+$/, '') + '.jpg'; }
+    }catch(e){ /* لو المتصفح مقدرش يفك الصورة نرفع الأصل */ }
+  }
+  if(blob.size > 8*1024*1024) throw new Error('الملف أكبر من 8 ميجا: '+name);
+  const dataBase64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = () => rej(new Error('تعذّر قراءة الملف')); fr.readAsDataURL(blob); });
+  return { fileName: name, mimeType: mime, dataBase64 };
+}
+async function attUploadAll(billId){
+  const list = attStage.slice(); let ok = 0, failed = 0, lastErr = '';
+  for(let i = 0; i < list.length; i++){
+    toast(`بيرفع المرفقات ${i+1}/${list.length}...`);
+    try{ await crmApi('attach-upload', { billId, ...(await attPrepare(list[i])) }); ok++; }
+    catch(e){ failed++; lastErr = e.message || ''; }
+  }
+  attStage = []; attCounts[billId] = (attCounts[billId]||0) + ok;
+  return { ok, failed, lastErr };
+}
+async function attRenderModal(billId){
+  const r = await crmApi('attach-list', { billId });
+  attCounts[billId] = r.files.length;
+  const bill = (typeof purBillAll !== 'undefined' ? purBillAll : []).find(x => String(x.bill_id) === String(billId));
+  trShow(trHead('مرفقات الفاتورة' + (bill ? ' — ' + escapeHtml(bill.bill_number || ('#'+billId)) + ' — ' + escapeHtml(bill.supplier_name) : '')) +
+    `<div class="card" style="padding:0;overflow:auto">${r.files.length ? `<table class="admtable"><thead><tr><th>الملف</th><th>الحجم</th><th>التاريخ</th><th></th></tr></thead><tbody>${r.files.map(f=>`<tr style="cursor:default"><td>${/pdf/.test(f.mime_type)?'📄':'🖼'} ${escapeHtml(f.file_name)}</td><td>${attSize(f.size_bytes)}</td><td>${fmtDate(f.created_at)}</td><td style="white-space:nowrap"><button class="btn small" type="button" onclick="attView(${f.id})">عرض</button> <button class="btn danger small" type="button" onclick="attDel(${f.id},${billId})">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش مرفقات للفاتورة دي</div>'}</div>
+    <div class="finForm" style="margin-top:10px">${attPickerHtml()}<div><button class="btn small teal" type="button" onclick="attUploadNow(${billId})">رفع المرفقات المختارة</button></div></div>`);
+  if(typeof purBillRender === 'function') purBillRender();
+}
+function attOpen(billId){ attStage = []; finRun(() => attRenderModal(billId)); }
+function attUploadNow(billId){
+  if(!attStage.length){ toast('اختار صورة أو ملف الأول'); return; }
+  finRun(async()=>{ const up = await attUploadAll(billId); toast(up.failed ? `اترفع ${up.ok} وفشل ${up.failed}${up.lastErr?' ('+up.lastErr+')':''}` : 'تم رفع المرفقات'); await attRenderModal(billId); });
+}
+function attView(fileId){
+  const w = window.open('', '_blank'); // بنفتح التاب الأول عشان المتصفح مايمنعش الـ popup
+  finRun(async()=>{ try{ const r = await crmApi('attach-url', { fileId }); if(w) w.location.href = r.url; else location.href = r.url; }catch(e){ if(w) w.close(); throw e; } });
+}
+function attDel(fileId, billId){
+  if(!confirm('حذف المرفق ده نهائيًا؟')) return;
+  finRun(async()=>{ await crmApi('attach-delete', { fileId }); toast('تم حذف المرفق'); await attRenderModal(billId); });
+}
+
 /* ============ PURCHASES (المشتريات): أوامر الشراء + فواتير الموردين + الموردون ============ */
 /* الدورة: أمر شراء (التزام) ← فاتورة مورد (تكلفة + مستحق) ← دفع (خروج فلوس). كل خطوة بتتسجّل مرة واحدة والمالية بتقرأ منها. */
 let finPO = [], purTab = 'overview', purOpenOnly = true;
@@ -1875,7 +1960,7 @@ PUR_VIEWS.rfqs = async function(){
 const PUR_BILL_F0 = () => ({ supplier:'', project:'', pay:'open', from:'', to:'' });
 let purBillAll = [], purBillF = PUR_BILL_F0();
 const purBillKey = x => Number(x.remaining)<=0.005 ? 'paid' : (Number(x.paid)<=0.005 ? 'unpaid' : 'partial');
-const purBillRow = x => `<tr style="cursor:default"><td>${escapeHtml(x.bill_number||('#'+x.bill_id))}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${fmtDate(x.bill_date)}</td><td>${finN(x.amount)}</td><td>${finN(x.paid)}</td><td><b>${finS(x.remaining)}</b></td>
+const purBillRow = x => `<tr style="cursor:default"><td>${escapeHtml(x.bill_number||('#'+x.bill_id))}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${fmtDate(x.bill_date)}</td><td>${finN(x.amount)}</td><td>${finN(x.paid)}</td><td><b>${finS(x.remaining)}</b></td><td>${attBadge(x.bill_id)}</td>
   <td>${Number(x.remaining)>0?`<button class="btn small" onclick="trOpen('supplier_payment',{supplierId:${x.supplier_id},billId:${x.bill_id}})">دفع</button> `:''}<button class="btn ghost small" onclick="trEditBill(${x.bill_id})">تعديل</button> ${Number(x.paid)===0?`<button class="btn danger small" onclick="purDelBill(${x.bill_id})">حذف</button>`:''}</td></tr>`;
 function purBillSet(k,v){ if(k==='reset'){ purBillF = PUR_BILL_F0(); return PUR_VIEWS.bills().catch(e=>toast(e.message||'حصل خطأ')); } purBillF[k]=v; purBillRender(); }
 function purBillRender(){
@@ -1885,10 +1970,10 @@ function purBillRender(){
     && (!f.pay || (f.pay==='open' ? purBillKey(x)!=='paid' : purBillKey(x)===f.pay)) && (!f.from || d(x)>=f.from) && (!f.to || d(x)<=f.to));
   const rem = list.reduce((a,x)=>a+Math.max(0,Number(x.remaining)||0),0);
   purSetCount('purBillCount', list.length, purBillAll.length, f.supplier||f.project||f.pay||f.from||f.to, ` · المتبقي في المعروض ${finN(rem)}`);
-  box.innerHTML = purRows(list, `<table class="admtable"><thead><tr><th>الفاتورة</th><th>المورد</th><th>المشروع</th><th>التاريخ</th><th>القيمة (شامل)</th><th>المدفوع</th><th>المتبقي</th><th></th></tr></thead>`, purBillRow, purBillAll.length ? 'مفيش فواتير بالفلاتر دي' : 'مفيش فواتير');
+  box.innerHTML = purRows(list, `<table class="admtable"><thead><tr><th>الفاتورة</th><th>المورد</th><th>المشروع</th><th>التاريخ</th><th>القيمة (شامل)</th><th>المدفوع</th><th>المتبقي</th><th>مرفقات</th><th></th></tr></thead>`, purBillRow, purBillAll.length ? 'مفيش فواتير بالفلاتر دي' : 'مفيش فواتير');
 }
 PUR_VIEWS.bills = async function(){
-  const [b, lk] = await Promise.all([ crmApi('purchasing-bills',{openOnly:false}), crmApi('treasury-lookups') ]); finLK = lk;
+  const [b, lk, ac] = await Promise.all([ crmApi('purchasing-bills',{openOnly:false}), crmApi('treasury-lookups'), crmApi('attach-counts').catch(()=>({counts:{}})) ]); finLK = lk; attCounts = ac.counts || {};
   purBillAll = b.bills || [];
   if(purBillF.supplier && !purBillAll.some(x=>x.supplier_name===purBillF.supplier)) purBillF.supplier='';
   if(purBillF.project && !purBillAll.some(x=>(x.project_number||'عام')===purBillF.project)) purBillF.project='';
