@@ -1757,8 +1757,8 @@ const trLinkSubmit = (e,eid,sid) => { const d=finFd(e); finRun(async()=>{ await 
 
 /* ============ PURCHASES (المشتريات): أوامر الشراء + فواتير الموردين + الموردون ============ */
 /* الدورة: أمر شراء (التزام) ← فاتورة مورد (تكلفة + مستحق) ← دفع (خروج فلوس). كل خطوة بتتسجّل مرة واحدة والمالية بتقرأ منها. */
-let finPO = [], purTab = 'rfqs', purOpenOnly = true;
-const PUR_TABS = { rfqs:'طلبات عروض الأسعار', orders:'أوامر الشراء', bills:'فواتير الموردين', suppliers:'الموردون' };
+let finPO = [], purTab = 'overview', purOpenOnly = true;
+const PUR_TABS = { overview:'نظرة عامة', rfqs:'طلبات عروض الأسعار', orders:'أوامر الشراء', bills:'فواتير الموردين', suppliers:'الموردون' };
 const purPoStatus = o => o.status==='cancelled' ? '<span class="tag warn">ملغي</span>' : (Number(o.remaining_to_bill)<=0 ? '<span class="tag">مفوتر بالكامل</span>' : '<span class="tag">مفتوح</span>');
 function loadPurchases(){
   if(SESSION.role !== 'admin') return;
@@ -1776,16 +1776,16 @@ function purLoad(){
   finRun(()=>PUR_VIEWS[purTab]());
 }
 /* فلاتر أوامر الشراء (الحالة / المورد / المشروع) — بتتطبّق على الشاشة بس من غير ما نطلب بيانات تاني */
-let purOrdAll = [], purOrdF = { status:'', supplier:'', project:'' };
+let purOrdAll = [], purOrdF = { status:'', supplier:'', project:'', pay:'' };
 const purPoKey = o => o.status==='cancelled' ? 'cancelled' : (Number(o.remaining_to_bill)<=0 ? 'billed' : 'open');
 const purOrdRow = x => `<tr style="cursor:default"><td><b>${escapeHtml(x.po_number)}</b></td><td>${fmtDate(x.order_date)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${escapeHtml(x.description||'')}</td><td>${finN(x.amount)}</td><td>${finN(x.billed)}</td><td>${finN(x.paid)}</td><td>${finS(x.remaining_to_bill)}</td><td><b>${finS(x.remaining_to_pay)}</b></td><td>${purPoStatus(x)}</td>
   <td>${x.status==='open'&&Number(x.remaining_to_bill)>0?`<button class="btn small" onclick="trOpen('bill',{poId:${x.po_id}})">فاتورة</button> `:''}${x.status==='open'?`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'cancelled')">إلغاء</button>`:`<button class="btn ghost small" onclick="purSetStatus(${x.po_id},'open')">تفعيل</button>`} <button class="btn ghost small" onclick="poPrintMenu(${x.po_id})">🖨 طباعة</button> <button class="btn danger small" onclick="purDelOrder(${x.po_id})">حذف</button></td></tr>`;
-function purOrdSet(k,v){ if(k==='reset') purOrdF = { status:'', supplier:'', project:'' }; else purOrdF[k] = v; if(k==='reset') return PUR_VIEWS.orders().catch(err=>toast(err.message||'حصل خطأ')); purOrdRender(); }
+function purOrdSet(k,v){ if(k==='reset') purOrdF = { status:'', supplier:'', project:'', pay:'' }; else purOrdF[k] = v; if(k==='reset') return PUR_VIEWS.orders().catch(err=>toast(err.message||'حصل خطأ')); purOrdRender(); }
 function purOrdRender(){
   const box = document.getElementById('purOrdList'); if(!box) return;
   const f = purOrdF;
-  const list = purOrdAll.filter(x => (!f.status || purPoKey(x)===f.status) && (!f.supplier || x.supplier_name===f.supplier) && (!f.project || (x.project_number||'عام')===f.project));
-  const cnt = document.getElementById('purOrdCount'); if(cnt) cnt.textContent = (f.status||f.supplier||f.project) ? `${list.length} من ${purOrdAll.length}` : `${purOrdAll.length} أمر`;
+  const list = purOrdAll.filter(x => (!f.status || purPoKey(x)===f.status) && (!f.supplier || x.supplier_name===f.supplier) && (!f.project || (x.project_number||'عام')===f.project) && (!f.pay || (x.status==='open' && (f.pay==='adv' ? Number(x.advance_unbilled)>0.005 : Number(x.paid)<=0.005))));
+  const cnt = document.getElementById('purOrdCount'); if(cnt) cnt.textContent = (f.status||f.supplier||f.project||f.pay) ? `${list.length} من ${purOrdAll.length}` : `${purOrdAll.length} أمر`;
   box.innerHTML = list.length ? `<table class="admtable"><thead><tr><th>الطلب</th><th>التاريخ</th><th>المورد</th><th>المشروع</th><th>البيان</th><th>المطلوب</th><th>المفوتر</th><th>المدفوع</th><th>متبقي للفوترة</th><th>متبقي للدفع</th><th>الحالة</th><th></th></tr></thead><tbody>${list.map(purOrdRow).join('')}</tbody></table>` : `<div class="loadingNote">${purOrdAll.length ? 'مفيش أوامر شراء بالفلاتر دي' : 'مفيش أوامر شراء لسه'}</div>`;
 }
 const PUR_VIEWS = {
@@ -1799,20 +1799,11 @@ async orders(){
     <div class="stat"><div class="v">${o.totals.open_count}</div><div class="l">طلبات مفتوحة</div></div></div>
   <div class="card"><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn teal small" onclick="purOpenOrder()">+ أمر شراء</button><button class="btn ghost small" onclick="trOpen('bill')">+ فاتورة مورد</button></div>
   <div class="emptyNote" style="margin-top:8px">أمر الشراء ده اتفاق على مبلغ (مثلًا مكونات المشروع) ومبيأثرش على الحسابات. لما الفاتورة توصل سجّلها على الطلب، وبعدين الدفع.</div></div>
-  <div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="min-width:150px"><label>الحالة</label><select onchange="purOrdSet('status',this.value)">${[['','كل الحالات'],['open','مفتوح'],['billed','مفوتر بالكامل'],['cancelled','ملغي']].map(([k,v])=>`<option value="${k}"${purOrdF.status===k?' selected':''}>${v}</option>`).join('')}</select></div><div style="min-width:180px"><label>المورد</label><select onchange="purOrdSet('supplier',this.value)"><option value="">كل الموردين</option>${[...new Set(o.orders.map(x=>x.supplier_name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')).map(s=>`<option value="${escapeHtml(s)}"${purOrdF.supplier===s?' selected':''}>${escapeHtml(s)}</option>`).join('')}</select></div><div style="min-width:180px"><label>المشروع</label><select onchange="purOrdSet('project',this.value)"><option value="">كل المشاريع</option>${[...new Set(o.orders.map(x=>x.project_number||'عام'))].sort((a,b)=>a.localeCompare(b,'ar')).map(s=>`<option value="${escapeHtml(s)}"${purOrdF.project===s?' selected':''}>${escapeHtml(s)}</option>`).join('')}</select></div><button class="btn ghost small" type="button" onclick="purOrdSet('reset')">مسح الفلاتر</button><span id="purOrdCount" class="emptyNote" style="margin:0 auto 0 0"></span></div>
+  <div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end"><div style="min-width:150px"><label>الحالة</label><select onchange="purOrdSet('status',this.value)">${[['','كل الحالات'],['open','مفتوح'],['billed','مفوتر بالكامل'],['cancelled','ملغي']].map(([k,v])=>`<option value="${k}"${purOrdF.status===k?' selected':''}>${v}</option>`).join('')}</select></div><div style="min-width:200px"><label>السداد</label><select onchange="purOrdSet('pay',this.value)">${[['','الكل'],['adv','مدفوع وفاتورته لم تُستلم'],['nopaid','لم يُسدَّد مقدّمًا']].map(([k,v])=>`<option value="${k}"${purOrdF.pay===k?' selected':''}>${v}</option>`).join('')}</select></div><div style="min-width:180px"><label>المورد</label><select onchange="purOrdSet('supplier',this.value)"><option value="">كل الموردين</option>${[...new Set(o.orders.map(x=>x.supplier_name).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ar')).map(s=>`<option value="${escapeHtml(s)}"${purOrdF.supplier===s?' selected':''}>${escapeHtml(s)}</option>`).join('')}</select></div><div style="min-width:180px"><label>المشروع</label><select onchange="purOrdSet('project',this.value)"><option value="">كل المشاريع</option>${[...new Set(o.orders.map(x=>x.project_number||'عام'))].sort((a,b)=>a.localeCompare(b,'ar')).map(s=>`<option value="${escapeHtml(s)}"${purOrdF.project===s?' selected':''}>${escapeHtml(purProjLabel(s))}</option>`).join('')}</select></div><button class="btn ghost small" type="button" onclick="purOrdSet('reset')">مسح الفلاتر</button><span id="purOrdCount" class="emptyNote" style="margin:0 auto 0 0"></span></div>
   <div class="card" id="purOrdList" style="padding:0;overflow:auto"></div>`;
   purOrdAll = o.orders; purOrdRender();
 },
-async bills(){
-  const [b, lk] = await Promise.all([ crmApi('purchasing-bills',{openOnly:purOpenOnly}), crmApi('treasury-lookups') ]); finLK = lk;
-  finBody().innerHTML = `<div class="kpiGrid"><div class="stat bad"><div class="v">${finN(b.totalRemaining)}</div><div class="l">إجمالي المتبقي للموردين</div></div></div>
-  <div class="card"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button class="btn teal small" onclick="trOpen('bill')">+ فاتورة مورد</button>
-  <label style="display:flex;align-items:center;gap:6px;margin:0"><input type="checkbox" style="width:auto" ${purOpenOnly?'checked':''} onchange="purOpenOnly=this.checked;purLoad()"> المفتوحة فقط (اللي عليها متبقي)</label></div></div>
-  <div class="card" style="padding:0;overflow:auto">${b.bills.length ? `<table class="admtable"><thead><tr><th>الفاتورة</th><th>المورد</th><th>المشروع</th><th>التاريخ</th><th>القيمة (شامل)</th><th>المدفوع</th><th>المتبقي</th><th></th></tr></thead><tbody>
-  ${b.bills.map(x=>`<tr style="cursor:default"><td>${escapeHtml(x.bill_number||('#'+x.bill_id))}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${fmtDate(x.bill_date)}</td><td>${finN(x.amount)}</td><td>${finN(x.paid)}</td><td><b>${finS(x.remaining)}</b></td>
-  <td>${Number(x.remaining)>0?`<button class="btn small" onclick="trOpen('supplier_payment',{supplierId:${x.supplier_id},billId:${x.bill_id}})">دفع</button> `:''}<button class="btn ghost small" onclick="trEditBill(${x.bill_id})">تعديل</button> ${Number(x.paid)===0?`<button class="btn danger small" onclick="purDelBill(${x.bill_id})">حذف</button>`:''}</td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش فواتير</div>'}</div>`;
-},
-suppliers: () => FIN_VIEWS.suppliers()
+
 };
 function purOpenOrder(){ finRun(async()=>{
   if(!finLK) finLK = await crmApi('treasury-lookups');
@@ -1844,13 +1835,124 @@ const RFQ_VAT = { incl:'الأسعار شاملة الضريبة', excl:'الأ�
 const rfqTag = st => `<span class="tag${st==='rejected'||st==='cancelled'?' warn':''}">${RFQ_ST[st]||st}</span>`;
 let rfqDraft = { blocks:[] }, rfqCur = null;
 
+/* ============ فلاتر تبويبات المشتريات + داشبورد "نظرة عامة" ============ */
+const purProjLabel = pn => { const p = (finLK && finLK.projects || []).find(x=>x.project_number===pn); return p && p.customer_name ? pn+' — '+p.customer_name : pn; };
+const purUniq = arr => [...new Set(arr.filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b),'ar'));
+const purSelect = (label, st, key, opts, fn) => `<div style="min-width:170px"><label>${label}</label><select onchange="${fn}('${key}',this.value)">${opts.map(([v,t])=>`<option value="${escapeHtml(v)}"${st[key]===v?' selected':''}>${escapeHtml(t)}</option>`).join('')}</select></div>`;
+const purDateIn = (label, st, key, fn) => `<div style="min-width:150px"><label>${label}</label><input type="date" value="${escapeHtml(st[key]||'')}" onchange="${fn}('${key}',this.value)"></div>`;
+const purResetBtn = fn => `<button class="btn ghost small" type="button" onclick="${fn}('reset')">مسح الفلاتر</button>`;
+const purCount = id => `<span id="${id}" class="emptyNote" style="margin:0 auto 0 0"></span>`;
+const PUR_FBAR = 'display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end';
+const purRows = (list, thead, rowFn, empty) => list.length ? `${thead}<tbody>${list.map(rowFn).join('')}</tbody></table>` : `<div class="loadingNote">${empty}</div>`;
+const purSetCount = (id, shown, total, filtered, extra) => { const c = document.getElementById(id); if(c) c.textContent = (filtered ? `${shown} من ${total}` : `${total}`) + (extra||''); };
+
+/* --- طلبات عروض الأسعار --- */
+const PUR_RFQ_F0 = () => ({ status:'', supplier:'', project:'' });
+let purRfqAll = [], purRfqF = PUR_RFQ_F0();
+const purRfqProj = x => x.is_multi ? 'عدة مشاريع' : (x.project_number || 'بدون مشروع');
+const purRfqRow = x => `<tr onclick="rfqOpen(${x.rfq_id})"><td><b>${escapeHtml(x.rfq_number)}</b></td><td>${fmtDate(x.created_at)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${x.is_multi?'<span class="tag">طلب مشترك</span>':escapeHtml(x.quote_ref||'')}</td><td>${x.is_multi?'عدة مشاريع':escapeHtml(x.project_number||'')}</td><td>${x.items_count}</td><td>${x.total_gross!=null?finN(x.total_gross):'—'}${x.lump_total!=null?' <span class="mut">(إجمالي)</span>':(Number(x.priced_count)>0&&Number(x.priced_count)<Number(x.items_count)?` <span class="mut">(${x.priced_count}/${x.items_count} بند)</span>`:'')}</td><td>${rfqTag(x.status)}</td></tr>`;
+function purRfqSet(k,v){ if(k==='reset'){ purRfqF = PUR_RFQ_F0(); return PUR_VIEWS.rfqs().catch(e=>toast(e.message||'حصل خطأ')); } purRfqF[k]=v; purRfqRender(); }
+function purRfqRender(){
+  const box = document.getElementById('purRfqList'); if(!box) return;
+  const f = purRfqF;
+  const list = purRfqAll.filter(x => (!f.status || x.status===f.status) && (!f.supplier || x.supplier_name===f.supplier) && (!f.project || purRfqProj(x)===f.project));
+  purSetCount('purRfqCount', list.length, purRfqAll.length, f.status||f.supplier||f.project);
+  box.innerHTML = purRows(list, `<table class="admtable"><thead><tr><th>الطلب</th><th>التاريخ</th><th>المورد</th><th>عرض العميل</th><th>المشروع</th><th>البنود</th><th>إجمالي عرض المورد (شامل)</th><th>الحالة</th></tr></thead>`, purRfqRow, purRfqAll.length ? 'مفيش طلبات بالفلاتر دي' : 'مفيش طلبات عروض أسعار لسه');
+}
 PUR_VIEWS.rfqs = async function(){
   const [r, lk] = await Promise.all([ crmApi('proc-rfqs'), crmApi('treasury-lookups') ]); finLK = lk;
+  purRfqAll = r.rfqs || [];
+  if(purRfqF.supplier && !purRfqAll.some(x=>x.supplier_name===purRfqF.supplier)) purRfqF.supplier='';
+  if(purRfqF.project && !purRfqAll.some(x=>purRfqProj(x)===purRfqF.project)) purRfqF.project='';
   finBody().innerHTML = `<div class="card"><button class="btn teal small" onclick="rfqNew()">+ طلب عرض سعر جديد</button>
     <div class="emptyNote" style="margin-top:8px">اختار عرض السعر اللي قدمته للعميل، والنظام يسحب البنود والكميات (من غير أسعار البيع) ويطلّع طلب للمورد. المورد يرد بأسعاره، تسجّلها هنا، وتقبل أو ترفض. القبول بيطلّع <b>أمر شراء</b>، والفاتورة بتتسجل لما المورد يصدرها.</div></div>
-  <div class="card" style="padding:0;overflow:auto">${r.rfqs.length ? `<table class="admtable"><thead><tr><th>الطلب</th><th>التاريخ</th><th>المورد</th><th>عرض العميل</th><th>المشروع</th><th>البنود</th><th>إجمالي عرض المورد (شامل)</th><th>الحالة</th></tr></thead><tbody>
-  ${r.rfqs.map(x=>`<tr onclick="rfqOpen(${x.rfq_id})"><td><b>${escapeHtml(x.rfq_number)}</b></td><td>${fmtDate(x.created_at)}</td><td>${escapeHtml(x.supplier_name)}</td><td>${x.is_multi?'<span class="tag">طلب مشترك</span>':escapeHtml(x.quote_ref||'')}</td><td>${x.is_multi?'عدة مشاريع':escapeHtml(x.project_number||'')}</td><td>${x.items_count}</td><td>${x.total_gross!=null?finN(x.total_gross):'—'}${x.lump_total!=null?' <span class="mut">(إجمالي)</span>':(Number(x.priced_count)>0&&Number(x.priced_count)<Number(x.items_count)?` <span class="mut">(${x.priced_count}/${x.items_count} بند)</span>`:'')}</td><td>${rfqTag(x.status)}</td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش طلبات عروض أسعار لسه</div>'}</div>`;
+  <div class="card" style="${PUR_FBAR}">${purSelect('الحالة', purRfqF, 'status', [['','كل الحالات'], ...Object.entries(RFQ_ST)], 'purRfqSet')}${purSelect('المورد', purRfqF, 'supplier', [['','كل الموردين'], ...purUniq(purRfqAll.map(x=>x.supplier_name)).map(v=>[v,v])], 'purRfqSet')}${purSelect('المشروع', purRfqF, 'project', [['','كل المشاريع'], ...purUniq(purRfqAll.map(purRfqProj)).map(v=>[v,purProjLabel(v)])], 'purRfqSet')}${purResetBtn('purRfqSet')}${purCount('purRfqCount')}</div>
+  <div class="card" id="purRfqList" style="padding:0;overflow:auto"></div>`;
+  purRfqRender();
 };
+
+/* --- فواتير الموردين --- */
+const PUR_BILL_F0 = () => ({ supplier:'', project:'', pay:'open', from:'', to:'' });
+let purBillAll = [], purBillF = PUR_BILL_F0();
+const purBillKey = x => Number(x.remaining)<=0.005 ? 'paid' : (Number(x.paid)<=0.005 ? 'unpaid' : 'partial');
+const purBillRow = x => `<tr style="cursor:default"><td>${escapeHtml(x.bill_number||('#'+x.bill_id))}</td><td>${escapeHtml(x.supplier_name)}</td><td>${escapeHtml(x.project_number||'عام')}</td><td>${fmtDate(x.bill_date)}</td><td>${finN(x.amount)}</td><td>${finN(x.paid)}</td><td><b>${finS(x.remaining)}</b></td>
+  <td>${Number(x.remaining)>0?`<button class="btn small" onclick="trOpen('supplier_payment',{supplierId:${x.supplier_id},billId:${x.bill_id}})">دفع</button> `:''}<button class="btn ghost small" onclick="trEditBill(${x.bill_id})">تعديل</button> ${Number(x.paid)===0?`<button class="btn danger small" onclick="purDelBill(${x.bill_id})">حذف</button>`:''}</td></tr>`;
+function purBillSet(k,v){ if(k==='reset'){ purBillF = PUR_BILL_F0(); return PUR_VIEWS.bills().catch(e=>toast(e.message||'حصل خطأ')); } purBillF[k]=v; purBillRender(); }
+function purBillRender(){
+  const box = document.getElementById('purBillList'); if(!box) return;
+  const f = purBillF, d = x => String(x.bill_date||'').slice(0,10);
+  const list = purBillAll.filter(x => (!f.supplier || x.supplier_name===f.supplier) && (!f.project || (x.project_number||'عام')===f.project)
+    && (!f.pay || (f.pay==='open' ? purBillKey(x)!=='paid' : purBillKey(x)===f.pay)) && (!f.from || d(x)>=f.from) && (!f.to || d(x)<=f.to));
+  const rem = list.reduce((a,x)=>a+Math.max(0,Number(x.remaining)||0),0);
+  purSetCount('purBillCount', list.length, purBillAll.length, f.supplier||f.project||f.pay||f.from||f.to, ` · المتبقي في المعروض ${finN(rem)}`);
+  box.innerHTML = purRows(list, `<table class="admtable"><thead><tr><th>الفاتورة</th><th>المورد</th><th>المشروع</th><th>التاريخ</th><th>القيمة (شامل)</th><th>المدفوع</th><th>المتبقي</th><th></th></tr></thead>`, purBillRow, purBillAll.length ? 'مفيش فواتير بالفلاتر دي' : 'مفيش فواتير');
+}
+PUR_VIEWS.bills = async function(){
+  const [b, lk] = await Promise.all([ crmApi('purchasing-bills',{openOnly:false}), crmApi('treasury-lookups') ]); finLK = lk;
+  purBillAll = b.bills || [];
+  if(purBillF.supplier && !purBillAll.some(x=>x.supplier_name===purBillF.supplier)) purBillF.supplier='';
+  if(purBillF.project && !purBillAll.some(x=>(x.project_number||'عام')===purBillF.project)) purBillF.project='';
+  finBody().innerHTML = `<div class="kpiGrid"><div class="stat bad"><div class="v">${finN(b.totalRemaining)}</div><div class="l">إجمالي المتبقي للموردين</div></div></div>
+  <div class="card"><button class="btn teal small" onclick="trOpen('bill')">+ فاتورة مورد</button></div>
+  <div class="card" style="${PUR_FBAR}">${purSelect('المورد', purBillF, 'supplier', [['','كل الموردين'], ...purUniq(purBillAll.map(x=>x.supplier_name)).map(v=>[v,v])], 'purBillSet')}${purSelect('المشروع', purBillF, 'project', [['','كل المشاريع'], ...purUniq(purBillAll.map(x=>x.project_number||'عام')).map(v=>[v,purProjLabel(v)])], 'purBillSet')}${purSelect('السداد', purBillF, 'pay', [['','الكل'],['open','عليها متبقي'],['unpaid','غير مدفوعة'],['partial','مدفوعة جزئيًا'],['paid','مدفوعة بالكامل']], 'purBillSet')}${purDateIn('من تاريخ', purBillF, 'from', 'purBillSet')}${purDateIn('إلى تاريخ', purBillF, 'to', 'purBillSet')}${purResetBtn('purBillSet')}${purCount('purBillCount')}</div>
+  <div class="card" id="purBillList" style="padding:0;overflow:auto"></div>`;
+  purBillRender();
+};
+
+/* --- الموردون --- */
+const PUR_SUP_F0 = () => ({ q:'', active:'', bal:'' });
+let purSupAll = [], purSupF = PUR_SUP_F0();
+const purSupRow = s => `<tr onclick="trSupplier(${s.supplier_id})"><td>${escapeHtml(s.name)}${s.active?'':' <span class="tag warn">موقوف</span>'}</td><td>${escapeHtml(s.vat_number||'')}</td><td>${finN(s.total_bills)}</td><td>${finN(s.total_paid)}</td><td>${supBal(s.balance)}</td><td>${supAdv(s.advance_open)}</td></tr>`;
+function purSupSet(k,v){ if(k==='reset'){ purSupF = PUR_SUP_F0(); return PUR_VIEWS.suppliers().catch(e=>toast(e.message||'حصل خطأ')); } purSupF[k]=v; purSupRender(); }
+function purSupRender(){
+  const box = document.getElementById('purSupList'); if(!box) return;
+  const f = purSupF, q = f.q.trim().toLowerCase();
+  const list = purSupAll.filter(s => (!q || [s.name,s.vat_number,s.phone].some(v=>String(v||'').toLowerCase().includes(q)))
+    && (!f.active || (f.active==='1' ? s.active : !s.active))
+    && (!f.bal || (f.bal==='owed' ? Number(s.balance)>0.005 : f.bal==='adv' ? Number(s.advance_open)>0.005 : (Number(s.balance)<=0.005 && Number(s.advance_open)<=0.005))));
+  purSetCount('purSupCount', list.length, purSupAll.length, q||f.active||f.bal);
+  box.innerHTML = purRows(list, `<table class="admtable"><thead><tr><th>المورد</th><th>الرقم الضريبي</th><th>إجمالي الفواتير (بعد المرتجع)</th><th>المدفوع (صافي)</th><th>المتبقي علينا</th><th>مقدّم عندهم</th></tr></thead>`, purSupRow, purSupAll.length ? 'مفيش موردين بالفلاتر دي' : 'لسه مفيش موردين — بيتضافوا تلقائيًا من أول فاتورة');
+}
+PUR_VIEWS.suppliers = async function(){
+  const lk = await crmApi('treasury-lookups'); finLK = lk;
+  purSupAll = lk.suppliers || [];
+  finBody().innerHTML = `<div class="card" style="${PUR_FBAR}"><div style="min-width:220px"><label>بحث (الاسم / الرقم الضريبي / الجوال)</label><input value="${escapeHtml(purSupF.q)}" oninput="purSupSet('q',this.value)" placeholder="ابحث..."></div>${purSelect('الحالة', purSupF, 'active', [['','الكل'],['1','فعّال'],['0','موقوف']], 'purSupSet')}${purSelect('الرصيد', purSupF, 'bal', [['','الكل'],['owed','عليه رصيد (علينا له)'],['adv','مقدّم عندهم'],['clear','مفيش رصيد']], 'purSupSet')}${purResetBtn('purSupSet')}${purCount('purSupCount')}</div>
+  <div class="card" id="purSupList" style="padding:0;overflow:auto"></div>
+  <div class="emptyNote">اضغط على أي مورد لكشف حسابه الكامل: الفواتير والدفعات المقدّمة والمرتجعات وحسابه لكل مشروع.</div>
+  <div class="card"><h3><span class="lbl">مورد جديد</span></h3><form class="finForm" onsubmit="trAddSupplier(event)">
+    <div><label>الاسم</label><input name="name" required></div><div><label>الرقم الضريبي</label><input name="vat_number"></div><div><label>الجوال</label><input name="phone"></div><div><button class="btn small teal">إضافة</button></div></form></div>`;
+  purSupRender();
+};
+
+/* --- نظرة عامة (داشبورد المشتريات) — الكروت بتفتح التبويب المناسب بالفلتر جاهز --- */
+function purGo(tab, f){
+  if(tab==='orders') purOrdF = Object.assign({ status:'', supplier:'', project:'', pay:'' }, f||{});
+  if(tab==='rfqs') purRfqF = Object.assign(PUR_RFQ_F0(), f||{});
+  if(tab==='bills') purBillF = Object.assign(PUR_BILL_F0(), f||{});
+  if(tab==='suppliers') purSupF = Object.assign(PUR_SUP_F0(), f||{});
+  purTab = tab; purLoad();
+}
+PUR_VIEWS.overview = async function(){
+  const [lk, o, r] = await Promise.all([ crmApi('treasury-lookups'), crmApi('purchasing-orders'), crmApi('proc-rfqs') ]); finLK = lk;
+  const sups = lk.suppliers || [], active = sups.filter(s=>s.active).length;
+  const top = sups.slice().sort((a,b)=>Number(b.total_bills)-Number(a.total_bills))[0];
+  const live = (o.orders || []).filter(x=>x.status==='open');
+  const adv = live.filter(x=>Number(x.advance_unbilled)>0.005);
+  const nopay = live.filter(x=>Number(x.paid)<=0.005);
+  const owed = sups.reduce((a,x)=>a+Math.max(0,Number(x.balance)||0),0);
+  const waiting = (r.rfqs || []).filter(x=>x.status==='sent').length;
+  const card = (cls, v, l, sub, go) => `<div class="stat ${cls}" style="cursor:pointer" onclick="${go}"><div class="v">${v}</div><div class="l">${l}</div>${sub?`<div class="emptyNote" style="margin:6px 0 0">${sub}</div>`:''}</div>`;
+  finBody().innerHTML = `<div class="kpiGrid">
+    ${card('', sups.length, 'عدد الموردين', `${active} فعّال`, "purGo('suppliers')")}
+    ${top && Number(top.total_bills)>0 ? card('', `<span style="font-size:1.05rem;word-break:break-word">${escapeHtml(top.name)}</span>`, 'أهم مورد (أعلى إجمالي مشتريات)', `إجمالي فواتيره ${finN(top.total_bills)}`, `trSupplier(${top.supplier_id})`) : card('', '—', 'أهم مورد (أعلى إجمالي مشتريات)', 'لسه مفيش مشتريات', "purGo('suppliers')")}
+    ${card('sun', adv.length, 'أوامر شراء اتسدّدت وفواتيرها لسه ماوصلتش', `مدفوع من غير فاتورة: ${finN(adv.reduce((a,x)=>a+Number(x.advance_unbilled),0))}`, "purGo('orders',{pay:'adv'})")}
+    ${card('bad', nopay.length, 'أوامر شراء معلّقة — لم يُسدَّد مقدّمًا للمورد', `قيمتها ${finN(nopay.reduce((a,x)=>a+Number(x.amount),0))}`, "purGo('orders',{pay:'nopaid'})")}
+    ${card('', finN(owed), 'المستحق للموردين', 'فواتير وصلت وماتدفعتش', "purGo('bills')")}
+    ${card('', waiting, 'عروض أسعار بانتظار رد المورد', '', "purGo('rfqs',{status:'sent'})")}
+  </div>
+  <div class="emptyNote">اضغط على أي كارت يفتح لك التبويب المناسب والفلتر جاهز. «أوامر الشراء» هنا هي المفتوحة (غير الملغية).</div>`;
+};
+
 
 /* --- إنشاء طلب جديد: مورد + عرض سعر العميل → سحب البنود → اختيار وتعديل الكميات --- */
 function rfqNew(){ finRun(async()=>{
