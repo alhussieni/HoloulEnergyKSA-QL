@@ -1327,7 +1327,7 @@ function trOpen(kind, pre={}){ finRun(async()=>{
   if(kind==='customer_receipt') h = trHead('قبض من عميل') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
     <div style="grid-column:1/-1"><label>المشروع / العميل</label><select name="projectId" required onchange="trHint(this.value)">${trProjOpts('')}</select><div class="emptyNote" id="trHint"></div></div>
     <div><label>المبلغ المستلم</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
-    <div><label>استلمه (الحساب)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}${dt}${ref}${notes}${btn}</form>`;
+    <div><label>استلمه (الحساب)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}${dt}${ref}${notes}${attPickerHtml()}${btn}</form>`;
   else if(kind==='supplier_payment') h = trHead('دفع لمورد') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
     <div><label>المورد</label><select name="supplierId" required onchange="trSupChange(this.value)">${trSupOpts(pre.supplierId)}</select></div>
     <div><label>نوع الدفع / على فاتورة</label><select name="billId" id="trBill" onchange="trBillChange()"></select></div>
@@ -1337,12 +1337,12 @@ function trOpen(kind, pre={}){ finRun(async()=>{
       <div><label>أمر شراء (للدفعة المقدّمة — اختياري)</label><select name="poId" id="trPoSel" onchange="trAdvPoChange(this.value)"></select></div>
       <div><label>المشروع (للدفعة المقدّمة — اختياري)</label><select name="projectId" id="trAdvProj">${trProjOpts(pre.projectId,'بدون مشروع (دفعة عامة على الحساب)')}</select></div>
       <div class="emptyNote" style="grid-column:1/-1">الدفعة المقدّمة (حجز كميات قبل الاستلام) <b>مش تكلفة</b>، بتفضل رصيد لك عند المورد. لما فاتورة المورد تتسجّل مع الاستلام بتتخصم منها تلقائيًا (من نفس الأمر/المشروع)، والباقي هو اللي عليك.</div>
-    </div>${trPM()}${dt}${ref}${notes}${btn}</form>`;
+    </div>${trPM()}${dt}${ref}${notes}${attPickerHtml()}${btn}</form>`;
   else if(kind==='supplier_refund') h = trHead('استرداد فلوس من مورد (مرتجع مدفوع)') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
     <div><label>المورد</label><select name="supplierId" required>${trSupOpts(pre.supplierId)}</select></div>
     <div><label>المشروع (اختياري)</label><select name="projectId">${trProjOpts(pre.projectId,'بدون مشروع')}</select></div>
     <div><label>المبلغ المسترد</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
-    <div><label>استلمه (الحساب)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}${dt}${ref}${notes}${btn}</form>
+    <div><label>استلمه (الحساب)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}${dt}${ref}${notes}${attPickerHtml()}${btn}</form>
     <div class="emptyNote">لو المورد رجّع لك فلوس (مرتجع اتدفع ثمنه). سجّل أولًا <b>مرتجع (إشعار دائن)</b> من كشف المورد لتخفيض الفاتورة، وبعدين الاسترداد هنا لو استلمت الفلوس نقدًا.</div>`;
   else if(kind==='bill' || kind==='credit_note') h = trHead(kind==='bill' ? 'فاتورة مورد (التزام — مش حركة خزنة)' : 'مرتجع للمورد (إشعار دائن — بيخفّض المستحق وتكلفة المشروع)') + `<form class="finForm" data-doc="${kind}" onsubmit="trSubmit(event,'${kind}')">
     <div style="grid-column:1/-1"><label>على أمر شراء (اختياري — بيملّي المورد والمشروع${kind==='bill'?' والمتبقي':''})</label><select name="poId" onchange="trPoChange(this.value)"><option value="">بدون أمر شراء</option>${finPO.map(o=>`<option value="${o.po_id}"${String(o.po_id)===String(pre.poId)?' selected':''}>${escapeHtml(o.po_number)} — ${escapeHtml(o.supplier_name)} — ${escapeHtml(o.project_number||'عام')} — متبقي للفوترة ${finN(o.remaining_to_bill)}</option>`).join('')}</select></div>
@@ -1360,17 +1360,17 @@ function trOpen(kind, pre={}){ finRun(async()=>{
     <div><label>البيان</label><input name="description" placeholder="مثال: تنقلات عمال، وجبات، إكرامية"></div>
     <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
     <div><label>دفعه (الحساب / العهدة)</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${trPM()}
-    ${finTaxBox()}${dt}${ref}${btn}</form>
+    ${finTaxBox()}${dt}${ref}${attPickerHtml()}${btn}</form>
     <div class="emptyNote">لو اخترت مشروع، المصروف بيتخصم من الحساب وبيدخل <b>تكلفة المشروع</b> مباشرة. النثريات (أكل، إكراميات، عمالة مؤقتة) غالبًا "بدون ضريبة". لو معاك فاتورة ضريبية باسم الشركة اختار "شامل" أو "غير شامل" وسيب علامة الفاتورة الصالحة.</div>`;
   else if(kind==='partner_draw') h = trHead('سحب شريك') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
     <div><label>الشريك</label><select name="partnerId" required>${finLK.partners.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select></div>
     <div><label>النوع</label><select name="distKind">${finOpt(FIN_KIND,'draw')}</select></div>
     <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
-    <div><label>من الحساب</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${dt}${notes}${btn}</form>`;
+    <div><label>من الحساب</label><select name="accountId" required>${trAccOpts(pre.accountId)}</select></div>${dt}${notes}${attPickerHtml()}${btn}</form>`;
   else if(kind==='transfer') h = trHead('تحويل بين الحسابات (إيداع / تسليم عهدة / تسوية)') + `<form class="finForm" onsubmit="trSubmit(event,'${kind}')">
     <div><label>من حساب</label><select name="fromAccountId" required>${trAccOpts('')}</select></div>
     <div><label>إلى حساب</label><select name="toAccountId" required>${trAccOpts('')}</select></div>
-    <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>${dt}${notes}${btn}</form>
+    <div><label>المبلغ</label><input name="amount" type="number" step="0.01" min="0.01" required></div>${dt}${notes}${attPickerHtml()}${btn}</form>
     <div class="emptyNote">أمثلة: تسليم عهدة = من الخزنة إلى حساب العهدة. إيداع نقدية في البنك = من الخزنة إلى البنك. رد باقي العهدة = من العهدة إلى الخزنة.</div>`;
   trShow(h);
   if(kind==='supplier_payment'||kind==='bill'){ const f=document.querySelector('#finModal form'); if(f){ const b=document.createElement('div'); b.style.gridColumn='1/-1';
@@ -1483,7 +1483,7 @@ function trSplitBillSubmit(e){ const d=finFd(e); finRun(async()=>{
 const trDelGroup = g => confirm('هيتحذف التحويل كله بكل أجزائه (كل المشاريع/الفواتير). متأكد؟') && finRun(async()=>{ await crmApi('treasury-split-payment-delete',{group:g}); finDone('تم حذف التحويل الموزّع'); });
 async function trSubmit(e, kind){ const d=finFd(e); finRun(async()=>{
   let rec = null;
-  if(kind==='transfer') await crmApi('treasury-record-transfer',d);
+  if(kind==='transfer') rec = await crmApi('treasury-record-transfer',d);
   else {
     // الضريبة بتتطبق على المصروف وفاتورة المورد بس (فيهم اختيار شامل/غير شامل). القبض والدفع للمورد وسحب الشريك حركات فلوس مفيهاش ضريبة.
     if(kind==='expense' || kind==='bill' || kind==='credit_note'){ const v=finVat(d); d.amount=v.amount; d.taxTreatment=v.tax; }
@@ -1492,10 +1492,14 @@ async function trSubmit(e, kind){ const d=finFd(e); finRun(async()=>{
     if(kind==='credit_note') rec = await crmApi('treasury-record-bill',{...d,docType:'credit_note'});
     else rec = await crmApi(kind==='bill'?'purchasing-record-bill':'treasury-record-entry',{kind,...d});
   }
-  if(attStage.length && (kind==='bill' || kind==='credit_note')){
-    const bid = rec && (rec.billId || rec.bill_id || rec.id);
-    if(bid){ const up = await attUploadAll(bid); if(up.failed) toast(`الفاتورة اتسجّلت، بس ${up.failed} مرفق ماترفعش${up.lastErr?' ('+up.lastErr+')':''} — ضيفه من زر 📎 في قايمة الفواتير`); }
-    else { attStage = []; toast('الفاتورة اتسجّلت، بس مقدرتش أربط المرفقات — ضيفها من زر 📎 في قايمة الفواتير'); }
+  if(attStage.length){
+    let ref = null;
+    if(kind==='bill' || kind==='credit_note'){ const bid = rec && (rec.billId || rec.bill_id || rec.id); if(bid) ref = { billId: bid }; }
+    else if(kind==='transfer'){ if(rec && rec.transferGroup) ref = { target:'entry', transferGroup: rec.transferGroup }; }
+    else if(rec && rec.entryId) ref = { target:'entry', entryId: rec.entryId };
+    const what = (kind==='bill' || kind==='credit_note') ? 'الفاتورة' : 'الحركة';
+    if(ref){ const up = await attUploadAll(ref); if(up.failed) toast(`${what} اتسجّلت، بس ${up.failed} مستند ماترفعش${up.lastErr?' ('+up.lastErr+')':''} — ضيفه من زر 📎 في القايمة`); }
+    else { attStage = []; toast(`${what} اتسجّلت، بس مقدرتش أربط المستندات — ضيفها من زر 📎 في القايمة`); }
   }
   finOverlay.classList.remove('show'); finLK=null;
   if(trRetSup){ const sid=trRetSup; trRetSup=null; toast('تم التسجيل'); finLoad(); trSupplier(sid); } else finDone('تم التسجيل');
@@ -1566,17 +1570,18 @@ async function trLedgerLoad(){
   trMarkPeriod();
   const kpi = document.getElementById('trKpi'); if(kpi) kpi.style.opacity = '.55';
   try{
-    const l = await crmApi('treasury-ledger-search', q);
+    const [l, ac] = await Promise.all([ crmApi('treasury-ledger-search', q), crmApi('attach-counts',{target:'entry'}).catch(()=>({counts:{}})) ]);
+    attECounts = ac.counts || {};
     if(my !== trLedgerSeq || !document.getElementById('trLedgerBox')) return;
     if(kpi){ kpi.style.opacity = '';
       kpi.innerHTML = Array.isArray(l.accounts) ? trKpiHtml(l) : '<div class="emptyNote" style="grid-column:1/-1;background:var(--sun-tint);padding:12px;border-radius:10px">الكروت محتاجة تحديث الـ Edge Function <b>finance-treasury-edit</b> على Supabase (deploy للنسخة الجديدة). الجدول شغال، والفلاتر على المشروع/المورد هتشتغل بعد الـ deploy.</div>'; }
     const sum = document.getElementById('trLedgerSum');
     if(sum) sum.innerHTML = `${l.total} حركة${l.total>l.rows.length?` (معروض أحدث ${l.rows.length} — ضيّق البحث لباقي النتائج)`:''} · وارد <b>${finN(l.sumIn)}</b> · صادر <b>${finN(l.sumOut)}</b> · الصافي <b>${finN(l.sumIn-l.sumOut)}</b>`;
-    box.innerHTML = l.rows.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>الحساب</th><th>البيان</th><th>الطريقة</th><th>وارد</th><th>صادر</th><th>الرصيد</th><th></th></tr></thead><tbody>
+    box.innerHTML = l.rows.length ? `<table class="admtable"><thead><tr><th>التاريخ</th><th>الحساب</th><th>البيان</th><th>الطريقة</th><th>وارد</th><th>صادر</th><th>الرصيد</th><th>مستند</th><th></th></tr></thead><tbody>
     ${l.rows.map(r=>`<tr style="cursor:default"><td>${fmtDate(r.entry_date)}</td><td>${escapeHtml(r.account_name)}</td>
      <td>${r.payment_group?'<span class="tag" title="جزء من تحويل واحد موزّع على أكتر من مشروع/فاتورة">تحويل موزّع</span> ':''}<b>${TR_KIND[r.kind]||r.kind}</b> ${escapeHtml([r.customer_name,r.supplier_name,r.project_number,(r.bill_numbers&&r.bill_numbers.length)?('فاتورة '+r.bill_numbers.join('، ')):'',r.reference,r.notes].filter(Boolean).join(' · '))}</td>
      <td>${escapeHtml(labelOf(SETTINGS.paymentMethods,r.method,r.method||''))}</td>
-     <td class="num">${r.direction==='in'?finN(r.amount):''}</td><td class="num">${r.direction==='out'?finN(r.amount):''}</td><td class="num">${finS(r.running_balance)}</td>
+     <td class="num">${r.direction==='in'?finN(r.amount):''}</td><td class="num">${r.direction==='out'?finN(r.amount):''}</td><td class="num">${finS(r.running_balance)}</td><td>${attEntryBadge(r.id)}</td>
      <td style="white-space:nowrap"><button class="btn ghost small" onclick="trEditEntry(${r.id})">تعديل</button> <button class="btn danger small" onclick="trDelEntry(${r.id},'${r.kind}')">حذف</button>${r.payment_group?` <button class="btn danger small" title="حذف كل أجزاء التحويل" onclick="trDelGroup('${r.payment_group}')">حذف الكل</button>`:''}</td></tr>`).join('')}</tbody></table>` : `<div class="loadingNote">${(trFilter.q||trFilter.kind||trFilter.from||trFilter.to||trFilter.accountId||trFilter.projectId||trFilter.supplierId)?'مفيش حركات مطابقة للبحث':'مفيش حركات لسه'}</div>`;
   }catch(e){ if(kpi) kpi.style.opacity=''; if(my===trLedgerSeq) box.innerHTML = `<div class="loadingNote">${escapeHtml(e.message||'حصل خطأ')}</div>`; }
 }
@@ -1762,21 +1767,23 @@ function trLinkAdvance(eid){
 }
 const trLinkSubmit = (e,eid,sid) => { const d=finFd(e); finRun(async()=>{ await crmApi('treasury-set-entry-link',{entryId:eid,projectId:d.projectId||null,poId:d.poId||null}); toast('تم الربط'); await trSupplier(sid); finLoad(); }); };
 
-/* ============ مرفقات الفواتير: تصوير / رفع صورة أو PDF ============ */
-/* الملفات في bucket خاص عن طريق دالة finance-attachments. الصور بتتصغّر وبتتضغط هنا قبل الرفع (JPEG) عشان الرفع يبقى سريع من الموبايل. */
-let attStage = [], attCounts = {};
+/* ============ مستندات المالية: تصوير / رفع صورة أو PDF (فواتير الموردين + حركات الخزنة) ============ */
+/* الملفات في bucket خاص عن طريق دالة finance-attachments. الصور بتتصغّر وبتتضغط هنا قبل الرفع (JPEG) عشان الرفع يبقى سريع من الموبايل.
+   ref = { billId } لفاتورة، أو { target:'entry', entryId } لحركة خزنة، أو { target:'entry', transferGroup } لتحويل بين حسابات (طرفيه بيشاركوا نفس المستندات). */
+let attStage = [], attCounts = {}, attECounts = {}, attCur = null;
 const ATT_MAX = 10, ATT_PDF_MAX = 6*1024*1024;
 const attSize = n => Number(n)>=1048576 ? (Number(n)/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(Number(n)/1024))+' KB';
-const attBadge = id => `<button class="btn ghost small" type="button" onclick="attOpen(${id})" title="مرفقات الفاتورة">📎${attCounts[id]?' '+attCounts[id]:''}</button>`;
-const attPickerHtml = () => `<div style="grid-column:1/-1"><label>صورة / ملف الفاتورة (اختياري)</label>
+const attBadge = id => `<button class="btn ghost small" type="button" onclick="attOpen({billId:${id}})" title="مرفقات الفاتورة">📎${attCounts[id]?' '+attCounts[id]:''}</button>`;
+const attEntryBadge = id => `<button class="btn ghost small" type="button" onclick="attOpen({target:'entry',entryId:${id}})" title="مستندات الحركة (إيصال / تحويل)">📎${attECounts[id]?' '+attECounts[id]:''}</button>`;
+const attPickerHtml = () => `<div style="grid-column:1/-1"><label>صورة / مستند (اختياري) — إيصال، تحويل بنكي، فاتورة...</label>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-    <button type="button" class="btn ghost small" onclick="document.getElementById('attCam').click()">📷 تصوير الفاتورة</button>
+    <button type="button" class="btn ghost small" onclick="document.getElementById('attCam').click()">📷 تصوير المستند</button>
     <button type="button" class="btn ghost small" onclick="document.getElementById('attFile').click()">📎 رفع صورة / PDF</button>
     <input type="file" id="attCam" accept="image/*" capture="environment" hidden onchange="attAdd(this)">
     <input type="file" id="attFile" accept="image/*,application/pdf" multiple hidden onchange="attAdd(this)">
   </div>
   <div id="attStageList" class="emptyNote" style="margin-top:6px">لسه ماضفتش مرفقات</div>
-  <div class="emptyNote">تقدر تصوّر أكتر من صورة (كل مرة تضغط تصوير). الصور بتتضغط تلقائيًا، والـ PDF لحد 6 ميجا، ولحد ${ATT_MAX} مرفقات للفاتورة.</div></div>`;
+  <div class="emptyNote">تقدر تصوّر أكتر من صورة (كل مرة تضغط تصوير). الصور بتتضغط تلقائيًا، والـ PDF لحد 6 ميجا، ولحد ${ATT_MAX} مرفقات.</div></div>`;
 function attRenderStage(){ const el = document.getElementById('attStageList'); if(!el) return;
   el.innerHTML = attStage.length ? attStage.map((f,i)=>`<span class="tag" style="margin:2px">${escapeHtml(f.name||'صورة')} (${attSize(f.size)}) <a href="#" onclick="attDrop(${i});return false" style="margin-inline-start:4px">✕</a></span>`).join('') : 'لسه ماضفتش مرفقات'; }
 function attDrop(i){ attStage.splice(i,1); attRenderStage(); }
@@ -1807,37 +1814,41 @@ async function attPrepare(file){
   const dataBase64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1]); fr.onerror = () => rej(new Error('تعذّر قراءة الملف')); fr.readAsDataURL(blob); });
   return { fileName: name, mimeType: mime, dataBase64 };
 }
-async function attUploadAll(billId){
+async function attUploadAll(ref){
   const list = attStage.slice(); let ok = 0, failed = 0, lastErr = '';
   for(let i = 0; i < list.length; i++){
     toast(`بيرفع المرفقات ${i+1}/${list.length}...`);
-    try{ await crmApi('attach-upload', { billId, ...(await attPrepare(list[i])) }); ok++; }
+    try{ await crmApi('attach-upload', { ...ref, ...(await attPrepare(list[i])) }); ok++; }
     catch(e){ failed++; lastErr = e.message || ''; }
   }
-  attStage = []; attCounts[billId] = (attCounts[billId]||0) + ok;
+  attStage = [];
+  if(ref.billId) attCounts[ref.billId] = (attCounts[ref.billId]||0) + ok;
+  else if(ref.entryId) attECounts[ref.entryId] = (attECounts[ref.entryId]||0) + ok;
   return { ok, failed, lastErr };
 }
-async function attRenderModal(billId){
-  const r = await crmApi('attach-list', { billId });
-  attCounts[billId] = r.files.length;
-  const bill = (typeof purBillAll !== 'undefined' ? purBillAll : []).find(x => String(x.bill_id) === String(billId));
-  trShow(trHead('مرفقات الفاتورة' + (bill ? ' — ' + escapeHtml(bill.bill_number || ('#'+billId)) + ' — ' + escapeHtml(bill.supplier_name) : '')) +
-    `<div class="card" style="padding:0;overflow:auto">${r.files.length ? `<table class="admtable"><thead><tr><th>الملف</th><th>الحجم</th><th>التاريخ</th><th></th></tr></thead><tbody>${r.files.map(f=>`<tr style="cursor:default"><td>${/pdf/.test(f.mime_type)?'📄':'🖼'} ${escapeHtml(f.file_name)}</td><td>${attSize(f.size_bytes)}</td><td>${fmtDate(f.created_at)}</td><td style="white-space:nowrap"><button class="btn small" type="button" onclick="attView(${f.id})">عرض</button> <button class="btn danger small" type="button" onclick="attDel(${f.id},${billId})">حذف</button></td></tr>`).join('')}</tbody></table>` : '<div class="loadingNote">مفيش مرفقات للفاتورة دي</div>'}</div>
-    <div class="finForm" style="margin-top:10px">${attPickerHtml()}<div><button class="btn small teal" type="button" onclick="attUploadNow(${billId})">رفع المرفقات المختارة</button></div></div>`);
-  if(typeof purBillRender === 'function') purBillRender();
+async function attRenderModal(){
+  const ref = attCur, isE = ref.target === 'entry';
+  const r = await crmApi('attach-list', ref);
+  if(isE){ if(ref.entryId) attECounts[ref.entryId] = r.files.length; } else attCounts[ref.billId] = r.files.length;
+  const bill = !isE && (typeof purBillAll !== 'undefined' ? purBillAll : []).find(x => String(x.bill_id) === String(ref.billId));
+  trShow(trHead(isE ? 'مستندات الحركة' : 'مرفقات الفاتورة' + (bill ? ' — ' + escapeHtml(bill.bill_number || ('#'+ref.billId)) + ' — ' + escapeHtml(bill.supplier_name) : '')) +
+    `<div class="card" style="padding:0;overflow:auto">${r.files.length ? `<table class="admtable"><thead><tr><th>الملف</th><th>الحجم</th><th>التاريخ</th><th></th></tr></thead><tbody>${r.files.map(f=>`<tr style="cursor:default"><td>${/pdf/.test(f.mime_type)?'📄':'🖼'} ${escapeHtml(f.file_name)}</td><td>${attSize(f.size_bytes)}</td><td>${fmtDate(f.created_at)}</td><td style="white-space:nowrap"><button class="btn small" type="button" onclick="attView(${f.id})">عرض</button> <button class="btn danger small" type="button" onclick="attDel(${f.id})">حذف</button></td></tr>`).join('')}</tbody></table>` : `<div class="loadingNote">مفيش ${isE?'مستندات':'مرفقات'} هنا</div>`}</div>
+    <div class="finForm" style="margin-top:10px">${attPickerHtml()}<div><button class="btn small teal" type="button" onclick="attUploadNow()">رفع المرفقات المختارة</button></div></div>`);
+  if(isE){ if(typeof trLedgerLoad === 'function' && document.getElementById('trLedgerBox')) trLedgerLoad(); }
+  else if(typeof purBillRender === 'function') purBillRender();
 }
-function attOpen(billId){ attStage = []; finRun(() => attRenderModal(billId)); }
-function attUploadNow(billId){
+function attOpen(ref){ attStage = []; attCur = ref; finRun(() => attRenderModal()); }
+function attUploadNow(){
   if(!attStage.length){ toast('اختار صورة أو ملف الأول'); return; }
-  finRun(async()=>{ const up = await attUploadAll(billId); toast(up.failed ? `اترفع ${up.ok} وفشل ${up.failed}${up.lastErr?' ('+up.lastErr+')':''}` : 'تم رفع المرفقات'); await attRenderModal(billId); });
+  finRun(async()=>{ const up = await attUploadAll(attCur); toast(up.failed ? `اترفع ${up.ok} وفشل ${up.failed}${up.lastErr?' ('+up.lastErr+')':''}` : 'تم رفع المرفقات'); await attRenderModal(); });
 }
 function attView(fileId){
   const w = window.open('', '_blank'); // بنفتح التاب الأول عشان المتصفح مايمنعش الـ popup
-  finRun(async()=>{ try{ const r = await crmApi('attach-url', { fileId }); if(w) w.location.href = r.url; else location.href = r.url; }catch(e){ if(w) w.close(); throw e; } });
+  finRun(async()=>{ try{ const r = await crmApi('attach-url', { fileId, target: attCur && attCur.target }); if(w) w.location.href = r.url; else location.href = r.url; }catch(e){ if(w) w.close(); throw e; } });
 }
-function attDel(fileId, billId){
+function attDel(fileId){
   if(!confirm('حذف المرفق ده نهائيًا؟')) return;
-  finRun(async()=>{ await crmApi('attach-delete', { fileId }); toast('تم حذف المرفق'); await attRenderModal(billId); });
+  finRun(async()=>{ await crmApi('attach-delete', { fileId, target: attCur && attCur.target }); toast('تم حذف المرفق'); await attRenderModal(); });
 }
 
 /* ============ PURCHASES (المشتريات): أوامر الشراء + فواتير الموردين + الموردون ============ */

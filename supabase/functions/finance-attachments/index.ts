@@ -1,6 +1,8 @@
 // HoloulEnergy — finance-attachments Edge Function (ADMIN ONLY)
-// مرفقات فواتير الموردين (صور / PDF) في bucket خاص. نفس توثيق باقي دوال المالية (توكن أدمن HMAC + session_version).
+// مرفقات المالية (صور / PDF) في bucket خاص: فواتير الموردين + حركات الخزنة (قبض عميل / دفع مورد / تحويل بين الحسابات / ...).
+// نفس توثيق باقي دوال المالية (توكن أدمن HMAC + session_version).
 // actions: attach-upload | attach-counts | attach-list | attach-url | attach-delete
+// body.target: "bill" (الافتراضي — متوافق مع النسخة الأولى) أو "entry" (حركة خزنة).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -51,10 +53,10 @@ async function checkAdminToken(token: string | undefined): Promise<boolean> {
   if (error || !data) return false;
   return payload.ver === data.session_version;
 }
-async function logAudit(actionType: string, entityId: number | null, label: string | null, oldValue: unknown, newValue: unknown) {
+async function logAudit(actionType: string, entityType: string, entityId: number | null, label: string | null, oldValue: unknown, newValue: unknown) {
   try {
     await supabase.from("audit_log").insert({
-      actor: "admin", actor_role: "admin", action_type: actionType, entity_type: "supplier_bill",
+      actor: "admin", actor_role: "admin", action_type: actionType, entity_type: entityType,
       entity_id: entityId, entity_label: label, old_value: oldValue ?? null, new_value: newValue ?? null,
     });
   } catch { /* logging must never break the action */ }
@@ -66,9 +68,17 @@ const must = <T>(r: { data: T; error: any }): T => { if (r.error) throw r.error;
 
 const BUCKET = "supplier-bill-files";
 const MAX_BYTES = 8 * 1024 * 1024;   // 8MB بعد فك الـ base64
-const MAX_FILES_PER_BILL = 10;
+const MAX_FILES_PER_OWNER = 10;
 const SIGNED_URL_SECONDS = 300;
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type Target = { table: string; col: string; prefix: string; entityType: string };
+const TARGETS: Record<"bill" | "entry", Target> = {
+  bill: { table: "supplier_bill_files", col: "bill_id", prefix: "", entityType: "supplier_bill" },
+  entry: { table: "treasury_entry_files", col: "entry_id", prefix: "entry-", entityType: "treasury_entry" },
+};
+const targetOf = (body: any): Target => (body.target === "entry" ? TARGETS.entry : TARGETS.bill);
 
 // نتأكد إن محتوى الملف فعلًا من النوع المعلن (مش بس الامتداد/الـ mime اللي جاي من المتصفح)
 function sniffMime(b: Uint8Array): string | null {
@@ -88,11 +98,45 @@ function decodeBase64(s: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
-const billIdOf = (v: unknown): number => {
+const idOf = (v: unknown, msg: string): number => {
   const n = Number(v);
-  if (!Number.isInteger(n) || n <= 0) bad("رقم الفاتورة غير صالح");
+  if (!Number.isInteger(n) || n <= 0) bad(msg);
   return n;
 };
+
+// مالك المرفقات: للفاتورة هو رقمها. لحركة خزنة: لو الحركة جزء من تحويل بين حسابات (transfer_group) أو دفعة موزّعة (payment_group)
+// فالمجموعة كلها بتشارك نفس المستندات، والمالك هو أصغر id فيها (ده بيخلّي طرفي التحويل يشوفوا نفس الإيصال).
+async function groupOwner(col: "transfer_group" | "payment_group", val: string): Promise<number> {
+  const rows = must(await supabase.from("treasury_entries").select("id").eq(col, val).order("id").limit(1)) as { id: number }[];
+  if (!rows.length) bad("الحركة غير موجودة");
+  return rows[0].id;
+}
+async function resolveOwner(t: Target, body: any, mustExist: boolean): Promise<number> {
+  if (t === TARGETS.bill) {
+    const id = idOf(body.billId ?? body.ownerId, "رقم الفاتورة غير صالح");
+    if (mustExist) {
+      const bill = must(await supabase.from("supplier_bills").select("id").eq("id", id).maybeSingle());
+      if (!bill) bad("الفاتورة غير موجودة");
+    }
+    return id;
+  }
+  if (body.transferGroup) {
+    const g = String(body.transferGroup);
+    if (!UUID_RE.test(g)) bad("معرّف التحويل غير صالح");
+    return await groupOwner("transfer_group", g);
+  }
+  if (body.paymentGroup) {
+    const g = String(body.paymentGroup);
+    if (!UUID_RE.test(g)) bad("معرّف الدفعة غير صالح");
+    return await groupOwner("payment_group", g);
+  }
+  const id = idOf(body.entryId ?? body.ownerId, "رقم الحركة غير صالح");
+  const e = must(await supabase.from("treasury_entries").select("id, transfer_group, payment_group").eq("id", id).maybeSingle()) as any;
+  if (!e) bad("الحركة غير موجودة");
+  if (e.transfer_group) return await groupOwner("transfer_group", e.transfer_group);
+  if (e.payment_group) return await groupOwner("payment_group", e.payment_group);
+  return id;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
@@ -103,15 +147,14 @@ Deno.serve(async (req: Request) => {
     return json({ error: "الجلسة منتهية أو غير مصرّح، الرجاء تسجيل الدخول كأدمن" }, 401);
   }
   const action = body.action;
+  const t = targetOf(body);
 
   try {
-    // رفع ملف واحد على فاتورة (بيتكرر من الواجهة لكل ملف)
+    // رفع ملف واحد (بيتكرر من الواجهة لكل ملف)
     if (action === "attach-upload") {
-      const billId = billIdOf(body.billId);
-      const bill = must(await supabase.from("supplier_bills").select("id").eq("id", billId).maybeSingle());
-      if (!bill) bad("الفاتورة غير موجودة");
-      const { count } = await supabase.from("supplier_bill_files").select("id", { count: "exact", head: true }).eq("bill_id", billId);
-      if ((count ?? 0) >= MAX_FILES_PER_BILL) bad(`الحد الأقصى ${MAX_FILES_PER_BILL} مرفقات للفاتورة`);
+      const owner = await resolveOwner(t, body, true);
+      const { count } = await supabase.from(t.table).select("id", { count: "exact", head: true }).eq(t.col, owner);
+      if ((count ?? 0) >= MAX_FILES_PER_OWNER) bad(`الحد الأقصى ${MAX_FILES_PER_OWNER} مرفقات`);
 
       const raw = String(body.dataBase64 || "");
       if (!raw) bad("الملف فاضي");
@@ -123,55 +166,67 @@ Deno.serve(async (req: Request) => {
       if (!mime) bad("نوع الملف غير مدعوم — المسموح: صورة (JPG / PNG / WEBP) أو PDF");
       const ext = EXT[mime!];
 
-      const path = `${billId}/${crypto.randomUUID()}.${ext}`;
+      const path = `${t.prefix}${owner}/${crypto.randomUUID()}.${ext}`;
       const up = await supabase.storage.from(BUCKET).upload(path, bytes, { contentType: mime!, upsert: false });
       if (up.error) throw up.error;
       const name = cleanName(body.fileName, ext);
-      const ins = await supabase.from("supplier_bill_files")
-        .insert({ bill_id: billId, storage_path: path, file_name: name, mime_type: mime, size_bytes: bytes.length })
-        .select("id, bill_id, file_name, mime_type, size_bytes, created_at").single();
+      const ins = await supabase.from(t.table)
+        .insert({ [t.col]: owner, storage_path: path, file_name: name, mime_type: mime, size_bytes: bytes.length })
+        .select(`id, ${t.col}, file_name, mime_type, size_bytes, created_at`).single();
       if (ins.error) {
         await supabase.storage.from(BUCKET).remove([path]); // مانسيبش ملف يتيم لو تسجيل الصف فشل
         throw ins.error;
       }
-      await logAudit("add_bill_file", billId, name, null, { size: bytes.length, mime });
-      return json({ ok: true, file: ins.data });
+      await logAudit(t === TARGETS.bill ? "add_bill_file" : "add_entry_file", t.entityType, owner, name, null, { size: bytes.length, mime });
+      return json({ ok: true, file: ins.data, ownerId: owner });
     }
 
-    // عدد المرفقات لكل فاتورة (لعمود 📎 في القائمة)
+    // عدد المرفقات لكل فاتورة / حركة (لعمود 📎 في القوائم). في الحركات: كل أعضاء المجموعة (تحويل / دفعة موزّعة) بياخدوا نفس العدد.
     if (action === "attach-counts") {
-      const rows = must(await supabase.from("supplier_bill_files").select("bill_id").limit(5000)) as { bill_id: number }[];
-      const counts: Record<string, number> = {};
-      for (const r of rows) counts[String(r.bill_id)] = (counts[String(r.bill_id)] || 0) + 1;
+      const rows = must(await supabase.from(t.table).select(t.col).limit(5000)) as any[];
+      const owned: Record<string, number> = {};
+      for (const r of rows) owned[String(r[t.col])] = (owned[String(r[t.col])] || 0) + 1;
+      const counts: Record<string, number> = { ...owned };
+      if (t === TARGETS.entry && rows.length) {
+        const own = must(await supabase.from("treasury_entries").select("id, transfer_group, payment_group")
+          .in("id", Object.keys(owned).map(Number))) as any[];
+        const byGroup: Record<string, number> = {};
+        for (const o of own) { const g = o.transfer_group || o.payment_group; if (g) byGroup[g] = owned[String(o.id)]; }
+        const tg = own.map((o) => o.transfer_group).filter(Boolean), pg = own.map((o) => o.payment_group).filter(Boolean);
+        const sibs: { id: number; g: string }[] = [];
+        if (tg.length) for (const x of must(await supabase.from("treasury_entries").select("id, transfer_group").in("transfer_group", tg)) as any[]) sibs.push({ id: x.id, g: x.transfer_group });
+        if (pg.length) for (const x of must(await supabase.from("treasury_entries").select("id, payment_group").in("payment_group", pg)) as any[]) sibs.push({ id: x.id, g: x.payment_group });
+        for (const s of sibs) if (byGroup[s.g]) counts[String(s.id)] = byGroup[s.g];
+      }
       return json({ ok: true, counts });
     }
 
-    // مرفقات فاتورة معينة
+    // مرفقات فاتورة / حركة معينة
     if (action === "attach-list") {
-      const billId = billIdOf(body.billId);
-      const files = must(await supabase.from("supplier_bill_files")
-        .select("id, bill_id, file_name, mime_type, size_bytes, created_at").eq("bill_id", billId).order("id"));
-      return json({ ok: true, files });
+      const owner = await resolveOwner(t, body, false);
+      const files = must(await supabase.from(t.table)
+        .select(`id, ${t.col}, file_name, mime_type, size_bytes, created_at`).eq(t.col, owner).order("id"));
+      return json({ ok: true, files, ownerId: owner });
     }
 
     // رابط عرض مؤقت (٥ دقايق) — الملف نفسه خاص ومالوش رابط عام
     if (action === "attach-url") {
-      const id = billIdOf(body.fileId);
-      const f = must(await supabase.from("supplier_bill_files").select("storage_path, file_name, mime_type").eq("id", id).maybeSingle());
+      const id = idOf(body.fileId, "رقم المرفق غير صالح");
+      const f = must(await supabase.from(t.table).select("storage_path, file_name, mime_type").eq("id", id).maybeSingle()) as any;
       if (!f) bad("المرفق غير موجود");
-      const s = await supabase.storage.from(BUCKET).createSignedUrl(f!.storage_path, SIGNED_URL_SECONDS);
+      const s = await supabase.storage.from(BUCKET).createSignedUrl(f.storage_path, SIGNED_URL_SECONDS);
       if (s.error || !s.data) throw s.error || new Error("تعذر إنشاء رابط العرض");
-      return json({ ok: true, url: s.data.signedUrl, fileName: f!.file_name, mimeType: f!.mime_type });
+      return json({ ok: true, url: s.data.signedUrl, fileName: f.file_name, mimeType: f.mime_type });
     }
 
     if (action === "attach-delete") {
-      const id = billIdOf(body.fileId);
-      const f = must(await supabase.from("supplier_bill_files").select("id, bill_id, storage_path, file_name").eq("id", id).maybeSingle());
+      const id = idOf(body.fileId, "رقم المرفق غير صالح");
+      const f = must(await supabase.from(t.table).select(`id, ${t.col}, storage_path, file_name`).eq("id", id).maybeSingle()) as any;
       if (!f) bad("المرفق غير موجود");
-      const rm = await supabase.storage.from(BUCKET).remove([f!.storage_path]);
+      const rm = await supabase.storage.from(BUCKET).remove([f.storage_path]);
       if (rm.error) throw rm.error;
-      must(await supabase.from("supplier_bill_files").delete().eq("id", id));
-      await logAudit("delete_bill_file", f!.bill_id, f!.file_name, { file_name: f!.file_name }, null);
+      must(await supabase.from(t.table).delete().eq("id", id));
+      await logAudit(t === TARGETS.bill ? "delete_bill_file" : "delete_entry_file", t.entityType, f[t.col], f.file_name, { file_name: f.file_name }, null);
       return json({ ok: true });
     }
 
