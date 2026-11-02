@@ -1702,7 +1702,8 @@ const trDelEntrySup = (id,sid) => confirm('حذف الحركة من الخزنة
 const trOpenFromSup = (kind,sid) => trOpen(kind,{supplierId:sid,_ret:sid});
 const SUP_DOC_LBL = { invoice:'فاتورة', credit_note:'مرتجع (إشعار دائن)', supplier_payment:'دفع', supplier_refund:'استرداد نقدي' };
 function trSupplier(sid){ return finRun(async()=>{
-  const d = await crmApi('treasury-supplier-statement',{supplierId:sid}); trSupData = d; trRetSup = null;
+  const [d, acb, ace] = await Promise.all([ crmApi('treasury-supplier-statement',{supplierId:sid}), crmApi('attach-counts').catch(()=>({counts:{}})), crmApi('attach-counts',{target:'entry'}).catch(()=>({counts:{}})) ]);
+  trSupData = d; trRetSup = null; attCounts = acb.counts || {}; attECounts = ace.counts || {};
   if(!finLK) finLK = await crmApi('treasury-lookups');
   const s = d.supplier, bal = Number(s.balance), adv = Number(s.advance_open), openBills = d.bills.filter(b=>Number(b.remaining)>0.005);
   const loc = r => [r.project_number, r.po_number].filter(Boolean).map(escapeHtml).join(' · ') || '<span style="color:var(--muted)">عام</span>';
@@ -1724,7 +1725,7 @@ function trSupplier(sid){ return finRun(async()=>{
       desc = `استرداد نقدي${r.account_name?' — '+escapeHtml(r.account_name):''}`; act = `<button class="btn ghost small" onclick="trEditEntry(${r.doc_id},${sid})">تعديل</button> <button class="btn danger small" onclick="trDelEntrySup(${r.doc_id},${sid})">حذف</button>`;
     }
     return `<tr style="cursor:default"><td>${fmtDate(r.doc_date)}</td><td>${desc}${r.notes?'<div style="font-size:11px;color:var(--muted)">'+escapeHtml(r.notes)+'</div>':''}</td><td>${loc(r)}</td>
-      <td>${plus?amt:''}</td><td>${plus?'':amt}</td><td><b>${supRun(r.running_balance)}</b></td><td>${act}</td></tr>`;
+      <td>${plus?amt:''}</td><td>${plus?'':amt}</td><td><b>${supRun(r.running_balance)}</b></td><td>${(r.doc_kind==='invoice'||r.doc_kind==='credit_note') ? attBadge(r.doc_id,sid) : attEntryBadge(r.doc_id,sid)}</td><td>${act}</td></tr>`;
   }).join('');
   const advRows = d.advances.map(a=>`<tr style="cursor:default"><td>${fmtDate(a.entry_date)}</td><td>${finN(a.amount)}</td><td>${finN(a.applied)}</td><td><b>${finN(a.remaining)}</b></td>
     <td>${[a.project_number, a.po_number].filter(Boolean).map(escapeHtml).join(' · ') || '<span style="color:var(--muted)">غير مرتبطة</span>'}</td>
@@ -1746,7 +1747,7 @@ function trSupplier(sid){ return finRun(async()=>{
     <button class="btn ghost small" onclick="trOpenFromSup('supplier_refund',${sid})">+ استرداد نقدي</button>
     <button class="btn small" onclick="stSupMenu(${sid})">🖨 طباعة كشف الحساب</button></div>
   <h3 style="margin:10px 0 6px"><span class="lbl">كشف الحساب</span></h3>
-  ${d.statement.length ? `<div style="overflow:auto"><table class="admtable" style="min-width:760px"><thead><tr><th>التاريخ</th><th>البيان</th><th>المشروع / الأمر</th><th>فاتورة / استرداد (+)</th><th>دفعة / مرتجع (−)</th><th>الرصيد الجاري</th><th></th></tr></thead><tbody>${stRows}</tbody></table></div>
+  ${d.statement.length ? `<div style="overflow:auto"><table class="admtable" style="min-width:820px"><thead><tr><th>التاريخ</th><th>البيان</th><th>المشروع / الأمر</th><th>فاتورة / استرداد (+)</th><th>دفعة / مرتجع (−)</th><th>الرصيد الجاري</th><th>مستند</th><th></th></tr></thead><tbody>${stRows}</tbody></table></div>
   <div class="emptyNote">الرصيد الموجب = علينا للمورد. السالب = دفعنا أكتر من الفواتير (مقدّم لنا عنده).</div>` : '<div class="emptyNote">مفيش حركات لسه</div>'}
   ${d.advances.length ? `<h3 style="margin:14px 0 6px"><span class="lbl">الدفعات المقدّمة (بدون فاتورة)</span></h3><div style="overflow:auto"><table class="admtable" style="min-width:700px"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>المخصوم</th><th>المتبقي</th><th>مرتبطة بـ</th><th>اتخصمت من</th><th></th></tr></thead><tbody>${advRows}</tbody></table></div>
   <div class="emptyNote">لما تسجّل فاتورة المورد مع الاستلام بتتخصم الدفعات المقدّمة منها تلقائيًا (نفس الأمر أو نفس المشروع أولًا، وبعدها الدفعات العامة).</div>` : ''}
@@ -1775,11 +1776,11 @@ const trLinkSubmit = (e,eid,sid) => { const d=finFd(e); finRun(async()=>{ await 
 /* ============ مستندات المالية: تصوير / رفع صورة أو PDF (فواتير الموردين + حركات الخزنة) ============ */
 /* الملفات في bucket خاص عن طريق دالة finance-attachments. الصور بتتصغّر وبتتضغط هنا قبل الرفع (JPEG) عشان الرفع يبقى سريع من الموبايل.
    ref = { billId } لفاتورة، أو { target:'entry', entryId } لحركة خزنة، أو { target:'entry', transferGroup } لتحويل بين حسابات (طرفيه بيشاركوا نفس المستندات). */
-let attStage = [], attCounts = {}, attECounts = {}, attCur = null;
+let attStage = [], attCounts = {}, attECounts = {}, attCur = null, attSid = null;
 const ATT_MAX = 10, ATT_PDF_MAX = 6*1024*1024;
 const attSize = n => Number(n)>=1048576 ? (Number(n)/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(Number(n)/1024))+' KB';
-const attBadge = id => `<button class="btn ghost small" type="button" onclick="attOpen({billId:${id}})" title="مرفقات الفاتورة">📎${attCounts[id]?' '+attCounts[id]:''}</button>`;
-const attEntryBadge = id => `<button class="btn ghost small" type="button" onclick="attOpen({target:'entry',entryId:${id}})" title="مستندات الحركة (إيصال / تحويل)">📎${attECounts[id]?' '+attECounts[id]:''}</button>`;
+const attBadge = (id,sid) => `<button class="btn ghost small" type="button" onclick="attOpen({billId:${id}}${sid?','+sid:''})" title="مرفقات الفاتورة">📎${attCounts[id]?' '+attCounts[id]:''}</button>`;
+const attEntryBadge = (id,sid) => `<button class="btn ghost small" type="button" onclick="attOpen({target:'entry',entryId:${id}}${sid?','+sid:''})" title="مستندات الحركة (إيصال / تحويل)">📎${attECounts[id]?' '+attECounts[id]:''}</button>`;
 const attPickerHtml = () => `<div style="grid-column:1/-1"><label>صورة / مستند (اختياري) — إيصال، تحويل بنكي، فاتورة...</label>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button type="button" class="btn ghost small" onclick="document.getElementById('attCam').click()">📷 تصوير المستند</button>
@@ -1836,13 +1837,14 @@ async function attRenderModal(){
   const r = await crmApi('attach-list', ref);
   if(isE){ if(ref.entryId) attECounts[ref.entryId] = r.files.length; } else attCounts[ref.billId] = r.files.length;
   const bill = !isE && (typeof purBillAll !== 'undefined' ? purBillAll : []).find(x => String(x.bill_id) === String(ref.billId));
+  const back = attSid ? `<div style="margin-bottom:8px"><button class="btn ghost small" type="button" onclick="trSupplier(${attSid})">← رجوع لكشف المورد</button></div>` : '';
   trShow(trHead(isE ? 'مستندات الحركة' : 'مرفقات الفاتورة' + (bill ? ' — ' + escapeHtml(bill.bill_number || ('#'+ref.billId)) + ' — ' + escapeHtml(bill.supplier_name) : '')) +
-    `<div class="card" style="padding:0;overflow:auto">${r.files.length ? `<table class="admtable"><thead><tr><th>الملف</th><th>الحجم</th><th>التاريخ</th><th></th></tr></thead><tbody>${r.files.map(f=>`<tr style="cursor:default"><td>${/pdf/.test(f.mime_type)?'📄':'🖼'} ${escapeHtml(f.file_name)}</td><td>${attSize(f.size_bytes)}</td><td>${fmtDate(f.created_at)}</td><td style="white-space:nowrap"><button class="btn small" type="button" onclick="attView(${f.id})">عرض</button> <button class="btn danger small" type="button" onclick="attDel(${f.id})">حذف</button></td></tr>`).join('')}</tbody></table>` : `<div class="loadingNote">مفيش ${isE?'مستندات':'مرفقات'} هنا</div>`}</div>
+    back + `<div class="card" style="padding:0;overflow:auto">${r.files.length ? `<table class="admtable"><thead><tr><th>الملف</th><th>الحجم</th><th>التاريخ</th><th></th></tr></thead><tbody>${r.files.map(f=>`<tr style="cursor:default"><td>${/pdf/.test(f.mime_type)?'📄':'🖼'} ${escapeHtml(f.file_name)}</td><td>${attSize(f.size_bytes)}</td><td>${fmtDate(f.created_at)}</td><td style="white-space:nowrap"><button class="btn small" type="button" onclick="attView(${f.id})">عرض</button> <button class="btn danger small" type="button" onclick="attDel(${f.id})">حذف</button></td></tr>`).join('')}</tbody></table>` : `<div class="loadingNote">مفيش ${isE?'مستندات':'مرفقات'} هنا</div>`}</div>
     <div class="finForm" style="margin-top:10px">${attPickerHtml()}<div><button class="btn small teal" type="button" onclick="attUploadNow()">رفع المرفقات المختارة</button></div></div>`);
   if(isE){ if(typeof trLedgerLoad === 'function' && document.getElementById('trLedgerBox')) trLedgerLoad(); }
   else if(typeof purBillRender === 'function') purBillRender();
 }
-function attOpen(ref){ attStage = []; attCur = ref; finRun(() => attRenderModal()); }
+function attOpen(ref, sid){ attStage = []; attCur = ref; attSid = sid || null; finRun(() => attRenderModal()); }
 function attUploadNow(){
   if(!attStage.length){ toast('اختار صورة أو ملف الأول'); return; }
   finRun(async()=>{ const up = await attUploadAll(attCur); toast(up.failed ? `اترفع ${up.ok} وفشل ${up.failed}${up.lastErr?' ('+up.lastErr+')':''}` : 'تم رفع المرفقات'); await attRenderModal(); });
