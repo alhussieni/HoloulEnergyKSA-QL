@@ -1779,8 +1779,8 @@ const trLinkSubmit = (e,eid,sid) => { const d=finFd(e); finRun(async()=>{ await 
 let attStage = [], attCounts = {}, attECounts = {}, attCur = null, attSid = null;
 const ATT_MAX = 10, ATT_PDF_MAX = 6*1024*1024;
 const attSize = n => Number(n)>=1048576 ? (Number(n)/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(Number(n)/1024))+' KB';
-const attBadge = (id,sid) => `<button class="btn ghost small" type="button" onclick="attOpen({billId:${id}}${sid?','+sid:''})" title="مرفقات الفاتورة">📎${attCounts[id]?' '+attCounts[id]:''}</button>`;
-const attEntryBadge = (id,sid) => `<button class="btn ghost small" type="button" onclick="attOpen({target:'entry',entryId:${id}}${sid?','+sid:''})" title="مستندات الحركة (إيصال / تحويل)">📎${attECounts[id]?' '+attECounts[id]:''}</button>`;
+const attBadge = (id,sid) => `<button class="btn ghost small" type="button" onclick="attOpen({billId:${id}}${sid?','+sid:''})" title="مرفقات الفاتورة">📎${attCounts[id]?' '+attCounts[id]:(sid?' إضافة':'')}</button>`;
+const attEntryBadge = (id,sid) => `<button class="btn ghost small" type="button" onclick="attOpen({target:'entry',entryId:${id}}${sid?','+sid:''})" title="مستندات الحركة (إيصال / تحويل)">📎${attECounts[id]?' '+attECounts[id]:(sid?' إضافة':'')}</button>`;
 const attPickerHtml = () => `<div style="grid-column:1/-1"><label>صورة / مستند (اختياري) — إيصال، تحويل بنكي، فاتورة...</label>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button type="button" class="btn ghost small" onclick="document.getElementById('attCam').click()">📷 تصوير المستند</button>
