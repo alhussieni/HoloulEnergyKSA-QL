@@ -1,7 +1,7 @@
 // HoloulEnergy — finance-attachments Edge Function (ADMIN ONLY)
 // مرفقات المالية (صور / PDF) في bucket خاص: فواتير الموردين + حركات الخزنة (قبض عميل / دفع مورد / تحويل بين الحسابات / ...).
 // نفس توثيق باقي دوال المالية (توكن أدمن HMAC + session_version).
-// actions: attach-upload | attach-counts | attach-list | attach-url | attach-delete
+// actions: attach-upload | attach-counts | attach-list | attach-url | attach-delete | attach-supplier (كل مستندات مورد بروابط عرض مؤقتة — لطباعة كشف الحساب مع المرفقات)
 // body.target: "bill" (الافتراضي — متوافق مع النسخة الأولى) أو "entry" (حركة خزنة).
 // الفاتورة الموزّعة على أكتر من مشروع (bill_group) والتحويل/الدفعة الموزّعة بيشاركوا نفس المستندات: المالك = أصغر id في المجموعة.
 
@@ -213,6 +213,54 @@ Deno.serve(async (req: Request) => {
       const files = must(await supabase.from(t.table)
         .select(`id, ${t.col}, file_name, mime_type, size_bytes, created_at`).eq(t.col, owner).order("id"));
       return json({ ok: true, files, ownerId: owner });
+    }
+
+    // كل مستندات مورد (فواتير أصلية + تحويلات/دفعات) بروابط عرض مؤقتة ساعة — لطباعة كشف الحساب مع المرفقات.
+    // النتيجة بتتفهرس بـ id الفاتورة / الحركة (وأعضاء نفس المجموعة بياخدوا مستندات مالك المجموعة).
+    if (action === "attach-supplier") {
+      const sid = idOf(body.supplierId, "رقم المورد غير صالح");
+      const ownersOf = async (src: "supplier_bills" | "treasury_entries", gcols: string[]) => {
+        const rows = must(await supabase.from(src).select(["id", ...gcols].join(", ")).eq("supplier_id", sid).limit(5000)) as any[];
+        const minBy: Record<string, number> = {};
+        for (const gc of gcols) {
+          const gs = [...new Set(rows.map((r) => r[gc]).filter(Boolean))];
+          if (!gs.length) continue;
+          for (const x of must(await supabase.from(src).select(`id, ${gc}`).in(gc, gs)) as any[]) {
+            const k = `${gc}:${x[gc]}`;
+            if (minBy[k] === undefined || x.id < minBy[k]) minBy[k] = x.id;
+          }
+        }
+        const owner: Record<string, number> = {};
+        for (const r of rows) {
+          let o = r.id;
+          for (const gc of gcols) if (r[gc]) { o = minBy[`${gc}:${r[gc]}`] ?? r.id; break; }
+          owner[String(r.id)] = o;
+        }
+        return owner;
+      };
+      const out: Record<string, Record<string, unknown[]>> = { bills: {}, entries: {} };
+      for (const [key, src, gcols, tg] of [
+        ["bills", "supplier_bills", ["bill_group"], TARGETS.bill],
+        ["entries", "treasury_entries", ["transfer_group", "payment_group"], TARGETS.entry],
+      ] as const) {
+        const owner = await ownersOf(src, [...gcols]);
+        const ids = [...new Set(Object.values(owner))];
+        if (!ids.length) continue;
+        const files = must(await supabase.from(tg.table).select(`id, ${tg.col}, storage_path, file_name, mime_type`).in(tg.col, ids).order("id")) as any[];
+        if (!files.length) continue;
+        const signed = await supabase.storage.from(BUCKET).createSignedUrls(files.map((f) => f.storage_path), 3600);
+        if (signed.error) throw signed.error;
+        const urlOf: Record<string, string> = {};
+        for (const x of signed.data || []) if (x.path && x.signedUrl) urlOf[x.path] = x.signedUrl;
+        const byOwner: Record<string, unknown[]> = {};
+        for (const f of files) {
+          const url = urlOf[f.storage_path];
+          if (!url) continue;
+          (byOwner[String(f[tg.col])] ||= []).push({ id: f.id, file_name: f.file_name, mime_type: f.mime_type, url });
+        }
+        for (const [rid, o] of Object.entries(owner)) if (byOwner[String(o)]) out[key][rid] = byOwner[String(o)];
+      }
+      return json({ ok: true, bills: out.bills, entries: out.entries });
     }
 
     // رابط عرض مؤقت (٥ دقايق) — الملف نفسه خاص ومالوش رابط عام

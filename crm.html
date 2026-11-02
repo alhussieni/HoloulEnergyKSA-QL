@@ -2488,11 +2488,60 @@ const finSaveFlags = (e,id) => finRun(async()=>{ e.preventDefault(); const f=e.t
 function stOpenIn(w, html){ w.document.open(); w.document.write(html); w.document.close(); w.addEventListener('load', ()=>{ setTimeout(()=>{ try{ w.focus(); w.print(); }catch(_){} }, 700); }); }
 function stSupMenu(sid){ trShow(`${trHead('طباعة كشف حساب المورد')}
   <form class="finForm" onsubmit="stSupPrint(event,${sid})"><div><label>من تاريخ (اختياري)</label><input type="date" name="from"></div><div><label>إلى تاريخ (اختياري)</label><input type="date" name="to"></div>
-  <div style="grid-column:1/-1" class="emptyNote">من غير تواريخ بيطبع الكشف كله. لو حدّدت "من تاريخ" بيظهر رصيد أول المدة قبله.</div>
+  <div style="grid-column:1/-1"><label>محتوى الطباعة</label><select name="mode"><option value="plain">الكشف فقط</option><option value="att">الكشف + المرفقات (الفواتير الأصلية والتحويلات)</option></select></div>
+  <div style="grid-column:1/-1" class="emptyNote">من غير تواريخ بيطبع الكشف كله. لو حدّدت "من تاريخ" بيظهر رصيد أول المدة قبله. مع المرفقات: بعد صفحات الكشف بتتطبع صفحة لكل مستند (صور الفواتير وإيصالات التحويل) بترتيب الكشف، وملفات الـ PDF بتتحوّل لصفحات (لحد 8 صفحات للملف). الحركات اللي في الفترة المحدّدة بس.</div>
   <div style="display:flex;gap:8px"><button class="btn small teal">🖨 طباعة</button><button type="button" class="btn ghost small" onclick="trSupplier(${sid})">رجوع</button></div></form>`); }
+/* مرفقات كشف الحساب: صور الفواتير الأصلية وإيصالات التحويل بعد صفحات الكشف. PDF بيتحوّل لصور صفحات بـ pdf.js (بيتحمّل عند الحاجة). */
+const ST_PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+async function stLoadPdfJs(){
+  if(window.pdfjsLib) return window.pdfjsLib;
+  await new Promise((res,rej)=>{ const sc = document.createElement('script'); sc.src = ST_PDFJS+'pdf.min.js'; sc.onload = res; sc.onerror = () => rej(new Error('تعذّر تحميل قارئ الـ PDF')); document.head.appendChild(sc); });
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc = ST_PDFJS+'pdf.worker.min.js';
+  return window.pdfjsLib;
+}
+async function stPdfPages(url, maxPages){
+  const lib = await stLoadPdfJs(), buf = await (await fetch(url)).arrayBuffer(), pdf = await lib.getDocument({ data: buf }).promise, pages = [];
+  for(let i = 1; i <= Math.min(pdf.numPages, maxPages); i++){
+    const pg = await pdf.getPage(i), vp = pg.getViewport({ scale: 1.6 }), c = document.createElement('canvas');
+    c.width = vp.width; c.height = vp.height;
+    await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    pages.push(c.toDataURL('image/jpeg', 0.82));
+  }
+  return { pages, total: pdf.numPages };
+}
+async function stSupAppendix(sid, rows){
+  const E = escapeHtml, A = await crmApi('attach-supplier', { supplierId: sid }), items = new Map();
+  rows.forEach(r => {
+    const isBill = r.doc_kind === 'invoice' || r.doc_kind === 'credit_note', list = (isBill ? A.bills : A.entries)[r.doc_id] || [];
+    list.forEach(fl => { const k = (isBill ? 'b' : 'e') + fl.id; if(!items.has(k)) items.set(k, { file: fl, isBill, rows: [] }); items.get(k).rows.push(r); });
+  });
+  if(!items.size) return { html: '', count: 0, skipped: 0 };
+  const uniq = a => [...new Set(a.filter(Boolean))];
+  const imgCss = 'display:block;max-width:100%;max-height:235mm;margin:8px auto;border:1px solid #DEE7E4;border-radius:4px';
+  let html = '', n = 0, skipped = 0, first = true;
+  for(const it of items.values()){
+    n++;
+    const rs = it.rows, projs = uniq(rs.map(r => r.project_number)).join('، ') || 'عام', total = rs.reduce((t,r) => t + Number(r.amount), 0), d0 = fmtDate(rs[0].doc_date);
+    const cap = it.isBill
+      ? `${rs[0].doc_kind === 'credit_note' ? 'مرتجع' : 'فاتورة المورد'} ${E(uniq(rs.map(r => r.ref)).join(' / '))} — ${d0} — ${finN(total)} — ${E(projs)}`
+      : `${rs.some(r => r.bill_id) ? 'دفعة / تحويل على فاتورة' : 'تحويل / دفعة للمورد'} — ${d0} — ${finN(total)}${rs.length > 1 ? ` (موزّع على ${rs.length})` : ''} — ${E(projs)}`;
+    const head = (first ? `<h3 style="margin:0 0 8px;font-size:14px;color:#0B7A66">المرفقات — الفواتير الأصلية وإيصالات التحويل</h3>` : '') + `<div class="note" style="margin:0 0 6px"><b>مرفق ${n} من ${items.size}:</b> ${cap}<br><span class="m">${E(it.file.file_name)}</span></div>`;
+    first = false;
+    const wrap = inner => `<div style="page-break-before:always">${head}${inner}</div>`;
+    if(/^image\//.test(it.file.mime_type)){ html += wrap(`<img src="${E(it.file.url)}" style="${imgCss}">`); continue; }
+    try{
+      const pg = await stPdfPages(it.file.url, 8);
+      html += wrap(pg.pages.map((u, i) => (i ? `<div style="page-break-before:always"><div class="note m" style="margin:0 0 6px">${E(it.file.file_name)} — صفحة ${i+1} من ${pg.total}</div>` : '') + `<img src="${u}" style="${imgCss}">` + (i ? '</div>' : '')).join('')
+        + (pg.total > pg.pages.length ? `<div class="note m">تم عرض أول ${pg.pages.length} صفحات من ${pg.total}.</div>` : ''));
+    }catch(err){ skipped++; html += wrap(`<div class="legal">تعذّر عرض الملف في الطباعة (PDF): ${E(it.file.file_name)}. افتحه من زر 📎 في كشف المورد.</div>`); }
+  }
+  return { html, count: items.size, skipped };
+}
 function stSupPrint(e, sid){ const f = finFd(e); finRun(async()=>{
   const d = trSupData; if(!d || String(d.supplier.supplier_id)!==String(sid)) throw new Error('افتح كشف المورد الأول');
   const w = window.open('','_blank'); if(!w) throw new Error('المتصفح منع النافذة — اسمح بالنوافذ المنبثقة');
+  const withAtt = f.mode === 'att';
+  if(withAtt){ try{ w.document.write('<!DOCTYPE html><html dir="rtl"><body style="font-family:Tahoma,Arial;padding:30px">جاري تجهيز الكشف والمرفقات...</body></html>'); }catch(_){} }
   try{
     if(!finLK) finLK = await crmApi('treasury-lookups');
     const s = d.supplier, E = escapeHtml, sup = (finLK.suppliers||[]).find(x=>String(x.supplier_id)===String(sid)) || {}, from = f.from||'', to = f.to||'';
@@ -2507,10 +2556,15 @@ function stSupPrint(e, sid){ const f = finFd(e); finRun(async()=>{
       <tr><td colspan="3" class="t">إجمالي الفترة</td><td class="n"><b>${finN(plus)}</b></td><td class="n"><b>${finN(minus)}</b></td><td></td></tr>
       <tr class="g"><td colspan="5" class="t">${close>0.005?'الرصيد المستحق للمورد (علينا)':close<-0.005?'رصيد لنا عند المورد (مقدّم)':'الرصيد'}</td><td class="n">${finN(Math.abs(close))}</td></tr></tbody></table>
       <div class="note">الرصيد الموجب = مستحق للمورد. السالب = دفعات مقدّمة لنا عنده. الأرقام بالريال السعودي.</div>`;
-    stOpenIn(w, docShell({ title:'كشف حساب — '+s.name, titleAr:'كشف حساب مورد', titleEn:'SUPPLIER STATEMENT OF ACCOUNT', badge: (from||to) ? ('الفترة: '+(from?fmtDate(from):'البداية')+' إلى '+(to?fmtDate(to):'اليوم')) : 'من بداية التعامل حتى اليوم', docNo:'تاريخ الكشف: '+fmtDate(todayStr()),
+    let app = { html:'', count:0, skipped:0 };
+    if(withAtt){ toast('بيجهّز المرفقات...'); app = await stSupAppendix(sid, rows); }
+    let html = docShell({ title:'كشف حساب — '+s.name, titleAr:'كشف حساب مورد', titleEn:'SUPPLIER STATEMENT OF ACCOUNT', badge: (from||to) ? ('الفترة: '+(from?fmtDate(from):'البداية')+' إلى '+(to?fmtDate(to):'اليوم')) : 'من بداية التعامل حتى اليوم', docNo:'تاريخ الكشف: '+fmtDate(todayStr()),
       boxes:[[['المورد','<b>'+E(s.name)+'</b>'], sup.vat_number?['الرقم الضريبي للمورد',E(sup.vat_number)]:null, sup.phone?['هاتف المورد',E(sup.phone)]:null],
              [['إجمالي الفواتير',finN(s.total_bills)], ['إجمالي المدفوع',finN(s.total_paid)], ['الرصيد الحالي',finN(Math.abs(Number(s.balance)))+(Number(s.balance)>0.005?' (علينا)':Number(s.balance)<-0.005?' (لنا)':'')]]],
-      body, sign:['اعتماد الحسابات','تأكيد المورد / الختم'] }));
+      body, sign:['اعتماد الحسابات','تأكيد المورد / الختم'] });
+    if(app.html) html = html.replace(/<\/div><\/body><\/html>\s*$/, app.html + '</div></body></html>');
+    stOpenIn(w, html);
+    if(withAtt) toast(app.count ? `اتطبع الكشف مع ${app.count} مرفق${app.skipped?' (تعذّر عرض '+app.skipped+')':''}` : 'مفيش مرفقات للحركات دي — اتطبع الكشف بس');
     finOverlay.classList.remove('show');
   }catch(err){ w.close(); throw err; }
 }); }
