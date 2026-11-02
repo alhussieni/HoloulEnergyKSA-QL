@@ -1454,7 +1454,7 @@ function trSplitBill(){ finRun(async()=>{
   if(!finLK) finLK = await crmApi('treasury-lookups');
   const sid = spCurSup();
   finPO = (await crmApi('purchasing-orders',{openOnly:true})).orders;
-  spKind='bill';
+  spKind='bill'; attStage = [];
   trShow(trHead('فاتورة مورد واحدة — موزّعة على أكتر من مشروع') + `<form class="finForm" onsubmit="trSplitBillSubmit(event)">
    <div><label>المورد</label><select name="supplierId" onchange="spSupChange()">${trSupOpts(sid)}</select></div>
    <div><label>أو مورد جديد (اكتب الاسم)</label><input name="supplierName"></div>
@@ -1466,6 +1466,7 @@ function trSplitBill(){ finRun(async()=>{
     <div id="spLines" style="display:grid;gap:8px;margin-top:6px"></div>
     <button type="button" class="btn ghost small" style="margin-top:8px" onclick="spAddRow()">+ سطر</button>
     <div class="emptyNote" id="spSumNote" style="color:var(--ink)"></div></div>
+   ${attPickerHtml()}
    <div><button class="btn small teal">حفظ الفاتورة الموزّعة</button></div></form>`);
   spAddRow(); spAddRow();
 }); }
@@ -1477,7 +1478,11 @@ function trSplitBillSubmit(e){ const d=finFd(e); finRun(async()=>{
   const sum=spN(rows.reduce((t,l)=>t+l.a,0));
   if(Math.abs(sum-spN(d.amount))>0.005) throw new Error(`مجموع الأجزاء (${finN(sum)}) لازم يساوي إجمالي الفاتورة (${finN(d.amount)})`);
   const lines=rows.map(l=>({ amount:finVat({amount:l.a,vatMode:d.vatMode,validInvoice:d.validInvoice}).amount, projectId:l.projectId, poId:l.poId }));
-  await crmApi('treasury-split-bill',{supplierId:d.supplierId, supplierName:d.supplierName, billNumber:d.billNumber, billDate:d.billDate, costType:d.costType, description:d.description, taxTreatment:tot.tax, lines});
+  const rec = await crmApi('treasury-split-bill',{supplierId:d.supplierId, supplierName:d.supplierName, billNumber:d.billNumber, billDate:d.billDate, costType:d.costType, description:d.description, taxTreatment:tot.tax, lines});
+  if(attStage.length){
+    if(rec && rec.group){ const up = await attUploadAll({ billGroup: rec.group }); if(up.failed) toast(`الفاتورة اتسجّلت، بس ${up.failed} مرفق ماترفعش${up.lastErr?' ('+up.lastErr+')':''} — ضيفه من زر 📎 في قايمة الفواتير`); }
+    else { attStage = []; toast('الفاتورة اتسجّلت، بس مقدرتش أربط المرفقات — ضيفها من زر 📎 في قايمة الفواتير'); }
+  }
   finOverlay.classList.remove('show'); finLK=null; finDone('تم تسجيل الفاتورة الموزّعة');
 }); }
 const trDelGroup = g => confirm('هيتحذف التحويل كله بكل أجزائه (كل المشاريع/الفواتير). متأكد؟') && finRun(async()=>{ await crmApi('treasury-split-payment-delete',{group:g}); finDone('تم حذف التحويل الموزّع'); });

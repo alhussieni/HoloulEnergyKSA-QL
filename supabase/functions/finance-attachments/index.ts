@@ -3,6 +3,7 @@
 // نفس توثيق باقي دوال المالية (توكن أدمن HMAC + session_version).
 // actions: attach-upload | attach-counts | attach-list | attach-url | attach-delete
 // body.target: "bill" (الافتراضي — متوافق مع النسخة الأولى) أو "entry" (حركة خزنة).
+// الفاتورة الموزّعة على أكتر من مشروع (bill_group) والتحويل/الدفعة الموزّعة بيشاركوا نفس المستندات: المالك = أصغر id في المجموعة.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -106,35 +107,39 @@ const idOf = (v: unknown, msg: string): number => {
 
 // مالك المرفقات: للفاتورة هو رقمها. لحركة خزنة: لو الحركة جزء من تحويل بين حسابات (transfer_group) أو دفعة موزّعة (payment_group)
 // فالمجموعة كلها بتشارك نفس المستندات، والمالك هو أصغر id فيها (ده بيخلّي طرفي التحويل يشوفوا نفس الإيصال).
-async function groupOwner(col: "transfer_group" | "payment_group", val: string): Promise<number> {
-  const rows = must(await supabase.from("treasury_entries").select("id").eq(col, val).order("id").limit(1)) as { id: number }[];
-  if (!rows.length) bad("الحركة غير موجودة");
+async function groupOwner(table: "treasury_entries" | "supplier_bills", col: "transfer_group" | "payment_group" | "bill_group", val: string): Promise<number> {
+  const rows = must(await supabase.from(table).select("id").eq(col, val).order("id").limit(1)) as { id: number }[];
+  if (!rows.length) bad(table === "supplier_bills" ? "الفاتورة غير موجودة" : "الحركة غير موجودة");
   return rows[0].id;
 }
 async function resolveOwner(t: Target, body: any, mustExist: boolean): Promise<number> {
   if (t === TARGETS.bill) {
-    const id = idOf(body.billId ?? body.ownerId, "رقم الفاتورة غير صالح");
-    if (mustExist) {
-      const bill = must(await supabase.from("supplier_bills").select("id").eq("id", id).maybeSingle());
-      if (!bill) bad("الفاتورة غير موجودة");
+    if (body.billGroup) {
+      const g = String(body.billGroup);
+      if (!UUID_RE.test(g)) bad("معرّف الفاتورة الموزّعة غير صالح");
+      return await groupOwner("supplier_bills", "bill_group", g);
     }
+    const id = idOf(body.billId ?? body.ownerId, "رقم الفاتورة غير صالح");
+    const bill = must(await supabase.from("supplier_bills").select("id, bill_group").eq("id", id).maybeSingle()) as any;
+    if (!bill) { if (mustExist) bad("الفاتورة غير موجودة"); return id; }
+    if (bill.bill_group) return await groupOwner("supplier_bills", "bill_group", bill.bill_group);
     return id;
   }
   if (body.transferGroup) {
     const g = String(body.transferGroup);
     if (!UUID_RE.test(g)) bad("معرّف التحويل غير صالح");
-    return await groupOwner("transfer_group", g);
+    return await groupOwner("treasury_entries", "transfer_group", g);
   }
   if (body.paymentGroup) {
     const g = String(body.paymentGroup);
     if (!UUID_RE.test(g)) bad("معرّف الدفعة غير صالح");
-    return await groupOwner("payment_group", g);
+    return await groupOwner("treasury_entries", "payment_group", g);
   }
   const id = idOf(body.entryId ?? body.ownerId, "رقم الحركة غير صالح");
   const e = must(await supabase.from("treasury_entries").select("id, transfer_group, payment_group").eq("id", id).maybeSingle()) as any;
   if (!e) bad("الحركة غير موجودة");
-  if (e.transfer_group) return await groupOwner("transfer_group", e.transfer_group);
-  if (e.payment_group) return await groupOwner("payment_group", e.payment_group);
+  if (e.transfer_group) return await groupOwner("treasury_entries", "transfer_group", e.transfer_group);
+  if (e.payment_group) return await groupOwner("treasury_entries", "payment_group", e.payment_group);
   return id;
 }
 
@@ -181,22 +186,23 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true, file: ins.data, ownerId: owner });
     }
 
-    // عدد المرفقات لكل فاتورة / حركة (لعمود 📎 في القوائم). في الحركات: كل أعضاء المجموعة (تحويل / دفعة موزّعة) بياخدوا نفس العدد.
+    // عدد المرفقات لكل فاتورة / حركة (لعمود 📎 في القوائم). أعضاء نفس المجموعة (تحويل / دفعة موزّعة / فاتورة موزّعة) بياخدوا نفس العدد.
     if (action === "attach-counts") {
       const rows = must(await supabase.from(t.table).select(t.col).limit(5000)) as any[];
       const owned: Record<string, number> = {};
       for (const r of rows) owned[String(r[t.col])] = (owned[String(r[t.col])] || 0) + 1;
       const counts: Record<string, number> = { ...owned };
-      if (t === TARGETS.entry && rows.length) {
-        const own = must(await supabase.from("treasury_entries").select("id, transfer_group, payment_group")
-          .in("id", Object.keys(owned).map(Number))) as any[];
-        const byGroup: Record<string, number> = {};
-        for (const o of own) { const g = o.transfer_group || o.payment_group; if (g) byGroup[g] = owned[String(o.id)]; }
-        const tg = own.map((o) => o.transfer_group).filter(Boolean), pg = own.map((o) => o.payment_group).filter(Boolean);
-        const sibs: { id: number; g: string }[] = [];
-        if (tg.length) for (const x of must(await supabase.from("treasury_entries").select("id, transfer_group").in("transfer_group", tg)) as any[]) sibs.push({ id: x.id, g: x.transfer_group });
-        if (pg.length) for (const x of must(await supabase.from("treasury_entries").select("id, payment_group").in("payment_group", pg)) as any[]) sibs.push({ id: x.id, g: x.payment_group });
-        for (const s of sibs) if (byGroup[s.g]) counts[String(s.id)] = byGroup[s.g];
+      if (rows.length) {
+        const src = t === TARGETS.entry ? "treasury_entries" : "supplier_bills";
+        const gcols = t === TARGETS.entry ? ["transfer_group", "payment_group"] : ["bill_group"];
+        const own = must(await supabase.from(src).select(["id", ...gcols].join(", ")).in("id", Object.keys(owned).map(Number))) as any[];
+        for (const gc of gcols) {
+          const byGroup: Record<string, number> = {};
+          for (const o of own) if (o[gc]) byGroup[o[gc]] = owned[String(o.id)];
+          const gs = Object.keys(byGroup);
+          if (!gs.length) continue;
+          for (const x of must(await supabase.from(src).select(`id, ${gc}`).in(gc, gs)) as any[]) counts[String(x.id)] = byGroup[x[gc]];
+        }
       }
       return json({ ok: true, counts });
     }
