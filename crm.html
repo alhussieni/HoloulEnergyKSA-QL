@@ -2570,10 +2570,57 @@ function stSupPrint(e, sid){ const f = finFd(e); finRun(async()=>{
 }); }
 function stMenu(pid, cid){ trShow(`${trHead('طباعة كشف حساب')}
   <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
-   <button class="btn teal" type="button" onclick="stProjPrint('client',${pid},${cid||'null'})">📄 كشف حساب المشروع (للعميل: التعاقد والدفعات والمتبقي)</button>
-   <button class="btn" type="button" onclick="stProjPrint('internal',${pid},${cid||'null'})">📊 كشف المشروع الداخلي (التكاليف والربح — للإدارة فقط)</button>
-   ${cid?`<button class="btn" type="button" onclick="stProjPrint('customer',${pid},${cid})">👤 كشف حساب العميل (كل مشاريعه)</button>`:''}
+   <div><label>محتوى الطباعة (للكشف للعميل وكشف العميل)</label><select id="stMode"><option value="plain">الكشف فقط</option><option value="att">الكشف + المرفقات (إيصالات التحويل وفواتير الموردين)</option></select>
+   <div class="emptyNote" style="margin-top:6px">مع المرفقات: بعد الكشف بتتطبع إيصالات/تحويلات العميل، وبعدها فواتير الموردين الأصلية اللي على مشاريعه. الفاتورة المشتركة بين أكتر من مشروع بتتطبع كاملة مرة واحدة مع تعليق بالمشاريع وقيمة كل مشروع. مشاريع العملاء التانيين بتظهر "مشروع لعميل آخر" (من غير رقم). فواتير الموردين فيها أسعار الشراء — راجعها قبل تسليمها للعميل. الكشف الداخلي بيتطبع من غير مرفقات.</div></div>
+   <button class="btn teal" type="button" onclick="stProjPrint('client',${pid},${cid||'null'},stModeVal())">📄 كشف حساب المشروع (للعميل: التعاقد والدفعات والمتبقي)</button>
+   <button class="btn" type="button" onclick="stProjPrint('internal',${pid},${cid||'null'},'plain')">📊 كشف المشروع الداخلي (التكاليف والربح — للإدارة فقط)</button>
+   ${cid?`<button class="btn" type="button" onclick="stProjPrint('customer',${pid},${cid},stModeVal())">👤 كشف حساب العميل (كل مشاريعه)</button>`:''}
    <button class="btn ghost small" type="button" onclick="finOpenProject(${pid})">رجوع</button></div>`); }
+function stModeVal(){ const m = document.getElementById('stMode'); return m && m.value === 'att' ? 'att' : 'plain'; }
+/* مرفقات كشف العميل: إيصالات/تحويلات العميل أولاً ثم فواتير الموردين (الفاتورة المشتركة مرة واحدة + تعليق بالمشاريع وقيمة كل مشروع).
+   مشاريع العملاء التانيين بتتخفي (ST_SHOW_OTHER_PROJECTS=false) والقيمة بتفضل ظاهرة. */
+const ST_SHOW_OTHER_PROJECTS = false;
+async function stFilePagesHtml(file, head){
+  const E = escapeHtml, imgCss = 'display:block;max-width:100%;max-height:225mm;margin:8px auto;border:1px solid #DEE7E4;border-radius:4px';
+  const wrap = inner => `<div style="page-break-before:always">${head}${inner}</div>`;
+  if(/^image\//.test(file.mime_type)) return { html: wrap(`<img src="${E(file.url)}" style="${imgCss}">`), skipped: 0 };
+  try{
+    const pg = await stPdfPages(file.url, 8);
+    return { skipped: 0, html: wrap(pg.pages.map((u, i) => (i ? `<div style="page-break-before:always"><div class="note m" style="margin:0 0 6px">${E(file.file_name)} — صفحة ${i+1} من ${pg.total}</div>` : '') + `<img src="${u}" style="${imgCss}">` + (i ? '</div>' : '')).join('')
+      + (pg.total > pg.pages.length ? `<div class="note m">تم عرض أول ${pg.pages.length} صفحات من ${pg.total}.</div>` : '')) };
+  }catch(err){ return { skipped: 1, html: wrap(`<div class="legal">تعذّر عرض الملف في الطباعة (PDF): ${E(file.file_name)}.</div>`) }; }
+}
+async function stCustAppendix(P, scope){
+  const E = escapeHtml, A = await crmApi('attach-customer', scope), items = [], seen = new Set();
+  const noteBox = 'margin:0 0 6px';
+  P.forEach(p => (p.payments||[]).forEach(x => (A.receipts[x.id]||[]).forEach(fl => {
+    if(seen.has('r'+fl.id)){ items.find(i => i.key === 'r'+fl.id).rows.push({ p, x }); return; }
+    seen.add('r'+fl.id); items.push({ key:'r'+fl.id, kind:'receipt', file:fl, rows:[{ p, x }] });
+  })));
+  (A.invoices||[]).forEach(inv => (inv.files||[]).forEach(fl => items.push({ key:'i'+fl.id, kind:'invoice', file:fl, inv })));
+  if(!items.length) return { html:'', count:0, skipped:0 };
+  let html = '', skipped = 0, n = 0, first = true;
+  for(const it of items){
+    n++;
+    let cap, extra = '';
+    if(it.kind === 'receipt'){
+      const tot = it.rows.reduce((t,r) => t + Number(r.x.amount), 0);
+      cap = `إيصال / تحويل دفعة العميل — ${fmtDate(it.rows[0].x.payment_date)} — ${finN(tot)}${it.rows.length > 1 ? ' (موزّعة على '+it.rows.length+' مشاريع)' : ' — مشروع '+E(it.rows[0].p.project_number)}`;
+    } else {
+      const inv = it.inv, parts = inv.parts || [], tot = parts.reduce((t,x) => t + x.amount, 0), isCr = inv.doc_type === 'credit_note';
+      cap = `${isCr ? 'مرتجع' : 'فاتورة المورد'} ${E(inv.bill_number||'')} — ${E(inv.supplier_name||'')} — ${fmtDate(inv.bill_date)} — إجمالي ${finN(tot)}`;
+      if(parts.length > 1){
+        extra = `<div class="note" style="margin:0 0 8px;border:1px solid #DEE7E4;border-radius:4px;padding:8px"><b>تعليق:</b> هذه الفاتورة مشتركة وتخص المشاريع التالية، وقيمة كل مشروع من الفاتورة:
+          <table class="dt" style="margin-top:6px"><thead><tr><th>المشروع</th><th>قيمته من الفاتورة</th></tr></thead><tbody>${parts.map(x => `<tr><td>${x.own || ST_SHOW_OTHER_PROJECTS ? E(x.project_number || 'عام') : 'مشروع لعميل آخر'}</td><td class="n">${finN(x.amount)}</td></tr>`).join('')}
+          <tr><td class="t">الإجمالي</td><td class="n"><b>${finN(tot)}</b></td></tr></tbody></table></div>`;
+      } else if(parts[0]) cap += ` — مشروع ${E(parts[0].project_number || 'عام')}`;
+    }
+    const head = (first ? `<h3 style="margin:0 0 8px;font-size:14px;color:#0B7A66">المرفقات — إيصالات التحويل وفواتير الموردين</h3>` : '') + `<div class="note" style="${noteBox}"><b>مرفق ${n} من ${items.length}:</b> ${cap}<br><span class="m">${E(it.file.file_name)}</span></div>${extra}`;
+    first = false;
+    const r = await stFilePagesHtml(it.file, head); html += r.html; skipped += r.skipped;
+  }
+  return { html, count: items.length, skipped };
+}
 function stProjBlock(p, internal){
   const E = escapeHtml, disc = (p.discounts||[]).reduce((t,x)=>t+Number(x.amount),0), orig = Number(p.contract_gross)+disc, r = finVatRate/100;
   const sum = (l,v,cls) => `<tr${cls?` class="${cls}"`:''}><td>${l}</td><td class="n">${v}</td></tr>`;
@@ -2598,8 +2645,10 @@ function stProjBlock(p, internal){
   }
   return h;
 }
-function stProjPrint(kind, pid, cid){ finRun(async()=>{
+function stProjPrint(kind, pid, cid, mode){ finRun(async()=>{
   const w = window.open('','_blank'); if(!w) throw new Error('المتصفح منع النافذة — اسمح بالنوافذ المنبثقة');
+  const withAtt = mode === 'att' && kind !== 'internal';
+  if(withAtt){ try{ w.document.write('<!DOCTYPE html><html dir="rtl"><body style="font-family:Tahoma,Arial;padding:30px">جاري تجهيز الكشف والمرفقات...</body></html>'); }catch(_){} }
   try{
     const internal = kind==='internal', cust = kind==='customer', E = escapeHtml;
     const d = await crmApi('treasury-statement', cust ? {customerId:cid} : {projectId:pid, includeCosts:internal}), P = d.projects, p0 = P[0];
@@ -2615,7 +2664,12 @@ function stProjPrint(kind, pid, cid){ finRun(async()=>{
       titleAr = internal ? 'كشف تكاليف وربحية مشروع' : 'كشف حساب مشروع'; titleEn = internal ? 'PROJECT COST & PROFIT STATEMENT' : 'PROJECT STATEMENT OF ACCOUNT';
       boxes = [[['العميل','<b>'+E(p0.customer_name||'')+'</b>'], ['المشروع',E(p0.project_number||'')]], [['تاريخ الكشف',fmtDate(todayStr())], ['حالة المشروع', p0.is_completed ? 'مكتمل' : 'قيد التنفيذ']]];
     }
-    stOpenIn(w, docShell({ title:titleAr+' — '+(p0.customer_name||''), titleAr, titleEn, badge: internal ? 'نسخة داخلية — للإدارة فقط' : '', docNo:'', boxes, body: body + `<div class="note">الأرقام بالريال السعودي${internal?'':' وشاملة ضريبة القيمة المضافة'}.</div>`, sign: internal ? ['اعتماد الإدارة'] : ['اعتماد الحسابات','استلام العميل / الختم'] }));
+    let app = { html:'', count:0, skipped:0 };
+    if(withAtt){ toast('بيجهّز المرفقات...'); app = await stCustAppendix(P, cust ? { customerId: cid } : { projectId: pid }); }
+    let html = docShell({ title:titleAr+' — '+(p0.customer_name||''), titleAr, titleEn, badge: internal ? 'نسخة داخلية — للإدارة فقط' : '', docNo:'', boxes, body: body + `<div class="note">الأرقام بالريال السعودي${internal?'':' وشاملة ضريبة القيمة المضافة'}.</div>`, sign: internal ? ['اعتماد الإدارة'] : ['اعتماد الحسابات','استلام العميل / الختم'] });
+    if(app.html) html = html.replace(/<\/div><\/body><\/html>\s*$/, app.html + '</div></body></html>');
+    stOpenIn(w, html);
+    if(withAtt) toast(app.count ? `اتطبع الكشف مع ${app.count} مرفق${app.skipped?' (تعذّر عرض '+app.skipped+')':''}` : 'مفيش مرفقات للكشف ده — اتطبع الكشف بس');
     finOverlay.classList.remove('show');
   }catch(err){ w.close(); throw err; }
 }); }

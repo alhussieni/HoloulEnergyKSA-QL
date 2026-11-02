@@ -1,7 +1,7 @@
 // HoloulEnergy — finance-attachments Edge Function (ADMIN ONLY)
 // مرفقات المالية (صور / PDF) في bucket خاص: فواتير الموردين + حركات الخزنة (قبض عميل / دفع مورد / تحويل بين الحسابات / ...).
 // نفس توثيق باقي دوال المالية (توكن أدمن HMAC + session_version).
-// actions: attach-upload | attach-counts | attach-list | attach-url | attach-delete | attach-supplier (كل مستندات مورد بروابط عرض مؤقتة — لطباعة كشف الحساب مع المرفقات)
+// actions: attach-upload | attach-counts | attach-list | attach-url | attach-delete | attach-supplier / attach-customer (كل مستندات مورد أو عميل بروابط عرض مؤقتة — لطباعة كشف الحساب مع المرفقات)
 // body.target: "bill" (الافتراضي — متوافق مع النسخة الأولى) أو "entry" (حركة خزنة).
 // الفاتورة الموزّعة على أكتر من مشروع (bill_group) والتحويل/الدفعة الموزّعة بيشاركوا نفس المستندات: المالك = أصغر id في المجموعة.
 
@@ -143,6 +143,43 @@ async function resolveOwner(t: Target, body: any, mustExist: boolean): Promise<n
   return id;
 }
 
+// أصغر id في كل مجموعة (تحويل / دفعة موزّعة / فاتورة موزّعة) = مالك المستندات. بترجّع خريطة: id الصف → id المالك.
+async function ownersOfRows(src: "supplier_bills" | "treasury_entries", gcols: string[], rows: any[]): Promise<Record<string, number>> {
+  const minBy: Record<string, number> = {};
+  for (const gc of gcols) {
+    const gs = [...new Set(rows.map((r) => r[gc]).filter(Boolean))];
+    if (!gs.length) continue;
+    for (const x of must(await supabase.from(src).select(`id, ${gc}`).in(gc, gs)) as any[]) {
+      const k = `${gc}:${x[gc]}`;
+      if (minBy[k] === undefined || x.id < minBy[k]) minBy[k] = x.id;
+    }
+  }
+  const owner: Record<string, number> = {};
+  for (const r of rows) {
+    let o = r.id;
+    for (const gc of gcols) if (r[gc]) { o = minBy[`${gc}:${r[gc]}`] ?? r.id; break; }
+    owner[String(r.id)] = o;
+  }
+  return owner;
+}
+// ملفات المالكين بروابط عرض مؤقتة: id المالك → [{ id, file_name, mime_type, url }]
+async function filesByOwner(tg: Target, ownerIds: number[], ttl: number): Promise<Record<string, any[]>> {
+  const byOwner: Record<string, any[]> = {};
+  if (!ownerIds.length) return byOwner;
+  const files = must(await supabase.from(tg.table).select(`id, ${tg.col}, storage_path, file_name, mime_type`).in(tg.col, ownerIds).order("id")) as any[];
+  if (!files.length) return byOwner;
+  const signed = await supabase.storage.from(BUCKET).createSignedUrls(files.map((f) => f.storage_path), ttl);
+  if (signed.error) throw signed.error;
+  const urlOf: Record<string, string> = {};
+  for (const x of signed.data || []) if (x.path && x.signedUrl) urlOf[x.path] = x.signedUrl;
+  for (const f of files) {
+    const url = urlOf[f.storage_path];
+    if (!url) continue;
+    (byOwner[String(f[tg.col])] ||= []).push({ id: f.id, file_name: f.file_name, mime_type: f.mime_type, url });
+  }
+  return byOwner;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -219,48 +256,64 @@ Deno.serve(async (req: Request) => {
     // النتيجة بتتفهرس بـ id الفاتورة / الحركة (وأعضاء نفس المجموعة بياخدوا مستندات مالك المجموعة).
     if (action === "attach-supplier") {
       const sid = idOf(body.supplierId, "رقم المورد غير صالح");
-      const ownersOf = async (src: "supplier_bills" | "treasury_entries", gcols: string[]) => {
-        const rows = must(await supabase.from(src).select(["id", ...gcols].join(", ")).eq("supplier_id", sid).limit(5000)) as any[];
-        const minBy: Record<string, number> = {};
-        for (const gc of gcols) {
-          const gs = [...new Set(rows.map((r) => r[gc]).filter(Boolean))];
-          if (!gs.length) continue;
-          for (const x of must(await supabase.from(src).select(`id, ${gc}`).in(gc, gs)) as any[]) {
-            const k = `${gc}:${x[gc]}`;
-            if (minBy[k] === undefined || x.id < minBy[k]) minBy[k] = x.id;
-          }
-        }
-        const owner: Record<string, number> = {};
-        for (const r of rows) {
-          let o = r.id;
-          for (const gc of gcols) if (r[gc]) { o = minBy[`${gc}:${r[gc]}`] ?? r.id; break; }
-          owner[String(r.id)] = o;
-        }
-        return owner;
-      };
       const out: Record<string, Record<string, unknown[]>> = { bills: {}, entries: {} };
       for (const [key, src, gcols, tg] of [
         ["bills", "supplier_bills", ["bill_group"], TARGETS.bill],
         ["entries", "treasury_entries", ["transfer_group", "payment_group"], TARGETS.entry],
       ] as const) {
-        const owner = await ownersOf(src, [...gcols]);
-        const ids = [...new Set(Object.values(owner))];
-        if (!ids.length) continue;
-        const files = must(await supabase.from(tg.table).select(`id, ${tg.col}, storage_path, file_name, mime_type`).in(tg.col, ids).order("id")) as any[];
-        if (!files.length) continue;
-        const signed = await supabase.storage.from(BUCKET).createSignedUrls(files.map((f) => f.storage_path), 3600);
-        if (signed.error) throw signed.error;
-        const urlOf: Record<string, string> = {};
-        for (const x of signed.data || []) if (x.path && x.signedUrl) urlOf[x.path] = x.signedUrl;
-        const byOwner: Record<string, unknown[]> = {};
-        for (const f of files) {
-          const url = urlOf[f.storage_path];
-          if (!url) continue;
-          (byOwner[String(f[tg.col])] ||= []).push({ id: f.id, file_name: f.file_name, mime_type: f.mime_type, url });
-        }
+        const rows = must(await supabase.from(src).select(["id", ...gcols].join(", ")).eq("supplier_id", sid).limit(5000)) as any[];
+        const owner = await ownersOfRows(src, [...gcols], rows);
+        const byOwner = await filesByOwner(tg, [...new Set(Object.values(owner))], 3600);
         for (const [rid, o] of Object.entries(owner)) if (byOwner[String(o)]) out[key][rid] = byOwner[String(o)];
       }
       return json({ ok: true, bills: out.bills, entries: out.entries });
+    }
+
+    // مستندات كشف حساب عميل (أو مشروع): إيصالات/تحويلات العميل (مفهرسة بـ payment_id) + فواتير الموردين اللي على مشاريعه.
+    // الفاتورة الموزّعة بترجع كاملة (ملفها مرة واحدة) مع كل أجزائها ومشاريعها وقيمة كل جزء، حتى لو بعض الأجزاء على مشاريع عملاء تانيين (own=false).
+    if (action === "attach-customer") {
+      const sel = supabase.from("projects").select("id, project_number, customer_id");
+      const projects = (body.customerId
+        ? must(await sel.eq("customer_id", idOf(body.customerId, "رقم العميل غير صالح")))
+        : must(await sel.eq("id", idOf(body.projectId, "رقم المشروع غير صالح")))) as any[];
+      const pids: number[] = projects.map((p) => p.id);
+      if (!pids.length) return json({ ok: true, receipts: {}, invoices: [] });
+
+      const ents = must(await supabase.from("treasury_entries").select("id, payment_id, transfer_group, payment_group")
+        .eq("kind", "customer_receipt").in("project_id", pids).limit(5000)) as any[];
+      const eowner = await ownersOfRows("treasury_entries", ["transfer_group", "payment_group"], ents);
+      const ef = await filesByOwner(TARGETS.entry, [...new Set(Object.values(eowner))], 3600);
+      const receipts: Record<string, unknown[]> = {};
+      for (const e of ents) { const fl = ef[String(eowner[String(e.id)])]; if (fl && e.payment_id) receipts[String(e.payment_id)] = fl; }
+
+      const BILL_COLS = "id, bill_group, project_id, amount, bill_number, bill_date, doc_type, supplier_id";
+      const bills = must(await supabase.from("supplier_bills").select(BILL_COLS).in("project_id", pids).limit(5000)) as any[];
+      const bowner = await ownersOfRows("supplier_bills", ["bill_group"], bills);
+      const ownerIds = [...new Set(Object.values(bowner))];
+      const bf = await filesByOwner(TARGETS.bill, ownerIds, 3600);
+      const withFiles = ownerIds.filter((o) => bf[String(o)]);
+      const invoices: unknown[] = [];
+      if (withFiles.length) {
+        const owners = must(await supabase.from("supplier_bills").select(BILL_COLS).in("id", withFiles)) as any[];
+        const groups = [...new Set(owners.map((o) => o.bill_group).filter(Boolean))];
+        const members = groups.length ? must(await supabase.from("supplier_bills").select(BILL_COLS).in("bill_group", groups)) as any[] : [];
+        const projIds = [...new Set([...owners, ...members].map((m) => m.project_id).filter(Boolean))];
+        const supIds = [...new Set(owners.map((o) => o.supplier_id).filter(Boolean))];
+        const pinfo: Record<string, any> = {};
+        if (projIds.length) for (const x of must(await supabase.from("projects").select("id, project_number").in("id", projIds)) as any[]) pinfo[String(x.id)] = x;
+        const sname: Record<string, string> = {};
+        if (supIds.length) for (const x of must(await supabase.from("suppliers").select("id, name").in("id", supIds)) as any[]) sname[String(x.id)] = x.name;
+        owners.sort((a, b) => String(a.bill_date).localeCompare(String(b.bill_date)) || a.id - b.id);
+        for (const o of owners) {
+          const parts = o.bill_group ? members.filter((m) => m.bill_group === o.bill_group) : [o];
+          invoices.push({
+            owner_id: o.id, bill_number: o.bill_number, bill_date: o.bill_date, doc_type: o.doc_type, supplier_name: sname[String(o.supplier_id)] || "",
+            parts: parts.map((m) => ({ project_id: m.project_id, project_number: m.project_id ? (pinfo[String(m.project_id)]?.project_number || null) : null, own: pids.includes(m.project_id), amount: Number(m.amount) })),
+            files: bf[String(o.id)],
+          });
+        }
+      }
+      return json({ ok: true, receipts, invoices });
     }
 
     // رابط عرض مؤقت (٥ دقايق) — الملف نفسه خاص ومالوش رابط عام
