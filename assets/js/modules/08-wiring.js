@@ -1054,6 +1054,45 @@ function wire(){
       catch(e){ alert('تعذر الحذف: '+e.message); }
       render();
     });
+    /* ===== الألواح الشمسية: فلاتر + عائلات + سويتش الإظهار (الدوال pfRenderPanels / pfApply في 07) ===== */
+    (function pfInit(){
+      const root = document.getElementById('pfRoot'); if(!root) return;
+      root.onclick = e=>{
+        const t = e.target.closest('[data-pfstatus],[data-pfbrand],[data-pftoggle],#pf_clear,#pf_expand,#pf_collapse');
+        if(!t || !root.contains(t)) return;
+        if(t.dataset.pfstatus) pfUi.status = t.dataset.pfstatus;
+        else if(t.dataset.pfbrand){ const k = t.dataset.pfbrand; if(pfUi.brands.has(k)) pfUi.brands.delete(k); else pfUi.brands.add(k); }
+        else if(t.dataset.pftoggle){ const k = t.dataset.pftoggle; if(pfUi.collapsed.has(k)) pfUi.collapsed.delete(k); else pfUi.collapsed.add(k); pfSaveCollapsed(); }
+        else if(t.id==='pf_clear'){ pfUi.status='all'; pfUi.brands.clear(); pfUi.min=''; pfUi.max=''; const a=document.getElementById('pf_min'), b=document.getElementById('pf_max'); if(a) a.value=''; if(b) b.value=''; }
+        else if(t.id==='pf_expand'){ pfUi.collapsed.clear(); pfSaveCollapsed(); }
+        else if(t.id==='pf_collapse'){ root.querySelectorAll('.pf-group').forEach(g=>pfUi.collapsed.add(g.dataset.pfgroup)); pfSaveCollapsed(); }
+        pfApply();
+      };
+      root.oninput = e=>{
+        if(e.target.id==='pf_min'){ pfUi.min = e.target.value; pfApply(); }
+        else if(e.target.id==='pf_max'){ pfUi.max = e.target.value; pfApply(); }
+      };
+      root.onchange = async e=>{
+        const sw = e.target.closest && e.target.closest('[data-pfvis]'); if(!sw) return;
+        const p = adminConfig.panels[+sw.dataset.pfvis]; if(!p){ sw.checked = !sw.checked; return; }
+        const want = sw.checked, prev = p.visible, tr = sw.closest('tr');
+        sw.disabled = true;
+        try{
+          harvestAdminInputs();
+          p.visible = want;
+          await callEngine('update-config', { adminToken: adminTokenMem, config: adminConfig });
+          tr.dataset.vis = want ? '1' : '0';
+          pfApply();
+          try{ await refreshQuote(); }catch(_){}
+          if(want && !(Number(p.priceW)>0)) alert('تم إظهار اللوح، لكنه لن يظهر للعميل قبل تحديد سعر أكبر من صفر.');
+        }catch(err){
+          p.visible = prev; sw.checked = prev!==false;
+          alert('تعذر الحفظ: ' + (err && err.message ? err.message : err));
+        }
+        sw.disabled = false;
+      };
+      pfApply();
+    })();
     const splitBtn = document.getElementById('splitAccessoriesBtn');
     if(splitBtn) splitBtn.onclick = ()=>{
       harvestAdminInputs();

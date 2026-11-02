@@ -1,0 +1,273 @@
+diff -u -r a/assets/js/modules/07-render-admin.js b/assets/js/modules/07-render-admin.js
+--- a/assets/js/modules/07-render-admin.js	2026-11-02 19:59:19.806867556 +0000
++++ b/assets/js/modules/07-render-admin.js	2026-11-02 19:59:19.808670648 +0000
+@@ -9,6 +9,191 @@
+ let customerDetail = null, customerDetailLoading = false, customerSearchQuery = '';
+ let overviewStats = null, overviewStatsLoading = false, overviewStatsError = false;
+ 
++/* =======================================================================
++   لوحة التحكم ▸ المنتجات والكتالوج ▸ الألواح الشمسية
++   فلاتر (الحالة / البراند / القدرة من–إلى) + عائلات (مجموعات) حسب البراند.
++   - "متاح" = ظاهر للعميل + سعر أكبر من صفر (نفس شرط الظهور في الحاسبة وعروض الأسعار).
++   - JA و Ja = نفس البراند (المقارنة بدون حساسية للحروف) — من غير تغيير أي داتا.
++   - الفلترة بتتم على الـ DOM مباشرة (من غير render كامل) عشان ما يضيعش التركيز في خانات القدرة.
++   ======================================================================= */
++const PF_LS_KEY = 'holoul_panels_collapsed';
++const pfUi = {
++  status: 'all',                 // 'all' | 'avail' | 'unavail'
++  brands: new Set(),             // مفاتيح البراند (lowercase) — فاضي = كل البراندات
++  min: '', max: '',              // فلتر القدرة (W)
++  collapsed: (()=>{ try{ return new Set(JSON.parse(localStorage.getItem(PF_LS_KEY)||'[]')); }catch(_){ return new Set(); } })()
++};
++const pfBrandKey = b => String(b==null?'':b).trim().toLowerCase();
++const pfIsAvail  = p => p.visible!==false && Number(p.priceW)>0;
++const pfSaveCollapsed = ()=>{ try{ localStorage.setItem(PF_LS_KEY, JSON.stringify([...pfUi.collapsed])); }catch(_){} };
++const pfBadges = (vis, priced)=> (vis && priced)
++  ? '<span class="tag good">متاح</span>'
++  : (!vis ? '<span class="tag warn">مخفي</span> ' : '') + (!priced ? '<span class="tag warn">بدون سعر</span>' : '');
++
++function pfRenderPanels(){
++  const panels = adminConfig.panels || [];
++  const map = new Map();
++  panels.forEach((p,i)=>{
++    const k = pfBrandKey(p.brand);
++    if(!map.has(k)) map.set(k, { key:k, rows:[], names:{} });
++    const g = map.get(k), n = String(p.brand||'').trim();
++    g.rows.push({ p, i }); g.names[n] = (g.names[n]||0) + 1;
++  });
++  const groups = [...map.values()].map(g=>{
++    // اسم العرض للعائلة: الأكتر استخدامًا، ولو متساويين يبقى اللي فيه حروف كبيرة أكتر (JA)
++    const upp = s => s.replace(/[^A-Z]/g,'').length;
++    const names = Object.entries(g.names).sort((a,b)=> b[1]-a[1] || upp(b[0])-upp(a[0]));
++    g.label = (names[0] && names[0][0]) || '—';
++    g.rows.sort((a,b)=> (Number(a.p.power)||0)-(Number(b.p.power)||0) || a.i-b.i);
++    return g;
++  }).sort((a,b)=> a.label.localeCompare(b.label, 'en', {sensitivity:'base', numeric:true}));
++
++  // نظّف أي براند محدد في الفلتر ما بقاش موجود (بعد حذف/تعديل)
++  [...pfUi.brands].forEach(k=>{ if(!map.has(k)) pfUi.brands.delete(k); });
++
++  const pw = panels.map(p=>Number(p.power)||0).filter(x=>x>0);
++  const pwMin = pw.length ? Math.min(...pw) : '', pwMax = pw.length ? Math.max(...pw) : '';
++
++  const chips = groups.map(g=>`<button type="button" class="pf-chip" data-pfbrand="${pnlEsc(g.key)}" aria-pressed="false">${pnlEsc(g.label)} <b>${g.rows.length}</b></button>`).join('');
++
++  const groupsHtml = groups.map(g=>`
++    <section class="pf-group" data-pfgroup="${pnlEsc(g.key)}">
++      <button type="button" class="pf-ghead" data-pftoggle="${pnlEsc(g.key)}" aria-expanded="true">
++        <span class="pf-chev" aria-hidden="true">▾</span>
++        <b class="pf-gname">${pnlEsc(g.label)}</b>
++        <span class="pf-gmeta" data-pfmeta></span>
++      </button>
++      <div class="pf-gbody">
++        <table class="admtable pf-tbl">
++          <colgroup><col style="width:5%"><col style="width:9%"><col style="width:8%"><col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:11%"><col style="width:16%"><col style="width:9%"><col style="width:14%"></colgroup>
++          <thead><tr><th>افتراضي</th><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W</th><th>الحالة</th><th>ظاهر للعميل</th><th></th></tr></thead>
++          <tbody>
++          ${g.rows.map(({p,i})=>{
++            const isDef = `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||'');
++            const vis = p.visible!==false, priced = Number(p.priceW)>0;
++            return `<tr data-pfrow data-brand="${pnlEsc(g.key)}" data-power="${Number(p.power)||0}" data-vis="${vis?1:0}" data-priced="${priced?1:0}">
++              <td style="text-align:center">${isDef?'<span title="اللوح الافتراضي" style="color:#E7AC12;font-size:17px">★</span>':''}</td>
++              <td><b>${pnlEsc(p.brand)}</b></td>
++              <td>${pnlEsc(p.power)}</td>
++              <td>${pnlEsc(p.vimp)}</td>
++              <td>${pnlEsc(p.voc)}</td>
++              <td>${pnlEsc(p.iimp)}</td>
++              <td>${pnlEsc(p.isc)}</td>
++              <td>${pnlEsc(p.priceW)}</td>
++              <td data-pfstate>${pfBadges(vis, priced)}</td>
++              <td style="text-align:center"><label class="pf-sw" title="إظهار / إخفاء اللوح للعميل"><input type="checkbox" data-pfvis="${i}" ${vis?'checked':''} aria-label="ظاهر للعميل: ${pnlEsc(p.brand)} ${pnlEsc(p.power)}W"><span></span></label></td>
++              <td class="op" style="white-space:nowrap"><button class="btn ghost small" data-editpanel="${i}">✏️ تعديل</button> <button class="btn danger small" data-delpanel="${i}">✕</button></td>
++            </tr>`; }).join('')}
++          </tbody>
++        </table>
++      </div>
++    </section>`).join('');
++
++  return `
++  <style>
++    #pfRoot [hidden]{display:none!important}
++    .pf-bar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;margin-bottom:10px}
++    .pf-seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
++    .pf-seg button{border:0;background:transparent;padding:7px 12px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--ink);border-inline-start:1px solid var(--line)}
++    .pf-seg button:first-child{border-inline-start:0}
++    .pf-seg button.on{background:var(--teal);color:#fff}
++    .pf-pow{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
++    .pf-pow input{width:84px;padding:6px 8px;font-size:12.5px}
++    .pf-brands{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px;font-size:12.5px;color:var(--muted)}
++    .pf-chip{border:1px solid var(--line);background:var(--sand);color:var(--ink);border-radius:20px;padding:4px 11px;font:inherit;font-size:12.5px;cursor:pointer}
++    .pf-chip b{font-weight:600;color:var(--muted);margin-inline-start:3px}
++    .pf-chip.on{background:var(--teal);border-color:var(--teal);color:#fff}
++    .pf-chip.on b{color:#fff}
++    .pf-group{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden}
++    .pf-ghead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%;padding:10px 12px;background:var(--sand);border:0;cursor:pointer;font:inherit;text-align:start;color:var(--ink)}
++    .pf-gname{font-size:15px}
++    .pf-chev{display:inline-block;width:14px;transition:transform .15s}
++    .pf-ghead[aria-expanded="false"] .pf-chev{transform:rotate(90deg)}
++    .pf-gmeta{display:inline-flex;flex-wrap:wrap;gap:6px}
++    .pf-pill{font-size:11.5px;border:1px solid var(--line);background:#fff;border-radius:20px;padding:2px 9px;color:var(--muted)}
++    .pf-pill.good{color:#0a7a3d;border-color:#9ad3b2}
++    .pf-gbody{overflow-x:auto}
++    .pf-tbl{table-layout:fixed;min-width:960px;margin:0}
++    .pf-sw{position:relative;display:inline-block;width:38px;height:22px;cursor:pointer}
++    .pf-sw input{position:absolute;opacity:0;inset:0;margin:0;width:100%;height:100%;cursor:pointer}
++    .pf-sw span{position:absolute;inset:0;background:#c9d1d9;border-radius:22px;transition:background .15s}
++    .pf-sw span::after{content:"";position:absolute;top:3px;inset-inline-start:3px;width:16px;height:16px;background:#fff;border-radius:50%;transition:inset-inline-start .15s}
++    .pf-sw input:checked + span{background:var(--teal)}
++    .pf-sw input:checked + span::after{inset-inline-start:19px}
++    .pf-sw input:disabled + span{opacity:.5}
++    .pf-sw input:focus-visible + span{outline:2px solid var(--teal-dark);outline-offset:2px}
++  </style>
++  <div id="pfRoot">
++    <div class="pf-bar no-print">
++      <div class="pf-seg" role="group" aria-label="فلتر الحالة">
++        <button type="button" data-pfstatus="all">الكل <span data-pfcnt="all"></span></button>
++        <button type="button" data-pfstatus="avail">متاح <span data-pfcnt="avail"></span></button>
++        <button type="button" data-pfstatus="unavail">غير متاح <span data-pfcnt="unavail"></span></button>
++      </div>
++      <div class="pf-pow">القدرة من
++        <input type="number" id="pf_min" min="0" step="1" inputmode="numeric" placeholder="${pwMin}" value="${pnlEsc(pfUi.min)}" aria-label="القدرة من (واط)">
++        إلى
++        <input type="number" id="pf_max" min="0" step="1" inputmode="numeric" placeholder="${pwMax}" value="${pnlEsc(pfUi.max)}" aria-label="القدرة إلى (واط)"> W
++      </div>
++      <button type="button" class="btn ghost small" id="pf_clear">مسح الفلاتر</button>
++      <span class="note" id="pf_count" aria-live="polite"></span>
++      <span style="margin-inline-start:auto;display:inline-flex;gap:6px">
++        <button type="button" class="btn ghost small" id="pf_expand">فتح الكل</button>
++        <button type="button" class="btn ghost small" id="pf_collapse">طي الكل</button>
++      </span>
++    </div>
++    <div class="pf-brands no-print"><span>البراند:</span>${chips}</div>
++    <div id="pf_groups">${groupsHtml}</div>
++    <div class="note" id="pf_empty" hidden style="padding:14px;text-align:center">لا توجد ألواح مطابقة للفلاتر الحالية.</div>
++  </div>`;
++}
++
++function pfApply(){
++  const root = document.getElementById('pfRoot'); if(!root) return;
++  const num = v => (v===''||v==null||!isFinite(+v)) ? null : +v;
++  const min = num(pfUi.min), max = num(pfUi.max);
++  const rows = [...root.querySelectorAll('tr[data-pfrow]')];
++  let avail = 0, shown = 0;
++  rows.forEach(tr=>{
++    const vis = tr.dataset.vis==='1', priced = tr.dataset.priced==='1', ok = vis && priced, pw = +tr.dataset.power;
++    tr.dataset.avail = ok ? '1' : '0';
++    const st = tr.querySelector('[data-pfstate]'); if(st) st.innerHTML = pfBadges(vis, priced);
++    tr.style.opacity = ok ? '' : '.62';
++    if(ok) avail++;
++    let m = true;
++    if(pfUi.status==='avail' && !ok) m = false;
++    if(pfUi.status==='unavail' && ok) m = false;
++    if(pfUi.brands.size && !pfUi.brands.has(tr.dataset.brand)) m = false;
++    if(min!=null && pw<min) m = false;
++    if(max!=null && pw>max) m = false;
++    tr.hidden = !m; if(m) shown++;
++  });
++  root.querySelectorAll('.pf-group').forEach(g=>{
++    const rs = [...g.querySelectorAll('tr[data-pfrow]')];
++    const vis = rs.filter(r=>!r.hidden).length, av = rs.filter(r=>r.dataset.avail==='1').length;
++    const pws = rs.map(r=>+r.dataset.power).filter(x=>x>0);
++    const lo = pws.length ? Math.min(...pws) : 0, hi = pws.length ? Math.max(...pws) : 0;
++    const range = !pws.length ? '' : (lo===hi ? lo+'W' : lo+'–'+hi+'W');
++    const col = pfUi.collapsed.has(g.dataset.pfgroup);
++    g.hidden = vis===0;
++    const head = g.querySelector('.pf-ghead'); head.setAttribute('aria-expanded', col ? 'false' : 'true');
++    g.querySelector('.pf-gbody').hidden = col;
++    g.querySelector('[data-pfmeta]').innerHTML =
++      `<span class="pf-pill">${vis===rs.length ? rs.length+' لوح' : vis+' من '+rs.length+' لوح'}</span>`
++      + (range ? `<span class="pf-pill">${range}</span>` : '')
++      + `<span class="pf-pill ${av?'good':''}">متاح ${av}/${rs.length}</span>`;
++  });
++  root.querySelectorAll('[data-pfstatus]').forEach(b=>b.classList.toggle('on', b.dataset.pfstatus===pfUi.status));
++  root.querySelectorAll('[data-pfbrand]').forEach(b=>{ const on = pfUi.brands.has(b.dataset.pfbrand); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on?'true':'false'); });
++  const set = (k,v)=>{ const el = root.querySelector(`[data-pfcnt="${k}"]`); if(el) el.textContent = '('+v+')'; };
++  set('all', rows.length); set('avail', avail); set('unavail', rows.length-avail);
++  const active = pfUi.status!=='all' || pfUi.brands.size>0 || min!=null || max!=null;
++  const clr = root.querySelector('#pf_clear'); if(clr) clr.disabled = !active;
++  const cnt = root.querySelector('#pf_count'); if(cnt) cnt.textContent = `عرض ${shown} من ${rows.length} لوح`;
++  const emp = root.querySelector('#pf_empty'); if(emp) emp.hidden = shown!==0;
++}
++
++
+ async function loadOverviewStats(force){
+   if(overviewStatsLoading || (overviewStats && !force) || (overviewStatsError && !force)) return;
+   overviewStatsLoading = true; overviewStatsError = false;
+@@ -2085,26 +2270,9 @@
+   <div class="admsubsec ${currentAdminSubSection.products==='panels'?'active':''}" data-admsub="panels">
+   <div class="card">
+     <h3>الألواح الشمسية</h3>
+-    <table class="admtable">
+-      <thead><tr><th>افتراضي</th><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W (بدون ضريبة)</th><th>ظاهر للعميل</th><th></th></tr></thead>
+-      <tbody id="adm_panels">
+-        ${adminConfig.panels.map((p,i)=>i).sort((x,y)=>panelCmp(adminConfig.panels[x],adminConfig.panels[y])).map(i=>{ const p = adminConfig.panels[i]; const isDef = `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||''); return `
+-          <tr>
+-            <td style="text-align:center">${isDef?'<span title="اللوح الافتراضي" style="color:#E7AC12;font-size:17px">★</span>':''}</td>
+-            <td><b>${pnlEsc(p.brand)}</b></td>
+-            <td>${pnlEsc(p.power)}</td>
+-            <td>${pnlEsc(p.vimp)}</td>
+-            <td>${pnlEsc(p.voc)}</td>
+-            <td>${pnlEsc(p.iimp)}</td>
+-            <td>${pnlEsc(p.isc)}</td>
+-            <td>${pnlEsc(p.priceW)}</td>
+-            <td style="text-align:center">${p.visible!==false?'<span class="tag good">ظاهر</span>':'<span class="tag warn">مخفي</span>'}</td>
+-            <td class="op" style="white-space:nowrap"><button class="btn ghost small" data-editpanel="${i}">✏️ تعديل</button> <button class="btn danger small" data-delpanel="${i}">✕</button></td>
+-          </tr>`; }).join('')}
+-      </tbody>
+-    </table>
++    ${pfRenderPanels()}
+     <button class="btn ghost small" id="addPanel">+ إضافة لوح</button>
+-    <div class="note" style="margin-top:8px">الألواح مرتّبة أبجديًا. التعديل والإضافة بيتموا من نافذة منفصلة وبيتحفظوا فورًا — الجدول نفسه للعرض فقط عشان ما يتغيّرش أي رقم بالغلط.</div>
++    <div class="note" style="margin-top:8px">الألواح مجمّعة حسب البراند (JA وJa نفس البراند) ومرتّبة بالقدرة. استخدم الفلاتر لتضييق القائمة، واضغط على عنوان أي براند لطيّه أو فتحه (اختيارك بيتحفظ على جهازك). التعديل والإضافة بيتموا من نافذة منفصلة وبيتحفظوا فورًا — الجدول نفسه للعرض فقط عشان ما يتغيّرش أي رقم بالغلط، ما عدا سويتش "ظاهر للعميل" فبيحفظ فورًا.</div>
+     <div class="note" style="margin-top:8px">اللوح يظهر للعميل فقط لو كان "ظاهر للعميل" مفعّل ومعاه سعر أكبر من صفر. عطّل التكة لإخفاء لوح مؤقتًا بدون حذفه.<br>اختَر لوح "افتراضي" ليكون هو المُحدَّد تلقائيًا للعميل عند فتح أي حاسبة (حتى لو أُضيفت ألواح جديدة بعد كده).</div>
+   </div>
+   </div>
+diff -u -r a/assets/js/modules/08-wiring.js b/assets/js/modules/08-wiring.js
+--- a/assets/js/modules/08-wiring.js	2026-11-02 19:59:19.806995479 +0000
++++ b/assets/js/modules/08-wiring.js	2026-11-02 19:59:19.808758320 +0000
+@@ -1054,6 +1054,45 @@
+       catch(e){ alert('تعذر الحذف: '+e.message); }
+       render();
+     });
++    /* ===== الألواح الشمسية: فلاتر + عائلات + سويتش الإظهار (الدوال pfRenderPanels / pfApply في 07) ===== */
++    (function pfInit(){
++      const root = document.getElementById('pfRoot'); if(!root) return;
++      root.onclick = e=>{
++        const t = e.target.closest('[data-pfstatus],[data-pfbrand],[data-pftoggle],#pf_clear,#pf_expand,#pf_collapse');
++        if(!t || !root.contains(t)) return;
++        if(t.dataset.pfstatus) pfUi.status = t.dataset.pfstatus;
++        else if(t.dataset.pfbrand){ const k = t.dataset.pfbrand; if(pfUi.brands.has(k)) pfUi.brands.delete(k); else pfUi.brands.add(k); }
++        else if(t.dataset.pftoggle){ const k = t.dataset.pftoggle; if(pfUi.collapsed.has(k)) pfUi.collapsed.delete(k); else pfUi.collapsed.add(k); pfSaveCollapsed(); }
++        else if(t.id==='pf_clear'){ pfUi.status='all'; pfUi.brands.clear(); pfUi.min=''; pfUi.max=''; const a=document.getElementById('pf_min'), b=document.getElementById('pf_max'); if(a) a.value=''; if(b) b.value=''; }
++        else if(t.id==='pf_expand'){ pfUi.collapsed.clear(); pfSaveCollapsed(); }
++        else if(t.id==='pf_collapse'){ root.querySelectorAll('.pf-group').forEach(g=>pfUi.collapsed.add(g.dataset.pfgroup)); pfSaveCollapsed(); }
++        pfApply();
++      };
++      root.oninput = e=>{
++        if(e.target.id==='pf_min'){ pfUi.min = e.target.value; pfApply(); }
++        else if(e.target.id==='pf_max'){ pfUi.max = e.target.value; pfApply(); }
++      };
++      root.onchange = async e=>{
++        const sw = e.target.closest && e.target.closest('[data-pfvis]'); if(!sw) return;
++        const p = adminConfig.panels[+sw.dataset.pfvis]; if(!p){ sw.checked = !sw.checked; return; }
++        const want = sw.checked, prev = p.visible, tr = sw.closest('tr');
++        sw.disabled = true;
++        try{
++          harvestAdminInputs();
++          p.visible = want;
++          await callEngine('update-config', { adminToken: adminTokenMem, config: adminConfig });
++          tr.dataset.vis = want ? '1' : '0';
++          pfApply();
++          try{ await refreshQuote(); }catch(_){}
++          if(want && !(Number(p.priceW)>0)) alert('تم إظهار اللوح، لكنه لن يظهر للعميل قبل تحديد سعر أكبر من صفر.');
++        }catch(err){
++          p.visible = prev; sw.checked = prev!==false;
++          alert('تعذر الحفظ: ' + (err && err.message ? err.message : err));
++        }
++        sw.disabled = false;
++      };
++      pfApply();
++    })();
+     const splitBtn = document.getElementById('splitAccessoriesBtn');
+     if(splitBtn) splitBtn.onclick = ()=>{
+       harvestAdminInputs();
