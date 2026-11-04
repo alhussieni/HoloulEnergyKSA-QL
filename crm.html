@@ -1543,7 +1543,7 @@ function trSplitPay(){ finRun(async()=>{
   if(!finLK) finLK = await crmApi('treasury-lookups');
   const sid = spCurSup();
   finPO = (await crmApi('purchasing-orders',{})).orders.filter(o=>o.status==='open');
-  spKind='pay';
+  spKind='pay'; attStage = [];
   trShow(trHead('تحويل واحد لمورد — موزّع على أكتر من مشروع / فاتورة') + `<form class="finForm" onsubmit="trSplitPaySubmit(event)">
    <div><label>المورد</label><select name="supplierId" required onchange="spSupChange()">${trSupOpts(sid)}</select></div>
    <div><label>دفعه (الحساب)</label><select name="accountId" required>${trAccOpts('')}</select></div>
@@ -1555,7 +1555,7 @@ function trSplitPay(){ finRun(async()=>{
     <div id="spLines" style="display:grid;gap:8px;margin-top:6px"></div>
     <button type="button" class="btn ghost small" style="margin-top:8px" onclick="spAddRow()">+ سطر</button>
     <div class="emptyNote" id="spSumNote" style="color:var(--ink)"></div></div>
-   <div><button class="btn small teal">حفظ التحويل</button></div></form>`);
+   ${attPickerHtml()}<div><button class="btn small teal">حفظ التحويل</button></div></form>`);
   spAddRow(); spAddRow();
 }); }
 function trSplitPaySubmit(e){ const d=finFd(e); finRun(async()=>{
@@ -1564,8 +1564,13 @@ function trSplitPaySubmit(e){ const d=finFd(e); finRun(async()=>{
   if(!lines.length) throw new Error('اكتب مبلغ سطر واحد على الأقل');
   const sum=spN(lines.reduce((t,l)=>t+Number(l.amount),0));
   if(Math.abs(sum-spN(d.total))>0.005) throw new Error(`مجموع الأجزاء (${finN(sum)}) لازم يساوي إجمالي التحويل (${finN(d.total)})`);
-  await crmApi('treasury-split-payment',{supplierId:d.supplierId, accountId:d.accountId, entryDate:d.entryDate, method:d.method, reference:d.reference, notes:d.notes, total:d.total, lines});
-  finOverlay.classList.remove('show'); finLK=null; finDone('تم تسجيل التحويل الموزّع');
+  const rec = await crmApi('treasury-split-payment',{supplierId:d.supplierId, accountId:d.accountId, entryDate:d.entryDate, method:d.method, reference:d.reference, notes:d.notes, total:d.total, lines});
+  let upMsg = '';
+  if(attStage.length){
+    if(rec && rec.group){ const up = await attUploadAll({ target:'entry', paymentGroup: rec.group }); upMsg = up.failed ? ` — ${up.failed} مستند ماترفعش${up.lastErr?' ('+up.lastErr+')':''}` : ' + اترفع المستند'; }
+    else { attStage = []; upMsg = ' — مقدرتش أربط المستند، ضيفه من زر 📎'; }
+  }
+  finOverlay.classList.remove('show'); finLK=null; finDone('تم تسجيل التحويل الموزّع'+upMsg);
 }); }
 function trSplitBill(){ finRun(async()=>{
   if(!finLK) finLK = await crmApi('treasury-lookups');
@@ -1733,7 +1738,7 @@ function trEditEntry(id, retSid){ finRun(async()=>{
   const projName = x => (finLK.projects.find(p=>String(p.project_id)===String(x))||{}).project_number || (x?('#'+x):'—');
   const showV = (k,v) => v==null||v==='' ? '—' : k==='account_id' ? accName(v) : k==='project_id' ? projName(v) : k==='entry_date' ? fmtDate(v) : k==='amount' ? finN(v) : k==='method' ? labelOf(SETTINGS.paymentMethods,v,v) : v;
   const hist = d.edits.length ? `<h3 style="margin:14px 0 6px"><span class="lbl">سجل تعديلات الحركة</span></h3><table class="admtable"><thead><tr><th>وقت التعديل</th><th>التغيير</th><th>السبب</th></tr></thead><tbody>${d.edits.map(h=>`<tr style="cursor:default"><td>${fmtDate(h.edited_at)}</td><td>${Object.keys(h.new_values).map(k=>`${FN[k]||k}: ${escapeHtml(String(showV(k,h.old_values[k])))} ← <b>${escapeHtml(String(showV(k,h.new_values[k])))}</b>`).join('<br>')}</td><td>${escapeHtml(h.reason||'')}</td></tr>`).join('')}</tbody></table>` : '';
-  window._trEdit = { e, retSid };
+  window._trEdit = { e, retSid }; attStage = [];
   trShow(trHead('تعديل حركة — '+(TR_KIND[e.kind]||e.kind)+' ('+(e.direction==='in'?'وارد':'صادر')+')') + `<form class="finForm" onsubmit="trEditSubmit(event)">
     ${TR_EDIT_HINT[e.kind]?`<div class="emptyNote" style="grid-column:1/-1">${TR_EDIT_HINT[e.kind]}</div>`:''}
     <div><label>الحساب${e.kind==='transfer'?' (الطرف ده)':''}</label><select name="accountId" required>${accOpts}</select></div>
@@ -1744,7 +1749,8 @@ function trEditEntry(id, retSid){ finRun(async()=>{
     ${supEntry && !billLinked ? `<div><label>أمر الشراء</label><select name="poId">${poOpts}</select></div>` : ''}
     <div><label>المرجع</label><input name="reference" value="${escapeHtml(e.reference||'')}"></div>
     <div style="grid-column:1/-1"><label>الملاحظات</label><input name="notes" value="${escapeHtml(e.notes||'')}"></div>
-    <div style="grid-column:1/-1"><label>سبب التعديل (مطلوب — بيتسجّل)</label><input name="reason" required placeholder="مثلًا: اتسجلت على حساب غلط"></div>
+    ${attPickerHtml()}<div style="grid-column:1/-1"><button type="button" class="btn ghost small" onclick="attOpen({target:'entry',entryId:${e.id}})">📎 عرض / حذف المستندات الحالية</button></div>
+    <div style="grid-column:1/-1"><label>سبب التعديل (مطلوب — بيتسجّل — لو بتضيف مستند بس سيبه فاضي)</label><input name="reason" placeholder="مثلًا: اتسجلت على حساب غلط"></div>
     <div><button class="btn small teal">حفظ التعديل</button></div></form>${hist}`);
 }); }
 function trEditSubmit(ev){ ev.preventDefault(); const f = ev.target, o = window._trEdit.e, retSid = window._trEdit.retSid;
@@ -1752,15 +1758,19 @@ function trEditSubmit(ev){ ev.preventDefault(); const f = ev.target, o = window.
                 projectId:o.project_id?String(o.project_id):'', poId:o.purchase_order_id?String(o.purchase_order_id):'' };
   const fields = {};
   for(const k of Object.keys(cur)){ const el = f.elements[k]; if(!el || el.disabled) continue; let v = String(el.value||''); if(k==='amount') v = String(Number(v)); if(v !== cur[k]) fields[k] = v === '' ? null : v; }
-  if(!Object.keys(fields).length){ toast('مفيش تغيير'); return; }
-  finRun(async()=>{ await crmApi('treasury-edit-entry',{entryId:o.id, fields, reason:f.elements.reason.value});
+  const hasFields = Object.keys(fields).length;
+  if(!hasFields && !attStage.length){ toast('مفيش تغيير'); return; }
+  if(hasFields && !String(f.elements.reason.value||'').trim()){ toast('اكتب سبب التعديل'); return; }
+  finRun(async()=>{ if(hasFields) await crmApi('treasury-edit-entry',{entryId:o.id, fields, reason:f.elements.reason.value});
+    let upMsg = '';
+    if(attStage.length){ const ref = o.kind==='transfer' && o.transfer_group ? { target:'entry', transferGroup:o.transfer_group } : { target:'entry', entryId:o.id }; const up = await attUploadAll(ref); upMsg = up.failed ? ` — ${up.failed} مستند ماترفعش${up.lastErr?' ('+up.lastErr+')':''}` : ' + اترفع المستند'; }
     finOverlay.classList.remove('show'); finLK=null;
-    if(retSid){ toast('تم التعديل'); finLoad(); trSupplier(retSid); } else finDone('تم التعديل'); }); }
+    if(retSid){ toast((hasFields?'تم التعديل':'تم الحفظ')+upMsg); finLoad(); trSupplier(retSid); } else finDone((hasFields?'تم التعديل':'تم الحفظ')+upMsg); }); }
 /* ============ تعديل فاتورة/مرتجع مورد: التاريخ / القيمة / الرقم / البيان (أدمن) — بيتعدّل معاها تكلفة المشروع والمصروف، وبيتسجّل في سجل دائم ============ */
 function trEditBill(id, retSid){ finRun(async()=>{
   if(!finLK) finLK = await crmApi('treasury-lookups');
   const d = await crmApi('treasury-get-bill',{billId:id}), b = d.bill, cn = b.doc_type==='credit_note';
-  window._trBill = { b, retSid };
+  window._trBill = { b, retSid }; attStage = [];
   const FN = { bill_date:'التاريخ', amount:'القيمة', bill_number:'الرقم', description:'البيان', project_id:'المشروع' };
   const prjName = v => ((finLK.projects||[]).find(x=>String(x.project_id)===String(v))||{}).project_number || ('#'+v);
   const showV = (k,v) => k==='project_id' ? (v==null||v==='' ? 'بدون مشروع' : escapeHtml(prjName(v))) : v==null||v==='' ? '—' : k==='bill_date' ? fmtDate(v) : k==='amount' ? finN(v) : escapeHtml(v);
@@ -1772,16 +1782,21 @@ function trEditBill(id, retSid){ finRun(async()=>{
     <div><label>رقم الفاتورة</label><input name="billNumber" value="${escapeHtml(b.bill_number||'')}"></div>
     <div><label>البيان</label><input name="description" value="${escapeHtml(b.description||'')}"></div>
     <div style="grid-column:1/-1"><label>المشروع (تغييره بينقل التكلفة للمشروع الجديد — أو "بدون مشروع" بتتحسب مصروف عام)</label><select name="projectId">${trProjOpts(b.project_id,'بدون مشروع (مصروف عام)')}</select></div>
-    <div style="grid-column:1/-1"><label>سبب التعديل (مطلوب — بيتسجّل)</label><input name="reason" required placeholder="مثلًا: التاريخ اتسجل غلط"></div>
+    ${attPickerHtml()}<div style="grid-column:1/-1"><button type="button" class="btn ghost small" onclick="attOpen({billId:${b.id}})">📎 عرض / حذف المرفقات الحالية</button></div>
+    <div style="grid-column:1/-1"><label>سبب التعديل (مطلوب — بيتسجّل — لو بتضيف مرفق بس سيبه فاضي)</label><input name="reason" placeholder="مثلًا: التاريخ اتسجل غلط"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn small teal">حفظ التعديل</button><button type="button" class="btn ghost small" onclick="trSplitExisting()">⇄ قسّم الفاتورة على أكتر من مشروع</button></div></form>${hist}`);
 }); }
 function trEditBillSubmit(ev){ ev.preventDefault(); const f = ev.target, o = window._trBill.b, retSid = window._trBill.retSid;
   const cur = { billDate:String(o.bill_date).slice(0,10), amount:String(Number(o.amount)), billNumber:o.bill_number||'', description:o.description||'', projectId:String(o.project_id||'') };
   const fields = {};
   for(const k of Object.keys(cur)){ let v = String(f.elements[k].value||'').trim(); if(k==='amount') v = String(Number(v)); if(v !== cur[k]) fields[k] = v === '' ? null : v; }
-  if(!Object.keys(fields).length){ toast('مفيش تغيير'); return; }
-  finRun(async()=>{ await crmApi('treasury-edit-bill',{billId:o.id, fields, reason:f.elements.reason.value});
-    finOverlay.classList.remove('show'); finLK=null; toast('تم التعديل');
+  const hasFields = Object.keys(fields).length;
+  if(!hasFields && !attStage.length){ toast('مفيش تغيير'); return; }
+  if(hasFields && !String(f.elements.reason.value||'').trim()){ toast('اكتب سبب التعديل'); return; }
+  finRun(async()=>{ if(hasFields) await crmApi('treasury-edit-bill',{billId:o.id, fields, reason:f.elements.reason.value});
+    let upMsg = '';
+    if(attStage.length){ const up = await attUploadAll({ billId:o.id }); upMsg = up.failed ? ` — ${up.failed} مرفق ماترفعش${up.lastErr?' ('+up.lastErr+')':''}` : ' + اترفع المرفق'; }
+    finOverlay.classList.remove('show'); finLK=null; toast((hasFields?'تم التعديل':'تم الحفظ')+upMsg);
     if(retSid){ finLoad(); trSupplier(retSid); } else finLoad(); }); }
 
 /* تقسيم فاتورة موجودة على أكتر من مشروع (الأدمن) */
