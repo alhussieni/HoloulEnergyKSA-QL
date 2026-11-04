@@ -1910,11 +1910,12 @@ const trLinkSubmit = (e,eid,sid) => { const d=finFd(e); finRun(async()=>{ await 
 /* ============ مستندات المالية: تصوير / رفع صورة أو PDF (فواتير الموردين + حركات الخزنة) ============ */
 /* الملفات في bucket خاص عن طريق دالة finance-attachments. الصور بتتصغّر وبتتضغط هنا قبل الرفع (JPEG) عشان الرفع يبقى سريع من الموبايل.
    ref = { billId } لفاتورة، أو { target:'entry', entryId } لحركة خزنة، أو { target:'entry', transferGroup } لتحويل بين حسابات (طرفيه بيشاركوا نفس المستندات). */
-let attStage = [], attCounts = {}, attECounts = {}, attCur = null, attSid = null;
+let attStage = [], attCounts = {}, attECounts = {}, attXCounts = {}, attCur = null, attSid = null;
 const ATT_MAX = 10, ATT_PDF_MAX = 6*1024*1024;
 const attSize = n => Number(n)>=1048576 ? (Number(n)/1048576).toFixed(1)+' MB' : Math.max(1,Math.round(Number(n)/1024))+' KB';
 const attBadge = (id,sid) => `<button class="btn ghost small" type="button" onclick="attOpen({billId:${id}}${sid?','+sid:''})" title="مرفقات الفاتورة">📎${attCounts[id]?' '+attCounts[id]:(sid?' إضافة':'')}</button>`;
 const attEntryBadge = (id,sid) => `<button class="btn ghost small" type="button" onclick="attOpen({target:'entry',entryId:${id}}${sid?','+sid:''})" title="مستندات الحركة (إيصال / تحويل)">📎${attECounts[id]?' '+attECounts[id]:(sid?' إضافة':'')}</button>`;
+const attExtraBadge = (id, pid, fin) => `<button class="btn ghost small" type="button" onclick="attOpen({target:'extra',extraId:${id},projectId:${pid}${fin?',fin:true':''}})" title="مستند موافقة العميل على الأعمال الإضافية">📎 موافقة العميل${attXCounts[id]?' ('+attXCounts[id]+')':''}</button>`;
 const attPickerHtml = () => `<div style="grid-column:1/-1"><label>صورة / مستند (اختياري) — إيصال، تحويل بنكي، فاتورة...</label>
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
     <button type="button" class="btn ghost small" onclick="document.getElementById('attCam').click()">📷 تصوير المستند</button>
@@ -1924,8 +1925,9 @@ const attPickerHtml = () => `<div style="grid-column:1/-1"><label>صورة / م�
   </div>
   <div id="attStageList" class="emptyNote" style="margin-top:6px">لسه ماضفتش مرفقات</div>
   <div class="emptyNote">تقدر تصوّر أكتر من صورة (كل مرة تضغط تصوير). الصور بتتضغط تلقائيًا، والـ PDF لحد 6 ميجا، ولحد ${ATT_MAX} مرفقات.</div></div>`;
-function attRenderStage(){ const el = document.getElementById('attStageList'); if(!el) return;
-  el.innerHTML = attStage.length ? attStage.map((f,i)=>`<span class="tag" style="margin:2px">${escapeHtml(f.name||'صورة')} (${attSize(f.size)}) <a href="#" onclick="attDrop(${i});return false" style="margin-inline-start:4px">✕</a></span>`).join('') : 'لسه ماضفتش مرفقات'; }
+function attRenderStage(){ const els = document.querySelectorAll('#attStageList'); if(!els.length) return;
+  const html = attStage.length ? attStage.map((f,i)=>`<span class="tag" style="margin:2px">${escapeHtml(f.name||'صورة')} (${attSize(f.size)}) <a href="#" onclick="attDrop(${i});return false" style="margin-inline-start:4px">✕</a></span>`).join('') : 'لسه ماضفتش مرفقات';
+  els.forEach(el => { el.innerHTML = html; }); }
 function attDrop(i){ attStage.splice(i,1); attRenderStage(); }
 function attAdd(inp){
   const files = [...inp.files]; inp.value = '';
@@ -1963,19 +1965,21 @@ async function attUploadAll(ref){
   }
   attStage = [];
   if(ref.billId) attCounts[ref.billId] = (attCounts[ref.billId]||0) + ok;
+  else if(ref.target === 'extra' && ref.extraId) attXCounts[ref.extraId] = (attXCounts[ref.extraId]||0) + ok;
   else if(ref.entryId) attECounts[ref.entryId] = (attECounts[ref.entryId]||0) + ok;
   return { ok, failed, lastErr };
 }
 async function attRenderModal(){
-  const ref = attCur, isE = ref.target === 'entry';
+  const ref = attCur, isE = ref.target === 'entry', isX = ref.target === 'extra';
   const r = await crmApi('attach-list', ref);
-  if(isE){ if(ref.entryId) attECounts[ref.entryId] = r.files.length; } else attCounts[ref.billId] = r.files.length;
-  const bill = !isE && (typeof purBillAll !== 'undefined' ? purBillAll : []).find(x => String(x.bill_id) === String(ref.billId));
-  const back = attSid ? `<div style="margin-bottom:8px"><button class="btn ghost small" type="button" onclick="trSupplier(${attSid})">← رجوع لكشف المورد</button></div>` : '';
-  trShow(trHead(isE ? 'مستندات الحركة' : 'مرفقات الفاتورة' + (bill ? ' — ' + escapeHtml(bill.bill_number || ('#'+ref.billId)) + ' — ' + escapeHtml(bill.supplier_name) : '')) +
+  if(isX){ attXCounts[ref.extraId] = r.files.length; } else if(isE){ if(ref.entryId) attECounts[ref.entryId] = r.files.length; } else attCounts[ref.billId] = r.files.length;
+  const bill = !isE && !isX && (typeof purBillAll !== 'undefined' ? purBillAll : []).find(x => String(x.bill_id) === String(ref.billId));
+  const back = isX && ref.fin ? `<div style="margin-bottom:8px"><button class="btn ghost small" type="button" onclick="finOpenProject(${ref.projectId})">← رجوع للمشروع</button></div>` : attSid ? `<div style="margin-bottom:8px"><button class="btn ghost small" type="button" onclick="trSupplier(${attSid})">← رجوع لكشف المورد</button></div>` : '';
+  trShow(trHead(isX ? 'مستند موافقة العميل على الأعمال الإضافية' : isE ? 'مستندات الحركة' : 'مرفقات الفاتورة' + (bill ? ' — ' + escapeHtml(bill.bill_number || ('#'+ref.billId)) + ' — ' + escapeHtml(bill.supplier_name) : '')) +
     back + `<div class="card" style="padding:0;overflow:auto">${r.files.length ? `<table class="admtable"><thead><tr><th>الملف</th><th>الحجم</th><th>التاريخ</th><th></th></tr></thead><tbody>${r.files.map(f=>`<tr style="cursor:default"><td>${/pdf/.test(f.mime_type)?'📄':'🖼'} ${escapeHtml(f.file_name)}</td><td>${attSize(f.size_bytes)}</td><td>${fmtDate(f.created_at)}</td><td style="white-space:nowrap"><button class="btn small" type="button" onclick="attView(${f.id})">عرض</button> <button class="btn danger small" type="button" onclick="attDel(${f.id})">حذف</button></td></tr>`).join('')}</tbody></table>` : `<div class="loadingNote">مفيش ${isE?'مستندات':'مرفقات'} هنا</div>`}</div>
     <div class="finForm" style="margin-top:10px">${attPickerHtml()}<div><button class="btn small teal" type="button" onclick="attUploadNow()">رفع المرفقات المختارة</button></div></div>`);
-  if(isE){ if(typeof trLedgerLoad === 'function' && document.getElementById('trLedgerBox')) trLedgerLoad(); }
+  if(isX){ /* مفيش قايمة تتحدّث */ }
+  else if(isE){ if(typeof trLedgerLoad === 'function' && document.getElementById('trLedgerBox')) trLedgerLoad(); }
   else if(typeof purBillRender === 'function') purBillRender();
 }
 function attOpen(ref, sid){ attStage = []; attCur = ref; attSid = sid || null; finRun(() => attRenderModal()); }
@@ -2581,7 +2585,9 @@ const finCoSaveInvSettings = e => finRun(async()=>{ const d=finFd(e); await crmA
 const finOverlay = document.getElementById('finOverlay');
 finOverlay.addEventListener('click', e=>{ if(e.target===finOverlay) finOverlay.classList.remove('show'); });
 async function finOpenProject(id){ return finRun(async()=>{
-  const [d, dc, pm, cm, ex] = await Promise.all([ crmApi('finance-project-detail',{projectId:id}), crmApi('treasury-project-discounts',{projectId:id}), crmApi('treasury-project-payments',{projectId:id}), crmApi('purchasing-project-commitments',{projectId:id}), crmApi('extras-list',{projectId:id}) ]), p = d.project, f = d.flags || {};
+  const [d, dc, pm, cm, ex] = await Promise.all([ crmApi('finance-project-detail',{projectId:id}), crmApi('treasury-project-discounts',{projectId:id}), crmApi('treasury-project-payments',{projectId:id}), crmApi('purchasing-project-commitments',{projectId:id}), crmApi('extras-list',{projectId:id}) ]), p = d.project;
+  attStage = []; try{ attXCounts = (await crmApi('attach-counts',{target:'extra'})).counts || {}; }catch(_){ attXCounts = {}; }
+  const f = d.flags || {};
   finPayCache = Object.fromEntries(pm.payments.map(x=>[x.id,x]));
   document.getElementById('finModal').innerHTML = `
   <div class="mhead"><div><h2>${escapeHtml(p.project_number)}</h2><div class="phone">${escapeHtml(p.customer_name||'')}</div><button class="btn small" type="button" style="margin-top:6px" onclick="stMenu(${id},${p.customer_id||'null'})">🖨 طباعة كشف حساب</button></div><button class="closeX" type="button" onclick="finOverlay.classList.remove('show')">✕</button></div>
@@ -2602,8 +2608,9 @@ async function finOpenProject(id){ return finRun(async()=>{
       <div style="grid-column:1/-1"><label>التفاصيل (النطاق والكميات وما اتفقتوا عليه)</label><textarea name="details" rows="2" style="width:100%"></textarea></div>
       <div><label>تاريخ موافقة العميل</label><input name="approvedOn" type="date" value="${todayStr()}"></div>
       <div><label>شكل الإقرار</label><input name="approvalNote" placeholder="واتساب / توقيع / أمر تغيير رقم..."></div>
+      ${attPickerHtml().replace('صورة / مستند (اختياري) — إيصال، تحويل بنكي، فاتورة...','مستند موافقة العميل (اختياري) — صورة الموافقة / رسالة واتساب / PDF موقّع')}
       <div><button class="btn small">إضافة الأعمال</button></div></form>
-    ${(ex.extras||[]).map(x=>`<div class="emptyNote" style="color:var(--ink)">• ${fmtDate(x.extra_date)} — <b>${escapeHtml(x.title)}</b> ${finN(x.amount)}${x.details?`<br><span class="m">${escapeHtml(x.details)}</span>`:''}${x.approved_on||x.approval_note?`<br><span class="m">إقرار العميل: ${x.approved_on?fmtDate(x.approved_on):''} ${escapeHtml(x.approval_note||'')}</span>`:''} <button class="btn ghost small" onclick="finUndoExtra(${x.id},${id})">إلغاء</button></div>`).join('')}
+    ${(ex.extras||[]).map(x=>`<div class="emptyNote" style="color:var(--ink)">• ${fmtDate(x.extra_date)} — <b>${escapeHtml(x.title)}</b> ${finN(x.amount)}${x.details?`<br><span class="m">${escapeHtml(x.details)}</span>`:''}${x.approved_on||x.approval_note?`<br><span class="m">إقرار العميل: ${x.approved_on?fmtDate(x.approved_on):''} ${escapeHtml(x.approval_note||'')}</span>`:''} <button class="btn ghost small" onclick="finUndoExtra(${x.id},${id})">إلغاء</button> ${attExtraBadge(x.id,id,true)}</div>`).join('')}
   </div>
   <div class="card" style="margin:10px 0;background:var(--sand)"><h3><span class="lbl">خصم تسوية على العميل (كسور / سماح)</span></h3>
     <div class="emptyNote" style="color:var(--ink)">المتبقي على العميل: <b>${finN(p.remaining)}</b>${dc.total>0?` · خصومات سابقة ${finN(dc.total)} (التعاقد قبل الخصومات ${finN(Number(p.contract_gross)+dc.total)})`:''}</div>
@@ -2653,7 +2660,7 @@ const finSavePayment = (e,pid,projectId) => { const d=finFd(e), x=finPayCache[pi
 const finApplyDiscount = (e,id,rem) => { const d=finFd(e), a=Number(d.amount);
   return confirm(`هيتخصم ${finN(a)} من قيمة التعاقد، ومديونية العميل هتبقى ${finN(rem-a)}، وربح المشروع هينزل بنفس القيمة (شامل الضريبة). متأكد؟`) && finRun(async()=>{ await crmApi('treasury-apply-discount',{projectId:id,...d}); toast('تم تطبيق الخصم'); await finOpenProject(id); finLoad(); }); };
 const finAddExtra = (e,id,rem) => { e.preventDefault(); const d=finFd(e), a=Number(d.amount);
-  return confirm(`هيتسجّل «${d.title}» بقيمة ${finN(a)} (شامل الضريبة). قيمة التعاقد هتزيد، ومديونية العميل هتبقى ${finN(Number(rem)+a)}. متأكد؟`) && finRun(async()=>{ await crmApi('extras-add',{projectId:id,...d}); toast('تم تسجيل الأعمال الإضافية'); await finOpenProject(id); finLoad(); }); };
+  return confirm(`هيتسجّل «${d.title}» بقيمة ${finN(a)} (شامل الضريبة). قيمة التعاقد هتزيد، ومديونية العميل هتبقى ${finN(Number(rem)+a)}. متأكد؟`) && finRun(async()=>{ const r = await crmApi('extras-add',{projectId:id,...d}); let m = 'تم تسجيل الأعمال الإضافية'; if(attStage.length){ const up = await attUploadAll({ target:'extra', extraId:r.extraId }); m += up.failed ? ` — ${up.failed} مستند ماترفعش${up.lastErr?' ('+up.lastErr+')':''}` : ' + اترفع مستند الموافقة'; } toast(m); await finOpenProject(id); finLoad(); }); };
 const finUndoExtra = (xid,id) => confirm('إلغاء الأعمال الإضافية هينقص قيمة التعاقد والمديونية على العميل. متأكد؟') && finRun(async()=>{ await crmApi('extras-undo',{extraId:xid}); toast('تم إلغاء الأعمال الإضافية'); await finOpenProject(id); finLoad(); });
 const finUndoDiscount = (did,id) => confirm('إلغاء الخصم هيرجّع قيمة التعاقد والمديونية على العميل. متأكد؟') && finRun(async()=>{ await crmApi('treasury-undo-discount',{discountId:did}); toast('تم إلغاء الخصم'); await finOpenProject(id); finLoad(); });
 const finAddCost = (e,id) => finRun(async()=>{ const d=finFd(e), v=finVat(d); await crmApi('finance-add-cost',{projectId:id,...d,amount:v.amount,taxTreatment:v.tax}); toast('تمت إضافة التكلفة'); await finOpenProject(id); finLoad(); });
@@ -2775,12 +2782,15 @@ async function stCustAppendix(P, scope){
     seen.add('r'+fl.id); items.push({ key:'r'+fl.id, kind:'receipt', file:fl, rows:[{ p, x }] });
   })));
   (A.invoices||[]).forEach(inv => (inv.files||[]).forEach(fl => items.push({ key:'i'+fl.id, kind:'invoice', file:fl, inv })));
+  (A.extras||[]).slice().reverse().forEach(ex => (ex.files||[]).slice().reverse().forEach(fl => items.unshift({ key:'x'+fl.id, kind:'approval', file:fl, ex })));
   if(!items.length) return { html:'', count:0, skipped:0 };
   let html = '', skipped = 0, n = 0, first = true;
   for(const it of items){
     n++;
     let cap, extra = '';
-    if(it.kind === 'receipt'){
+    if(it.kind === 'approval'){
+      cap = `موافقة العميل على أعمال إضافية: <b>${E(it.ex.title)}</b> — ${finN(it.ex.amount)} — ${fmtDate(it.ex.extra_date)}${it.ex.approved_on?' — تاريخ الموافقة '+fmtDate(it.ex.approved_on):''} — مشروع ${E(it.ex.project_number||'')}`;
+    } else if(it.kind === 'receipt'){
       const tot = it.rows.reduce((t,r) => t + Number(r.x.amount), 0);
       cap = `إيصال / تحويل دفعة العميل — ${fmtDate(it.rows[0].x.payment_date)} — ${finN(tot)}${it.rows.length > 1 ? ' (موزّعة على '+it.rows.length+' مشاريع)' : ' — مشروع '+E(it.rows[0].p.project_number)}`;
     } else {
@@ -2792,7 +2802,7 @@ async function stCustAppendix(P, scope){
           <tr><td class="t">الإجمالي</td><td class="n"><b>${finN(tot)}</b></td></tr></tbody></table></div>`;
       } else if(parts[0]) cap += ` — مشروع ${E(parts[0].project_number || 'عام')}`;
     }
-    const head = (first ? `<h3 style="margin:0 0 8px;font-size:14px;color:#0B7A66">المرفقات — إيصالات التحويل وفواتير الموردين</h3>` : '') + `<div class="note" style="${noteBox}"><b>مرفق ${n} من ${items.length}:</b> ${cap}<br><span class="m">${E(it.file.file_name)}</span></div>${extra}`;
+    const head = (first ? `<h3 style="margin:0 0 8px;font-size:14px;color:#0B7A66">المرفقات — موافقات الأعمال الإضافية وإيصالات التحويل وفواتير الموردين</h3>` : '') + `<div class="note" style="${noteBox}"><b>مرفق ${n} من ${items.length}:</b> ${cap}<br><span class="m">${E(it.file.file_name)}</span></div>${extra}`;
     first = false;
     const r = await stFilePagesHtml(it.file, head); html += r.html; skipped += r.skipped;
   }
@@ -5726,10 +5736,12 @@ async function renderProjectPanel(wrap, opportunityId, opp){
   const exBox = wrap.querySelector('#extrasBox');
   if(exBox){
     const refreshAfter = () => renderProjectPanel(wrap, opportunityId, opp);
-    crmApi('extras-list', {projectId:p.id}).then(r=>{
+    attStage = [];
+    Promise.all([crmApi('extras-list', {projectId:p.id}), crmApi('attach-counts', {target:'extra'}).catch(()=>({counts:{}}))]).then(([r, ac])=>{
+      attXCounts = ac.counts || {};
       const xs = r.extras || [], tot = xs.reduce((t,x)=>t+Number(x.amount),0);
       exBox.innerHTML = `<div class="emptyNote" style="margin-bottom:8px">${xs.length ? `إجمالي الأعمال الإضافية: <b>${fmtMoney(tot)}</b> ﷼ (داخلة في قيمة العقد أعلاه). ` : ''}القيمة بتتضاف على قيمة العقد وبتظهر في كشف الحساب كبند مستقل. تكاليفها وفواتير مورديها بتتسجّل على المشروع نفسه.</div>
-        ${xs.map(x=>`<div class="emptyNote" style="color:var(--ink)">• ${fmtDate(x.extra_date)} — <b>${escapeHtml(x.title)}</b> ${fmtMoney(x.amount)} ﷼${x.details?`<br><span>${escapeHtml(x.details)}</span>`:''}${x.approved_on||x.approval_note?`<br><span>إقرار العميل: ${x.approved_on?fmtDate(x.approved_on):''} ${escapeHtml(x.approval_note||'')}</span>`:''} <button class="btn ghost small" type="button" data-undo-extra="${x.id}">إلغاء</button></div>`).join('')}
+        ${xs.map(x=>`<div class="emptyNote" style="color:var(--ink)">• ${fmtDate(x.extra_date)} — <b>${escapeHtml(x.title)}</b> ${fmtMoney(x.amount)} ﷼${x.details?`<br><span>${escapeHtml(x.details)}</span>`:''}${x.approved_on||x.approval_note?`<br><span>إقرار العميل: ${x.approved_on?fmtDate(x.approved_on):''} ${escapeHtml(x.approval_note||'')}</span>`:''} <button class="btn ghost small" type="button" data-undo-extra="${x.id}">إلغاء</button> ${attExtraBadge(x.id,p.id,false)}</div>`).join('')}
         <div class="grid2">
           <div><label>عنوان الأعمال الإضافية</label><input type="text" id="ex_title" placeholder="مثال: مد كابلات إضافية للمضخة الثانية"></div>
           <div><label>القيمة المتفق عليها (شامل الضريبة)</label><input type="number" step="0.01" min="0.01" id="ex_amount"></div>
@@ -5738,6 +5750,7 @@ async function renderProjectPanel(wrap, opportunityId, opp){
           <div><label>شكل الإقرار</label><input type="text" id="ex_note" placeholder="واتساب / توقيع / أمر تغيير رقم..."></div>
         </div>
         <label>التفاصيل (النطاق والكميات وما اتفقتوا عليه)</label><textarea id="ex_details" rows="2"></textarea>
+        <div class="grid2">${attPickerHtml().replace('صورة / مستند (اختياري) — إيصال، تحويل بنكي، فاتورة...','مستند موافقة العميل (اختياري) — صورة الموافقة / رسالة واتساب / PDF موقّع')}</div>
         <div class="saveBar"><div></div><div class="right"><button class="btn small" id="ex_add" type="button">إضافة الأعمال</button></div></div>`;
       exBox.querySelectorAll('[data-undo-extra]').forEach(b=>b.addEventListener('click', async ()=>{
         if(!confirm('إلغاء الأعمال الإضافية هينقص قيمة العقد والمديونية على العميل. متأكد؟')) return;
@@ -5748,7 +5761,7 @@ async function renderProjectPanel(wrap, opportunityId, opp){
         if(!g('ex_title').trim()){ toast('اكتب عنوان الأعمال الإضافية'); return; }
         if(!(amount>0)){ toast('اكتب القيمة المتفق عليها'); return; }
         if(!confirm(`هيتسجّل «${g('ex_title').trim()}» بقيمة ${fmtMoney(amount)} ﷼ (شامل الضريبة) وقيمة العقد هتزيد بنفس القيمة. متأكد؟`)) return;
-        try{ await crmApi('extras-add', {projectId:p.id, title:g('ex_title'), amount, extraDate:g('ex_date'), approvedOn:g('ex_appr'), approvalNote:g('ex_note'), details:g('ex_details')}); toast('تم تسجيل الأعمال الإضافية ✅'); refreshAfter(); }
+        try{ const rr = await crmApi('extras-add', {projectId:p.id, title:g('ex_title'), amount, extraDate:g('ex_date'), approvedOn:g('ex_appr'), approvalNote:g('ex_note'), details:g('ex_details')}); let m = 'تم تسجيل الأعمال الإضافية ✅'; if(attStage.length){ const up = await attUploadAll({ target:'extra', extraId:rr.extraId }); m += up.failed ? ` — ${up.failed} مستند ماترفعش` : ' + اترفع مستند الموافقة'; } toast(m); refreshAfter(); }
         catch(err){ toast('خطأ: '+err.message); }
       });
     }).catch(err=>{ exBox.innerHTML = '<div class="loadingNote">تعذر تحميل الأعمال الإضافية: '+escapeHtml(err.message)+'</div>'; });

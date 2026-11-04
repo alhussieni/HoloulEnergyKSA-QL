@@ -2,7 +2,7 @@
 // مرفقات المالية (صور / PDF) في bucket خاص: فواتير الموردين + حركات الخزنة (قبض عميل / دفع مورد / تحويل بين الحسابات / ...).
 // نفس توثيق باقي دوال المالية (توكن أدمن HMAC + session_version).
 // actions: attach-upload | attach-counts | attach-list | attach-url | attach-delete | attach-supplier / attach-customer (كل مستندات مورد أو عميل بروابط عرض مؤقتة — لطباعة كشف الحساب مع المرفقات)
-// body.target: "bill" (الافتراضي — متوافق مع النسخة الأولى) أو "entry" (حركة خزنة).
+// body.target: "bill" (الافتراضي — متوافق مع النسخة الأولى) أو "entry" (حركة خزنة) أو "extra" (مستند موافقة العميل على أعمال إضافية).
 // الفاتورة الموزّعة على أكتر من مشروع (bill_group) والتحويل/الدفعة الموزّعة بيشاركوا نفس المستندات: المالك = أصغر id في المجموعة.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -75,11 +75,12 @@ const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Target = { table: string; col: string; prefix: string; entityType: string };
-const TARGETS: Record<"bill" | "entry", Target> = {
+const TARGETS: Record<"bill" | "entry" | "extra", Target> = {
   bill: { table: "supplier_bill_files", col: "bill_id", prefix: "", entityType: "supplier_bill" },
   entry: { table: "treasury_entry_files", col: "entry_id", prefix: "entry-", entityType: "treasury_entry" },
+  extra: { table: "project_extra_files", col: "extra_id", prefix: "extra-", entityType: "project_extra" },
 };
-const targetOf = (body: any): Target => (body.target === "entry" ? TARGETS.entry : TARGETS.bill);
+const targetOf = (body: any): Target => (body.target === "entry" ? TARGETS.entry : body.target === "extra" ? TARGETS.extra : TARGETS.bill);
 
 // نتأكد إن محتوى الملف فعلًا من النوع المعلن (مش بس الامتداد/الـ mime اللي جاي من المتصفح)
 function sniffMime(b: Uint8Array): string | null {
@@ -113,6 +114,12 @@ async function groupOwner(table: "treasury_entries" | "supplier_bills", col: "tr
   return rows[0].id;
 }
 async function resolveOwner(t: Target, body: any, mustExist: boolean): Promise<number> {
+  if (t === TARGETS.extra) { // مستندات موافقة العميل على أعمال إضافية: المالك = رقم الأعمال الإضافية
+    const id = idOf(body.extraId ?? body.ownerId, "رقم الأعمال الإضافية غير صالح");
+    const x = must(await supabase.from("project_extras").select("id").eq("id", id).maybeSingle()) as any;
+    if (!x && mustExist) bad("الأعمال الإضافية غير موجودة");
+    return id;
+  }
   if (t === TARGETS.bill) {
     if (body.billGroup) {
       const g = String(body.billGroup);
@@ -219,7 +226,7 @@ Deno.serve(async (req: Request) => {
         await supabase.storage.from(BUCKET).remove([path]); // مانسيبش ملف يتيم لو تسجيل الصف فشل
         throw ins.error;
       }
-      await logAudit(t === TARGETS.bill ? "add_bill_file" : "add_entry_file", t.entityType, owner, name, null, { size: bytes.length, mime });
+      await logAudit(t === TARGETS.bill ? "add_bill_file" : t === TARGETS.extra ? "add_extra_file" : "add_entry_file", t.entityType, owner, name, null, { size: bytes.length, mime });
       return json({ ok: true, file: ins.data, ownerId: owner });
     }
 
@@ -229,7 +236,7 @@ Deno.serve(async (req: Request) => {
       const owned: Record<string, number> = {};
       for (const r of rows) owned[String(r[t.col])] = (owned[String(r[t.col])] || 0) + 1;
       const counts: Record<string, number> = { ...owned };
-      if (rows.length) {
+      if (rows.length && t !== TARGETS.extra) {
         const src = t === TARGETS.entry ? "treasury_entries" : "supplier_bills";
         const gcols = t === TARGETS.entry ? ["transfer_group", "payment_group"] : ["bill_group"];
         const own = must(await supabase.from(src).select(["id", ...gcols].join(", ")).in("id", Object.keys(owned).map(Number))) as any[];
@@ -277,7 +284,7 @@ Deno.serve(async (req: Request) => {
         ? must(await sel.eq("customer_id", idOf(body.customerId, "رقم العميل غير صالح")))
         : must(await sel.eq("id", idOf(body.projectId, "رقم المشروع غير صالح")))) as any[];
       const pids: number[] = projects.map((p) => p.id);
-      if (!pids.length) return json({ ok: true, receipts: {}, invoices: [] });
+      if (!pids.length) return json({ ok: true, receipts: {}, invoices: [], extras: [] });
 
       const ents = must(await supabase.from("treasury_entries").select("id, payment_id, transfer_group, payment_group")
         .eq("kind", "customer_receipt").in("project_id", pids).limit(5000)) as any[];
@@ -313,7 +320,14 @@ Deno.serve(async (req: Request) => {
           });
         }
       }
-      return json({ ok: true, receipts, invoices });
+      // موافقات العميل على الأعمال الإضافية (مستندات الموافقة)
+      const xrows = must(await supabase.from("project_extras").select("id, project_id, title, amount, extra_date, approved_on, approval_note").in("project_id", pids).order("extra_date").order("id")) as any[];
+      const xf = await filesByOwner(TARGETS.extra, xrows.map((x) => x.id), 3600);
+      const extras = xrows.filter((x) => xf[String(x.id)]).map((x) => ({
+        extra_id: x.id, project_id: x.project_id, project_number: projects.find((p) => p.id === x.project_id)?.project_number || null,
+        title: x.title, amount: Number(x.amount), extra_date: x.extra_date, approved_on: x.approved_on, approval_note: x.approval_note, files: xf[String(x.id)],
+      }));
+      return json({ ok: true, receipts, invoices, extras });
     }
 
     // رابط عرض مؤقت (٥ دقايق) — الملف نفسه خاص ومالوش رابط عام
@@ -333,7 +347,7 @@ Deno.serve(async (req: Request) => {
       const rm = await supabase.storage.from(BUCKET).remove([f.storage_path]);
       if (rm.error) throw rm.error;
       must(await supabase.from(t.table).delete().eq("id", id));
-      await logAudit(t === TARGETS.bill ? "delete_bill_file" : "delete_entry_file", t.entityType, f[t.col], f.file_name, { file_name: f.file_name }, null);
+      await logAudit(t === TARGETS.bill ? "delete_bill_file" : t === TARGETS.extra ? "delete_extra_file" : "delete_entry_file", t.entityType, f[t.col], f.file_name, { file_name: f.file_name }, null);
       return json({ ok: true });
     }
 
