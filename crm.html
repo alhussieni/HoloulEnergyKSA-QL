@@ -5566,6 +5566,11 @@ async function renderProjectPanel(wrap, opportunityId, opp){
     <div class="saveBar"><div></div><div class="right"><button class="btn" id="saveProjectBtn" type="button">حفظ بيانات المشروع</button></div></div>
 
     <div class="section">
+      <h4>أعمال إضافية متفق عليها</h4>
+      <div id="extrasBox"><div class="loadingNote">بيحمّل الأعمال الإضافية...</div></div>
+    </div>
+
+    <div class="section">
       <h4>خطة السداد المتفق عليها</h4>
       <div id="milestonesList">
         ${data.milestones.length ? data.milestones.map(m=>{
@@ -5717,6 +5722,37 @@ async function renderProjectPanel(wrap, opportunityId, opp){
       renderProjectPanel(wrap, opportunityId, opp);
     }catch(err){ toast('خطأ: '+err.message); }
   });
+  /* أعمال إضافية: بتزوّد قيمة العقد (نفس دوال الخزنة finance-extras) — بتتسجّل بعد الاتفاق مع العميل على التكلفة والتفاصيل */
+  const exBox = wrap.querySelector('#extrasBox');
+  if(exBox){
+    const refreshAfter = () => renderProjectPanel(wrap, opportunityId, opp);
+    crmApi('extras-list', {projectId:p.id}).then(r=>{
+      const xs = r.extras || [], tot = xs.reduce((t,x)=>t+Number(x.amount),0);
+      exBox.innerHTML = `<div class="emptyNote" style="margin-bottom:8px">${xs.length ? `إجمالي الأعمال الإضافية: <b>${fmtMoney(tot)}</b> ﷼ (داخلة في قيمة العقد أعلاه). ` : ''}القيمة بتتضاف على قيمة العقد وبتظهر في كشف الحساب كبند مستقل. تكاليفها وفواتير مورديها بتتسجّل على المشروع نفسه.</div>
+        ${xs.map(x=>`<div class="emptyNote" style="color:var(--ink)">• ${fmtDate(x.extra_date)} — <b>${escapeHtml(x.title)}</b> ${fmtMoney(x.amount)} ﷼${x.details?`<br><span>${escapeHtml(x.details)}</span>`:''}${x.approved_on||x.approval_note?`<br><span>إقرار العميل: ${x.approved_on?fmtDate(x.approved_on):''} ${escapeHtml(x.approval_note||'')}</span>`:''} <button class="btn ghost small" type="button" data-undo-extra="${x.id}">إلغاء</button></div>`).join('')}
+        <div class="grid2">
+          <div><label>عنوان الأعمال الإضافية</label><input type="text" id="ex_title" placeholder="مثال: مد كابلات إضافية للمضخة الثانية"></div>
+          <div><label>القيمة المتفق عليها (شامل الضريبة)</label><input type="number" step="0.01" min="0.01" id="ex_amount"></div>
+          <div><label>تاريخ الأعمال</label><input type="date" id="ex_date" value="${todayStr()}"></div>
+          <div><label>تاريخ موافقة العميل</label><input type="date" id="ex_appr" value="${todayStr()}"></div>
+          <div><label>شكل الإقرار</label><input type="text" id="ex_note" placeholder="واتساب / توقيع / أمر تغيير رقم..."></div>
+        </div>
+        <label>التفاصيل (النطاق والكميات وما اتفقتوا عليه)</label><textarea id="ex_details" rows="2"></textarea>
+        <div class="saveBar"><div></div><div class="right"><button class="btn small" id="ex_add" type="button">إضافة الأعمال</button></div></div>`;
+      exBox.querySelectorAll('[data-undo-extra]').forEach(b=>b.addEventListener('click', async ()=>{
+        if(!confirm('إلغاء الأعمال الإضافية هينقص قيمة العقد والمديونية على العميل. متأكد؟')) return;
+        try{ await crmApi('extras-undo', {extraId:b.dataset.undoExtra}); toast('تم إلغاء الأعمال الإضافية'); refreshAfter(); }catch(err){ toast('خطأ: '+err.message); }
+      }));
+      exBox.querySelector('#ex_add').addEventListener('click', async ()=>{
+        const g = id => exBox.querySelector('#'+id).value, amount = Number(g('ex_amount'));
+        if(!g('ex_title').trim()){ toast('اكتب عنوان الأعمال الإضافية'); return; }
+        if(!(amount>0)){ toast('اكتب القيمة المتفق عليها'); return; }
+        if(!confirm(`هيتسجّل «${g('ex_title').trim()}» بقيمة ${fmtMoney(amount)} ﷼ (شامل الضريبة) وقيمة العقد هتزيد بنفس القيمة. متأكد؟`)) return;
+        try{ await crmApi('extras-add', {projectId:p.id, title:g('ex_title'), amount, extraDate:g('ex_date'), approvedOn:g('ex_appr'), approvalNote:g('ex_note'), details:g('ex_details')}); toast('تم تسجيل الأعمال الإضافية ✅'); refreshAfter(); }
+        catch(err){ toast('خطأ: '+err.message); }
+      });
+    }).catch(err=>{ exBox.innerHTML = '<div class="loadingNote">تعذر تحميل الأعمال الإضافية: '+escapeHtml(err.message)+'</div>'; });
+  }
   const printStBtn = wrap.querySelector('#printProjStatementBtn');
   if(printStBtn) printStBtn.addEventListener('click', ()=>stMenu(p.id, p.customer_id));
   const addCostBtn = wrap.querySelector('#addCostBtn');
