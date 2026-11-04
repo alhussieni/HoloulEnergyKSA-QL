@@ -5584,7 +5584,7 @@ async function renderProjectPanel(wrap, opportunityId, opp){
         <div><label>المبلغ (﷼)</label><input type="number" id="cost_amount"></div>
         <div style="grid-column:1/-1;"><label>وصف</label><input type="text" id="cost_desc"></div>
       </div>
-      <div class="saveBar" style="margin-top:0;"><div><button class="btn small" id="printProjStatementBtn" type="button">🖨️ طباعة كشف حساب المشروع (المحصّل / المصروفات / الربح أو الخسارة)</button></div><div class="right"><button class="btn ghost small" id="addCostBtn" type="button">+ إضافة تكلفة</button></div></div>
+      <div class="saveBar" style="margin-top:0;"><div><button class="btn small" id="printProjStatementBtn" type="button">🖨️ طباعة كشف حساب المشروع (اختيار: للعميل / داخلي / كشف العميل + المرفقات)</button></div><div class="right"><button class="btn ghost small" id="addCostBtn" type="button">+ إضافة تكلفة</button></div></div>
     </div>` : ''}
   `;
 
@@ -5665,7 +5665,7 @@ async function renderProjectPanel(wrap, opportunityId, opp){
     }catch(err){ toast('خطأ: '+err.message); }
   });
   const printStBtn = wrap.querySelector('#printProjStatementBtn');
-  if(printStBtn) printStBtn.addEventListener('click', ()=>stProjPrint('internal', p.id, p.customer_id));
+  if(printStBtn) printStBtn.addEventListener('click', ()=>stMenu(p.id, p.customer_id));
   const addCostBtn = wrap.querySelector('#addCostBtn');
   if(addCostBtn) addCostBtn.addEventListener('click', async ()=>{
     const amount = wrap.querySelector('#cost_amount').value;
