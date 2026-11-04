@@ -611,6 +611,7 @@ body.printing-cert #certPrintArea{display:block!important;}
 
     <section id="view-sites" class="view">
       <div class="filterBar">
+        <input type="search" id="siteSearch" placeholder="🔍 ابحث باسم العميل أو رقم الموبايل أو اسم المزرعة" autocomplete="off" style="min-width:260px;max-width:none;flex:1">
         <select id="siteRegionFilter"><option value="">كل المناطق</option></select>
       </div>
       <div class="card" style="padding:0;overflow:auto;"><div id="sitesTableWrap"><div class="loadingNote">بيحمّل المزارع...</div></div></div>
@@ -3745,25 +3746,44 @@ document.getElementById('newSaveBtn').addEventListener('click', async ()=>{
 
 /* ============ SITES (flat, all customers) ============ */
 document.getElementById('siteRegionFilter').addEventListener('change', loadSites);
+let siteSearchTimer = null;
+document.getElementById('siteSearch').addEventListener('input', ()=>{ clearTimeout(siteSearchTimer); siteSearchTimer = setTimeout(()=>siteRender(), 150); });
+let siteAll = [];
+const siteDigits = v => String(v||'').replace(/[٠-٩]/g, d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[۰-۹]/g, d=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/\D/g,'');
+const siteText = v => String(v||'').toLowerCase().replace(/[\u064B-\u0652\u0640]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').trim();
+function siteMatches(s, q){
+  const qt = siteText(q), qd = siteDigits(q), c = s.customers || {};
+  if(!qt) return true;
+  if(siteText(c.name).includes(qt) || siteText(s.name).includes(qt) || siteText(s.location_address).includes(qt)) return true;
+  if(qd.length >= 3){ const pd = siteDigits(c.phone), q9 = qd.slice(-9); return pd.includes(qd) || pd.endsWith(q9) && q9.length >= 7 || qd.length >= 7 && pd.slice(-9).includes(q9); }
+  return false;
+}
+function siteRender(){
+  const wrap = document.getElementById('sitesTableWrap'), q = document.getElementById('siteSearch').value;
+  const list = siteAll.filter(s=>siteMatches(s, q));
+  if(!siteAll.length){ wrap.innerHTML = '<div class="loadingNote">مفيش مزارع مسجلة</div>'; return; }
+  if(!list.length){ wrap.innerHTML = '<div class="loadingNote">مفيش نتايج للبحث ده</div>'; return; }
+  wrap.innerHTML = `<table class="admtable"><thead><tr>
+      <th>المزرعة</th><th>العميل</th><th>الموبايل</th><th>المنطقة</th><th>الموقع</th><th>ملاحظات</th>
+      </tr></thead><tbody>
+      ${list.map(s=>`<tr data-site-id="${s.id}" data-customer-id="${s.customer_id}">
+          <td>${s.name}</td>
+          <td>${s.customers ? (s.customers.name||s.customers.phone) : '-'}</td>
+          <td dir="ltr" style="text-align:right">${s.customers && s.customers.phone ? escapeHtml(s.customers.phone) : '-'}</td>
+          <td>${s.region?labelOf(SETTINGS.regions, s.region, s.region):'-'}</td>
+          <td>${s.location_address||'-'}</td>
+          <td>${s.technical_notes||'-'}</td>
+        </tr>`).join('')}
+      </tbody></table>${q?`<div class="emptyNote" style="padding:8px 12px">${list.length} من ${siteAll.length} مزرعة</div>`:''}`;
+  wrap.querySelectorAll('tbody tr').forEach(r=>r.addEventListener('click', ()=>openSiteEditor(r.dataset.siteId, r.dataset.customerId)));
+}
 async function loadSites(){
   const wrap = document.getElementById('sitesTableWrap');
   wrap.innerHTML = '<div class="loadingNote">بيحمّل المزارع...</div>';
   try{
     const region = document.getElementById('siteRegionFilter').value;
     const d = await crmApi('admin-crm-list-sites', region ? {region} : {});
-    if(!d.sites.length){ wrap.innerHTML = '<div class="loadingNote">مفيش مزارع مسجلة</div>'; return; }
-    wrap.innerHTML = `<table class="admtable"><thead><tr>
-      <th>المزرعة</th><th>العميل</th><th>المنطقة</th><th>الموقع</th><th>ملاحظات</th>
-      </tr></thead><tbody>
-      ${d.sites.map(s=>`<tr data-site-id="${s.id}" data-customer-id="${s.customer_id}">
-          <td>${s.name}</td>
-          <td>${s.customers ? (s.customers.name||s.customers.phone) : '-'}</td>
-          <td>${s.region?labelOf(SETTINGS.regions, s.region, s.region):'-'}</td>
-          <td>${s.location_address||'-'}</td>
-          <td>${s.technical_notes||'-'}</td>
-        </tr>`).join('')}
-      </tbody></table>`;
-    wrap.querySelectorAll('tbody tr').forEach(r=>r.addEventListener('click', ()=>openSiteEditor(r.dataset.siteId, r.dataset.customerId)));
+    siteAll = d.sites || []; siteRender();
   }catch(err){ wrap.innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
 }
 
