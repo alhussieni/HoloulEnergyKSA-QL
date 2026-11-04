@@ -635,7 +635,7 @@ function wire(){
     };
     document.getElementById('saveRepsBtn').onclick = async ()=>{
       const rows = {};
-      const checkboxFields = ['active','perm_pricing','perm_calcs','perm_products','perm_portfolio'];
+      const checkboxFields = ['active','perm_pricing','perm_calcs','perm_products','perm_portfolio','perm_supply'];
       document.querySelectorAll('[data-repid]').forEach(inp=>{
         const id = inp.dataset.repid, f = inp.dataset.rf;
         rows[id] = rows[id] || {};
@@ -648,6 +648,17 @@ function wire(){
           const payload = { adminToken: adminTokenMem, id:+id, username:r.username, displayName:r.displayName, active:r.active, permissions };
           if(r.password) payload.password = r.password;
           await callEngine('admin-save-rep', payload);
+          // صلاحية التوريدات بتتحفظ عبر supply-api (compute-quote بيقبل 4 صلاحيات بس) — بنبعتها لو اتغيّرت فقط
+          const orig = (adminReps.find(x=>String(x.id)===String(id))||{}).permissions || {};
+          if(!!r.perm_supply !== !!orig.supply){
+            const sr = await fetch(SUPABASE_URL + '/functions/v1/supply-api', {
+              method:'POST',
+              headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY },
+              body: JSON.stringify({ action:'supply-set-rep-access', adminToken: adminTokenMem, repId:+id, enabled: !!r.perm_supply })
+            });
+            const sd = await sr.json().catch(()=>({}));
+            if(!sr.ok || sd.error) throw new Error(sd.error || 'تعذر حفظ صلاحية التوريدات');
+          }
         }
         const repsData = await callEngine('admin-list-reps', { adminToken: adminTokenMem });
         adminReps = repsData.reps || [];
@@ -991,11 +1002,12 @@ function wire(){
     let pmEditIdx = null;   // null = لوح جديد، رقم = index اللوح في adminConfig.panels (مش ترتيب العرض)
     const PM_FIELDS = [
       ['brand','البراند','text'], ['power','القدرة (W)','number','1'], ['vimp','Vimp (فولت)','number','0.01'], ['voc','Voc (فولت)','number','0.01'],
-      ['iimp','Iimp (أمبير)','number','0.01'], ['isc','Isc (أمبير)','number','0.01'], ['priceW','السعر $/W (بدون ضريبة)','number','0.001']
+      ['iimp','Iimp (أمبير)','number','0.01'], ['isc','Isc (أمبير)','number','0.01'], ['priceW','السعر $/W (بدون ضريبة)','number','0.001'],
+      ['model','الموديل (اختياري — مثال: GRH78DW)','text']
     ];
     function pmOpen(idx){
       pmEditIdx = idx;
-      const p = idx==null ? {brand:'',power:'',vimp:'',voc:'',iimp:'',isc:'',priceW:'',visible:true} : adminConfig.panels[idx];
+      const p = idx==null ? {brand:'',power:'',vimp:'',voc:'',iimp:'',isc:'',priceW:'',model:'',visible:true} : adminConfig.panels[idx];
       const isDef = idx!=null && `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||'');
       document.getElementById('pm_title').textContent = idx==null ? 'إضافة لوح جديد' : `تعديل لوح — ${p.brand} ${p.power}W`;
       document.getElementById('pm_fields').innerHTML = PM_FIELDS.map(([k,l,t,st])=>`<div class="modal-field"><label>${l}</label><input id="pm_${k}" type="${t}" ${st?`step="${st}" min="0"`:''} value="${pnlEsc(p[k])}"></div>`).join('')
@@ -1031,7 +1043,7 @@ function wire(){
            !confirm(`تغيير البراند من "${o.brand}" إلى "${brand}" هيفصل الخصومات المسجلة على "${o.brand}" في صفحة الخصومات. تكمل؟`)) return;
       }
       harvestAdminInputs();
-      const rec = { brand, power:n.power, vimp:n.vimp, voc:n.voc, iimp:n.iimp, isc:n.isc, priceW:n.priceW, visible:document.getElementById('pm_visible').checked };
+      const rec = { brand, power:n.power, vimp:n.vimp, voc:n.voc, iimp:n.iimp, isc:n.isc, priceW:n.priceW, model:v('model'), visible:document.getElementById('pm_visible').checked };
       if(pmEditIdx==null) adminConfig.panels.push(rec);
       else Object.assign(adminConfig.panels[pmEditIdx], rec);   // بيحافظ على باقي بيانات اللوح (داتا شيت/صورة...)
       if(wantDefault) adminConfig.defaultPanelKey = key;

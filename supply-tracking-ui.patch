@@ -1,0 +1,428 @@
+
+--- pa/assets/js/modules/07-render-admin.js	2026-11-04 06:19:46.785764839 +0000
++++ pb/assets/js/modules/07-render-admin.js	2026-11-04 06:19:46.789472117 +0000
+@@ -65,8 +65,8 @@
+       </button>
+       <div class="pf-gbody">
+         <table class="admtable pf-tbl">
+-          <colgroup><col style="width:5%"><col style="width:9%"><col style="width:8%"><col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:11%"><col style="width:16%"><col style="width:9%"><col style="width:14%"></colgroup>
+-          <thead><tr><th>افتراضي</th><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W</th><th>الحالة</th><th>ظاهر للعميل</th><th></th></tr></thead>
++          <colgroup><col style="width:5%"><col style="width:8%"><col style="width:11%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:10%"><col style="width:14%"><col style="width:8%"><col style="width:13%"></colgroup>
++          <thead><tr><th>افتراضي</th><th>البراند</th><th>الموديل</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W</th><th>الحالة</th><th>ظاهر للعميل</th><th></th></tr></thead>
+           <tbody>
+           ${g.rows.map(({p,i})=>{
+             const isDef = `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||'');
+@@ -74,6 +74,7 @@
+             return `<tr data-pfrow data-brand="${pnlEsc(g.key)}" data-power="${Number(p.power)||0}" data-vis="${vis?1:0}" data-priced="${priced?1:0}">
+               <td style="text-align:center">${isDef?'<span title="اللوح الافتراضي" style="color:#E7AC12;font-size:17px">★</span>':''}</td>
+               <td><b>${pnlEsc(p.brand)}</b></td>
++              <td dir="ltr" style="text-align:right">${pnlEsc(p.model||'')}</td>
+               <td>${pnlEsc(p.power)}</td>
+               <td>${pnlEsc(p.vimp)}</td>
+               <td>${pnlEsc(p.voc)}</td>
+@@ -2618,7 +2619,7 @@
+   <div class="card no-print">
+     <h3>إدارة المناديب</h3>
+     <table class="admtable">
+-      <thead><tr><th>اسم المستخدم</th><th>الاسم الظاهر</th><th>كلمة مرور جديدة</th><th>مفعّل</th><th>الأسعار<br><small style="font-weight:400">⚠️ بيانات تكلفة</small></th><th>الحاسبات</th><th>المنتجات</th><th>البورتفوليو</th><th></th></tr></thead>
++      <thead><tr><th>اسم المستخدم</th><th>الاسم الظاهر</th><th>كلمة مرور جديدة</th><th>مفعّل</th><th>الأسعار<br><small style="font-weight:400">⚠️ بيانات تكلفة</small></th><th>الحاسبات</th><th>المنتجات</th><th>البورتفوليو</th><th>التوريدات<br><small style="font-weight:400">أرقام السيريال</small></th><th></th></tr></thead>
+       <tbody>
+         ${adminReps.map(r=>{const p=r.permissions||{};return `
+           <tr>
+@@ -2630,13 +2631,14 @@
+             <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_calcs" ${p.calcs?'checked':''}></td>
+             <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_products" ${p.products?'checked':''}></td>
+             <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_portfolio" ${p.portfolio?'checked':''}></td>
++            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_supply" ${p.supply?'checked':''}></td>
+             <td class="op"><button class="btn danger small" data-delrep="${r.id}">✕</button></td>
+           </tr>`;}).join('')}
+         <tr>
+           <td><input id="newrep_username" placeholder="اسم مستخدم جديد"></td>
+           <td><input id="newrep_displayname" placeholder="اسم المندوب"></td>
+           <td><input id="newrep_password" type="password" placeholder="كلمة مرور"></td>
+-          <td></td><td></td><td></td><td></td><td></td>
++          <td></td><td></td><td></td><td></td><td></td><td></td>
+           <td class="op"><button class="btn small" id="addRepBtn">+ إضافة</button></td>
+         </tr>
+       </tbody>
+
+--- pa/assets/js/modules/08-wiring.js	2026-11-04 06:19:46.786960941 +0000
++++ pb/assets/js/modules/08-wiring.js	2026-11-04 06:19:46.790631401 +0000
+@@ -635,7 +635,7 @@
+     };
+     document.getElementById('saveRepsBtn').onclick = async ()=>{
+       const rows = {};
+-      const checkboxFields = ['active','perm_pricing','perm_calcs','perm_products','perm_portfolio'];
++      const checkboxFields = ['active','perm_pricing','perm_calcs','perm_products','perm_portfolio','perm_supply'];
+       document.querySelectorAll('[data-repid]').forEach(inp=>{
+         const id = inp.dataset.repid, f = inp.dataset.rf;
+         rows[id] = rows[id] || {};
+@@ -648,6 +648,17 @@
+           const payload = { adminToken: adminTokenMem, id:+id, username:r.username, displayName:r.displayName, active:r.active, permissions };
+           if(r.password) payload.password = r.password;
+           await callEngine('admin-save-rep', payload);
++          // صلاحية التوريدات بتتحفظ عبر supply-api (compute-quote بيقبل 4 صلاحيات بس) — بنبعتها لو اتغيّرت فقط
++          const orig = (adminReps.find(x=>String(x.id)===String(id))||{}).permissions || {};
++          if(!!r.perm_supply !== !!orig.supply){
++            const sr = await fetch(SUPABASE_URL + '/functions/v1/supply-api', {
++              method:'POST',
++              headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY },
++              body: JSON.stringify({ action:'supply-set-rep-access', adminToken: adminTokenMem, repId:+id, enabled: !!r.perm_supply })
++            });
++            const sd = await sr.json().catch(()=>({}));
++            if(!sr.ok || sd.error) throw new Error(sd.error || 'تعذر حفظ صلاحية التوريدات');
++          }
+         }
+         const repsData = await callEngine('admin-list-reps', { adminToken: adminTokenMem });
+         adminReps = repsData.reps || [];
+@@ -991,11 +1002,12 @@
+     let pmEditIdx = null;   // null = لوح جديد، رقم = index اللوح في adminConfig.panels (مش ترتيب العرض)
+     const PM_FIELDS = [
+       ['brand','البراند','text'], ['power','القدرة (W)','number','1'], ['vimp','Vimp (فولت)','number','0.01'], ['voc','Voc (فولت)','number','0.01'],
+-      ['iimp','Iimp (أمبير)','number','0.01'], ['isc','Isc (أمبير)','number','0.01'], ['priceW','السعر $/W (بدون ضريبة)','number','0.001']
++      ['iimp','Iimp (أمبير)','number','0.01'], ['isc','Isc (أمبير)','number','0.01'], ['priceW','السعر $/W (بدون ضريبة)','number','0.001'],
++      ['model','الموديل (اختياري — مثال: GRH78DW)','text']
+     ];
+     function pmOpen(idx){
+       pmEditIdx = idx;
+-      const p = idx==null ? {brand:'',power:'',vimp:'',voc:'',iimp:'',isc:'',priceW:'',visible:true} : adminConfig.panels[idx];
++      const p = idx==null ? {brand:'',power:'',vimp:'',voc:'',iimp:'',isc:'',priceW:'',model:'',visible:true} : adminConfig.panels[idx];
+       const isDef = idx!=null && `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||'');
+       document.getElementById('pm_title').textContent = idx==null ? 'إضافة لوح جديد' : `تعديل لوح — ${p.brand} ${p.power}W`;
+       document.getElementById('pm_fields').innerHTML = PM_FIELDS.map(([k,l,t,st])=>`<div class="modal-field"><label>${l}</label><input id="pm_${k}" type="${t}" ${st?`step="${st}" min="0"`:''} value="${pnlEsc(p[k])}"></div>`).join('')
+@@ -1031,7 +1043,7 @@
+            !confirm(`تغيير البراند من "${o.brand}" إلى "${brand}" هيفصل الخصومات المسجلة على "${o.brand}" في صفحة الخصومات. تكمل؟`)) return;
+       }
+       harvestAdminInputs();
+-      const rec = { brand, power:n.power, vimp:n.vimp, voc:n.voc, iimp:n.iimp, isc:n.isc, priceW:n.priceW, visible:document.getElementById('pm_visible').checked };
++      const rec = { brand, power:n.power, vimp:n.vimp, voc:n.voc, iimp:n.iimp, isc:n.isc, priceW:n.priceW, model:v('model'), visible:document.getElementById('pm_visible').checked };
+       if(pmEditIdx==null) adminConfig.panels.push(rec);
+       else Object.assign(adminConfig.panels[pmEditIdx], rec);   // بيحافظ على باقي بيانات اللوح (داتا شيت/صورة...)
+       if(wantDefault) adminConfig.defaultPanelKey = key;
+
+--- pa/crm.html	2026-11-04 06:19:46.784348849 +0000
++++ pb/crm.html	2026-11-04 06:19:46.788142240 +0000
+@@ -812,6 +812,7 @@
+ const INVOICE_FN = SUPABASE_URL + '/functions/v1/invoice-api';  // e-invoices (QR, credit notes, numbering)
+ const WARRANTY_FN = SUPABASE_URL + '/functions/v1/warranty-api'; // شهادات الضمان: إصدار مرة واحدة من فاتورة مسددة، طباعة اختيارية
+ const WARRANTY_ACTIONS = new Set(['crm-warranty-config','crm-warranty-list','crm-customer-warranties','crm-issue-warranties','crm-print-warranty','crm-void-warranty']);
++const SUPPLY_FN = SUPABASE_URL + '/functions/v1/supply-api';     // التوريدات والأرقام التسلسلية لكل مشروع (مشاريع جديدة فقط)
+ const PIPELINE_FN = SUPABASE_URL + '/functions/v1/crm-pipeline'; // pipeline board/table/alerts/bulk (server-side)
+ const QUOTES_FN = SUPABASE_URL + '/functions/v1/crm-quotes'; // كل العروض (حتى غير المربوطة بعميل)
+ const QUOTES_ACTIONS = new Set(['admin-crm-list-quotes']);
+@@ -883,7 +884,7 @@
+ 
+ async function crmApi(action, payload={}){
+   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
+-  const res = await fetch(UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
++  const res = await fetch(action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
+     method:"POST",
+     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
+     body: JSON.stringify(Object.assign({action}, authField, payload))
+@@ -5156,6 +5157,165 @@
+ }
+ 
+ /* ============ PROJECT (inside opportunity modal, once won) ============ */
++/* =====================================================================
++   التوريدات والأرقام التسلسلية (تبويب جوه المشروع) — مشاريع جديدة فقط
++   الأرقام التسلسلية: الانفرترات والبطاريات (سيريال لكل قطعة). الألواح وباقي الأصناف: كمية (براند/قدرة/موديل).
++   القفل بعد إصدار الفاتورة بيتفرض من الداتابيز؛ التعديل بعده للأدمن فقط وبسبب إجباري.
++   ===================================================================== */
++const SUP_STATUS_AR = { received:'مستلم بالمخزن', delivered:'مسلَّم للموقع', installed:'مركَّب', invoiced:'مفوتَر', returned:'مرتجع', replaced:'مستبدل' };
++let SUP_CATALOG = null;
++function supCss(){
++  if(document.getElementById('supCss')) return;
++  const st = document.createElement('style'); st.id = 'supCss';
++  st.textContent = `
++    .sup-banner{border-radius:12px;padding:9px 12px;font-size:12.5px;margin-bottom:10px;border:1px solid var(--line);background:var(--sand);}
++    .sup-banner.ok{background:var(--good-tint,#DFF3EA);border-color:#9ad3b2;}
++    .sup-banner.lock{background:#FDECD2;border-color:#E9C98F;}
++    .sup-line{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;}
++    .sup-head{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;}
++    .sup-bar{height:6px;border-radius:6px;background:var(--line);overflow:hidden;margin:8px 0;}
++    .sup-bar i{display:block;height:100%;background:var(--teal,#0FA98D);}
++    .sup-sns{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0;}
++    .sup-sn{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:#fff;border-radius:20px;padding:2px 4px 2px 10px;font-size:12px;direction:ltr;}
++    .sup-sn button{border:0;background:transparent;cursor:pointer;padding:2px 4px;font-size:12px;}
++    .sup-add{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin-top:6px;}
++    .sup-add textarea{flex:1;min-width:220px;min-height:64px;direction:ltr;font-family:monospace;}
++    .sup-ev{font-size:12px;color:var(--muted);padding:3px 0;border-bottom:1px dashed var(--line);}
++  `;
++  document.head.appendChild(st);
++}
++async function renderSupplyPanel(box, project){
++  if(!box) return;
++  supCss();
++  const isAdmin = SESSION.role === 'admin';
++  box.innerHTML = '<div class="emptyNote">جارٍ تحميل التوريدات…</div>';
++  let d;
++  try{ d = await crmApi('supply-project', { projectId: project.id }); }
++  catch(e){ box.innerHTML = `<div class="emptyNote">${escapeHtml(e.message)}</div>`; return; }
++  const refresh = ()=> renderSupplyPanel(box, project);
++  const fail = e => alert(e.message || 'حدث خطأ');
++  const locked = !!d.project.supply_locked_at;
++
++  if(!d.project.supply_tracking){
++    box.innerHTML = `<div class="emptyNote">تتبّع التوريد غير مفعّل لهذا المشروع (مشروع قديم) — الفواتير بتتسجل بالطريقة المعتادة.</div>`
++      + (isAdmin ? `<button class="btn ghost small" id="supEnable">تفعيل التتبّع لهذا المشروع</button>` : '');
++    const en = box.querySelector('#supEnable');
++    if(en) en.addEventListener('click', async ()=>{ if(!confirm('تفعيل تتبّع التوريد والأرقام التسلسلية لهذا المشروع؟')) return; try{ await crmApi('supply-set-tracking',{projectId:project.id, enabled:true}); refresh(); }catch(e){ fail(e); } });
++    return;
++  }
++
++  const rd = d.readiness || {};
++  const lineById = Object.fromEntries((rd.lines||[]).map(l=>[l.line_id,l]));
++  let banner = '';
++  if(locked) banner = `<div class="sup-banner lock">🔒 تم إصدار الفاتورة وقُفل سجل التوريد${isAdmin ? ' — التعديل متاح لك كسوبر أدمن (بسبب إجباري وبيتسجل في السجل).' : ' — التعديل للسوبر أدمن فقط.'}</div>`;
++  else if(rd.ready) banner = `<div class="sup-banner ok">✅ التوريد مكتمل — جاهز لإصدار الفاتورة من شاشة الفواتير (اختار المشروع).</div>`;
++  else if((d.lines||[]).length) banner = `<div class="sup-banner">⏳ التوريد غير مكتمل: ${(rd.issues||[]).filter(i=>i.code==='COUNT_MISMATCH').map(i=>`${escapeHtml(i.name)} (${i.delivered}/${i.planned})`).join('، ')}</div>`;
++
++  const linesHtml = (d.lines||[]).map(l=>{
++    const isSerial = l.tracking_mode === 'serial';
++    const sers = (d.serials||[]).filter(s=>s.line_id===l.id && !['returned','replaced'].includes(s.status));
++    const done = Number(l.delivered_qty||0), plan = Number(l.planned_qty||0);
++    const pct = plan ? Math.min(100, Math.round(done/plan*100)) : 0;
++    const meta = [l.brand, l.model ? 'موديل '+l.model : '', l.power_w ? l.power_w+'W' : ''].filter(Boolean).map(escapeHtml).join(' · ');
++    const canEditSn = !locked || isAdmin;
++    let body = '';
++    if(isSerial){
++      body += `<div class="sup-sns">${sers.map(s=>`<span class="sup-sn" title="${escapeHtml(SUP_STATUS_AR[s.status]||s.status)} — سجّله ${escapeHtml(s.recorded_by||'')}">${escapeHtml(s.serial_number)}${s.status==='invoiced'?' 🔒':''}`
++        + (canEditSn ? `<button data-supedit="${s.id}" data-cur="${escapeHtml(s.serial_number)}" title="تعديل">✏️</button>` : '')
++        + (!locked ? `<button data-suprm="${s.id}" title="حذف">✕</button>` : '') + `</span>`).join('') || '<span class="emptyNote">لا توجد أرقام مسجّلة بعد</span>'}</div>`;
++      if(!locked && done < plan) body += `<div class="sup-add"><textarea data-supta="${l.id}" placeholder="الصق الأرقام التسلسلية — رقم في كل سطر (متبقي ${plan-done})"></textarea><button class="btn small" data-supaddsn="${l.id}">تسجيل</button></div>`;
++    } else if(!locked){
++      body += `<div class="sup-add"><input type="number" step="1" data-supqty="${l.id}" placeholder="الكمية" style="max-width:110px;"><input type="text" data-supnote="${l.id}" placeholder="ملاحظة (اختياري)" style="flex:1;min-width:140px;"><button class="btn small" data-supdeliver="${l.id}">＋ تسليم</button><button class="btn ghost small" data-supreturn="${l.id}">− مرتجع</button></div>`;
++    }
++    return `<div class="sup-line"><div class="sup-head"><div><b>${escapeHtml(l.name)}</b> <span class="emptyNote">${meta}</span></div>
++      <div><span class="tag ${isSerial?'warn':'good'}">${isSerial?'سيريال':'كمية'}</span> <b>${done}/${plan}</b>
++      ${(!locked && done===0) ? `<button class="btn danger small" data-supdelline="${l.id}" title="حذف البند">✕</button>` : ''}</div></div>
++      <div class="sup-bar"><i style="width:${pct}%"></i></div>${body}</div>`;
++  }).join('') || '<div class="emptyNote">لا توجد بنود توريد بعد. أضف أول بند.</div>';
++
++  box.innerHTML = banner + linesHtml
++    + (!locked ? `<button class="btn ghost small" id="supAddLineBtn">＋ إضافة بند توريد</button><div id="supAddLine" class="hidden" style="margin-top:10px;"></div>` : '')
++    + ` <button class="btn ghost small" id="supEvBtn">📜 سجل الحركات</button><div id="supEv" class="hidden" style="margin-top:8px;"></div>`;
++
++  // --- wiring ---
++  box.querySelectorAll('[data-supaddsn]').forEach(b=> b.addEventListener('click', async ()=>{
++    const id = Number(b.dataset.supaddsn), ta = box.querySelector(`[data-supta="${id}"]`);
++    if(!ta.value.trim()) return;
++    b.disabled = true;
++    try{ const r = await crmApi('supply-add-serials', {lineId:id, serials: ta.value}); toast(`تم تسجيل ${r.result.added} رقم`); refresh(); }
++    catch(e){ fail(e); b.disabled = false; }
++  }));
++  box.querySelectorAll('[data-supdeliver],[data-supreturn]').forEach(b=> b.addEventListener('click', async ()=>{
++    const id = Number(b.dataset.supdeliver || b.dataset.supreturn), isRet = !!b.dataset.supreturn;
++    const q = Number(box.querySelector(`[data-supqty="${id}"]`).value);
++    if(!Number.isInteger(q) || q <= 0){ alert('اكتب كمية صحيحة أكبر من صفر'); return; }
++    const note = box.querySelector(`[data-supnote="${id}"]`).value;
++    b.disabled = true;
++    try{ await crmApi('supply-record-qty', {lineId:id, qty: isRet ? -q : q, note}); toast(isRet?'تم تسجيل المرتجع':'تم تسجيل التسليم'); refresh(); }
++    catch(e){ fail(e); b.disabled = false; }
++  }));
++  box.querySelectorAll('[data-supedit]').forEach(b=> b.addEventListener('click', async ()=>{
++    const cur = b.dataset.cur;
++    const v = prompt('الرقم التسلسلي الصحيح:', cur); if(!v || v.trim() === cur) return;
++    let reason = null;
++    if(locked){ reason = prompt('سبب التعديل (إجباري بعد إصدار الفاتورة):'); if(!reason || !reason.trim()) return; }
++    try{ await crmApi('supply-edit-serial', {serialId:Number(b.dataset.supedit), serial:v, reason}); toast('تم تعديل الرقم التسلسلي'); refresh(); }catch(e){ fail(e); }
++  }));
++  box.querySelectorAll('[data-suprm]').forEach(b=> b.addEventListener('click', async ()=>{
++    if(!confirm('حذف هذا الرقم التسلسلي من التوريد؟')) return;
++    try{ await crmApi('supply-remove-serial', {serialId:Number(b.dataset.suprm)}); refresh(); }catch(e){ fail(e); }
++  }));
++  box.querySelectorAll('[data-supdelline]').forEach(b=> b.addEventListener('click', async ()=>{
++    if(!confirm('حذف بند التوريد؟')) return;
++    try{ await crmApi('supply-delete-line', {lineId:Number(b.dataset.supdelline)}); refresh(); }catch(e){ fail(e); }
++  }));
++  const evBtn = box.querySelector('#supEvBtn');
++  evBtn.addEventListener('click', async ()=>{
++    const ev = box.querySelector('#supEv');
++    if(!ev.classList.contains('hidden')){ ev.classList.add('hidden'); return; }
++    ev.classList.remove('hidden'); ev.innerHTML = '<div class="emptyNote">جارٍ التحميل…</div>';
++    try{
++      const r = await crmApi('supply-events', {projectId: project.id, limit: 100});
++      const T = {serial_added:'تسجيل رقم', serial_edited:'تعديل رقم', serial_admin_edited:'تعديل أدمن بعد الفاتورة', serial_removed:'حذف رقم', qty_delivered:'تسليم كمية', qty_returned:'مرتجع كمية', status_changed:'تغيير حالة', invoiced:'ربط بالفاتورة', invoice_deleted_unlinked:'فك الربط (حذف فاتورة تجريبية)'};
++      ev.innerHTML = (r.events||[]).map(x=>{
++        const nv = x.new_value||{}, ov = x.old_value||{};
++        const what = x.serial_id || nv.serial || ov.serial ? [ov.serial, nv.serial].filter(Boolean).map(escapeHtml).join(' ← ') : (x.qty ? (x.qty>0?'+':'')+x.qty : '');
++        return `<div class="sup-ev">${escapeHtml((x.created_at||'').replace('T',' ').slice(0,16))} — <b>${T[x.event_type]||escapeHtml(x.event_type)}</b> ${what} <span>· ${escapeHtml(x.actor||'')}</span>${x.reason?` <i>(${escapeHtml(x.reason)})</i>`:''}</div>`;
++      }).join('') || '<div class="emptyNote">لا توجد حركات</div>';
++    }catch(e){ ev.innerHTML = `<div class="emptyNote">${escapeHtml(e.message)}</div>`; }
++  });
++  const addBtn = box.querySelector('#supAddLineBtn');
++  if(addBtn) addBtn.addEventListener('click', async ()=>{
++    const f = box.querySelector('#supAddLine');
++    if(!f.classList.contains('hidden')){ f.classList.add('hidden'); return; }
++    f.classList.remove('hidden'); f.innerHTML = '<div class="emptyNote">جارٍ تحميل الكتالوج…</div>';
++    try{ if(!SUP_CATALOG) SUP_CATALOG = await crmApi('supply-catalog', {}); }catch(e){ f.innerHTML = `<div class="emptyNote">${escapeHtml(e.message)}</div>`; return; }
++    const prodOpts = (SUP_CATALOG.products||[]).map(p=>`<option value="${escapeHtml(p.product_code)}">${escapeHtml(p.name_ar||p.product_code)}${p.requires_serial?' — [سيريال]':''}</option>`).join('');
++    const panelOpts = (SUP_CATALOG.panels||[]).map(p=>`<option value="${escapeHtml(p.brand)}|${p.power}">${escapeHtml(p.brand)} ${p.power}W${p.model?' — '+escapeHtml(p.model):''}</option>`).join('');
++    f.innerHTML = `<div class="grid2">
++      <div><label>نوع البند</label><select id="supKind"><option value="product">صنف من الكتالوج (انفرتر / بطارية / …)</option><option value="panel">ألواح شمسية</option><option value="custom">بند آخر (بالكمية)</option></select></div>
++      <div id="supKindBody"></div>
++      <div><label>الكمية المخططة</label><input type="number" id="supPlanned" min="1" step="1" value="1"></div>
++      <div><label>ملاحظات</label><input type="text" id="supNotes"></div></div>
++      <button class="btn small" id="supSaveLine" style="margin-top:8px;">حفظ البند</button>`;
++    const kb = f.querySelector('#supKindBody'), kindSel = f.querySelector('#supKind');
++    const drawKind = ()=>{
++      const k = kindSel.value;
++      kb.innerHTML = k==='product' ? `<label>الصنف</label><select id="supProd"><option value="">-- اختر --</option>${prodOpts}</select>`
++        : k==='panel' ? `<label>اللوح (البراند / القدرة / الموديل)</label><select id="supPanel"><option value="">-- اختر --</option>${panelOpts}</select>`
++        : `<label>اسم البند</label><input type="text" id="supCName" placeholder="مثال: كابلات DC"><label style="margin-top:6px;">براند / موديل (اختياري)</label><input type="text" id="supCBrand">`;
++    };
++    kindSel.addEventListener('change', drawKind); drawKind();
++    f.querySelector('#supSaveLine').addEventListener('click', async ()=>{
++      const k = kindSel.value, payload = { projectId: project.id, kind: k, plannedQty: Number(f.querySelector('#supPlanned').value), notes: f.querySelector('#supNotes').value };
++      if(k==='product'){ payload.productCode = f.querySelector('#supProd').value; if(!payload.productCode){ alert('اختر الصنف'); return; } }
++      else if(k==='panel'){ const v = f.querySelector('#supPanel').value; if(!v){ alert('اختر اللوح'); return; } const [br,pw] = v.split('|'); payload.brand = br; payload.power = Number(pw); }
++      else { payload.name = f.querySelector('#supCName').value; payload.brand = f.querySelector('#supCBrand').value; if(!payload.name.trim()){ alert('اكتب اسم البند'); return; } }
++      try{ await crmApi('supply-add-line', payload); toast('تمت إضافة البند'); refresh(); }catch(e){ fail(e); }
++    });
++  });
++}
++
+ async function renderProjectPanel(wrap, opportunityId, opp){
+   wrap.innerHTML = '<div class="loadingNote">بيحمّل بيانات المشروع...</div>';
+   let data;
+@@ -5260,6 +5420,11 @@
+       <div class="saveBar" style="margin-top:0;"><div></div><div class="right"><button class="btn ghost small" id="addPaymentBtn" type="button">+ إضافة دفعة</button></div></div>
+     </div>
+ 
++    <div class="section">
++      <h4>📦 التوريدات والأرقام التسلسلية</h4>
++      <div id="supplyBox"></div>
++    </div>
++
+     ${isAdmin ? `
+     <div class="section">
+       <h4>التكاليف الفعلية ${p.total_cost!=null?`— الإجمالي: ${fmtMoney(p.total_cost)} ﷼ · الربح: ${fmtMoney(p.gross_profit)} ﷼ (${p.gross_margin.toFixed(1)}%)`:''}</h4>
+@@ -5279,6 +5444,7 @@
+     </div>` : ''}
+   `;
+ 
++  renderSupplyPanel(wrap.querySelector('#supplyBox'), p);
+   wrap.querySelector('#saveProjectBtn').addEventListener('click', async ()=>{
+     const fields = {
+       contract_value: wrap.querySelector('#pf_contract_value').value || null,
+@@ -6196,6 +6362,62 @@
+ /* -------- item rows: product picker + package builder -------- */
+ let invItemSeq = 0;
+ 
++// ===== ربط الفاتورة بمشروع (سجل التوريد) =====
++function invSupplyReset(){
++  const sec = document.getElementById('invSupplySection'); if(!sec) return;
++  sec.classList.add('hidden');
++  const sel = document.getElementById('invSupplyProject'); if(sel) sel.innerHTML = '<option value="">— بدون ربط —</option>';
++  const fb = document.getElementById('invSupplyFillBtn'); if(fb) fb.classList.add('hidden');
++  const nt = document.getElementById('invSupplyNote'); if(nt) nt.textContent = '';
++}
++async function invSupplyLoadProjects(){
++  const sec = document.getElementById('invSupplySection'); if(!sec || !invSelectedCustomer) return;
++  invSupplyReset();
++  const cid = invSelectedCustomer.id;
++  try{
++    const d = await crmApi('supply-customer-projects', { customerId: cid });
++    if(!invSelectedCustomer || invSelectedCustomer.id !== cid) return; // customer changed meanwhile
++    const open = (d.projects||[]).filter(p=>!p.locked);
++    if(!open.length) return;
++    document.getElementById('invSupplyProject').innerHTML = '<option value="">— بدون ربط —</option>' + open.map(p=>
++      `<option value="${p.id}">${escapeHtml(p.project_number||('مشروع '+p.id))} — ${p.ready?'✅ التوريد مكتمل':'⏳ التوريد غير مكتمل'}</option>`).join('');
++    sec.classList.remove('hidden');
++  }catch(e){ /* لا صلاحية توريدات أو لا يوجد تتبّع: نخفي القسم بدون إزعاج */ }
++}
++async function invSupplyFill(){
++  const pid = Number(document.getElementById('invSupplyProject').value); if(!pid) return;
++  const note = document.getElementById('invSupplyNote'), rowsWrap = document.getElementById('invItemsRows');
++  note.textContent = 'جارٍ التحميل…';
++  try{
++    await ensureCatalogLoaded();
++    const d = await crmApi('supply-project', { projectId: pid });
++    const lines = (d.readiness && d.readiness.lines) || [];
++    rowsWrap.querySelectorAll('[data-supplyfill="1"]').forEach(r=>r.remove());
++    let added = 0, skipped = [];
++    const addRow = (code, qty, serial)=>{
++      const prod = CATALOG_PRODUCTS.find(p=>p.code === code);
++      if(!prod){ return false; }
++      rowsWrap.insertAdjacentHTML('beforeend', invProductRowHtml({ code, name: code, qty, unitPrice: prod.unitPrice }));
++      const row = rowsWrap.querySelector('.itemRow[data-type="product"]:last-child');
++      row.dataset.supplyfill = '1';
++      wireLastProductRow();
++      applyWarrantyMode(row, prod.category || '');
++      if(serial){ const sn = row.querySelector('.itSerial'); if(sn) sn.value = serial; }
++      return true;
++    };
++    lines.forEach(l=>{
++      if(!l.catalog_code){ skipped.push(l.name); return; }
++      if(l.tracking_mode === 'serial'){
++        let okAll = true; (l.serials||[]).forEach(sn=>{ if(!addRow(l.catalog_code, 1, sn)) okAll = false; });
++        if(!okAll) skipped.push(l.name);
++      } else if(Number(l.delivered) > 0){
++        if(addRow(l.catalog_code, Number(l.delivered), '')) added++; else skipped.push(l.name);
++      }
++    });
++    recalcInvoiceTotals();
++    note.textContent = `تمت التعبئة${skipped.length ? ' — لم يُضَف (ليس في كتالوج الفواتير، أضفه يدويًا لو لازم): '+skipped.join('، ') : ''}`;
++  }catch(e){ note.textContent = ''; alert(e.message); }
++}
+ function invProductRowHtml(item){
+   invItemSeq++;
+   const id = 'it'+invItemSeq;
+@@ -6379,6 +6601,15 @@
+         <div><label>السجل التجاري (CR)</label><input type="text" id="invCustCr"></div>
+       </div>
+ 
++      <div id="invSupplySection" class="hidden" style="margin-top:12px;">
++        <label>🔗 ربط بمشروع (الأرقام التسلسلية من سجل التوريد)</label>
++        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
++          <select id="invSupplyProject" style="max-width:300px;"><option value="">— بدون ربط —</option></select>
++          <button type="button" class="btn ghost small hidden" id="invSupplyFillBtn">📥 تعبئة بنود التوريد</button>
++          <span id="invSupplyNote" style="font-size:12px;color:var(--muted);"></span>
++        </div>
++      </div>
++
+       <div id="invQuotationSection" style="margin-top:12px;">
+         <label>ربط بعرض سعر سابق للعميل (اختياري)</label>
+         <div style="display:flex;gap:8px;align-items:center;">
+@@ -6429,6 +6660,7 @@
+       box.innerHTML = '';
+       detailsSection.classList.add('hidden');
+       if(searchRow) searchRow.classList.remove('hidden');
++      invSupplyReset();
+       return;
+     }
+     if(searchRow) searchRow.classList.add('hidden');
+@@ -6442,6 +6674,7 @@
+       document.getElementById('invB2bToggle').checked = true;
+       document.getElementById('invB2bFields').classList.remove('hidden');
+     }
++    invSupplyLoadProjects();
+     document.getElementById('invChangeCustBtn').addEventListener('click', ()=>{
+       invSelectedCustomer = null; invSelectedQuotation = null; invSelectedCalcQuote = null;
+       currentQuotationItemsTotal = 0;
+@@ -6565,6 +6798,12 @@
+   document.querySelector('[data-close-inv]').addEventListener('click', closeInvoiceModal);
+   document.getElementById('invCancelBtn').addEventListener('click', closeInvoiceModal);
+ 
++  document.getElementById('invSupplyProject').addEventListener('change', (e)=>{
++    document.getElementById('invSupplyFillBtn').classList.toggle('hidden', !e.target.value);
++    document.getElementById('invSupplyNote').textContent = e.target.value ? 'اضغط "تعبئة بنود التوريد" لإضافة الأصناف بأرقامها التسلسلية — وإصدار الفاتورة هيقفل سجل التوريد.' : '';
++  });
++  document.getElementById('invSupplyFillBtn').addEventListener('click', invSupplyFill);
++
+   document.getElementById('invAddProductBtn').addEventListener('click', async ()=>{
+     try{
+       await ensureCatalogLoaded();
+@@ -6852,7 +7091,11 @@
+     const btn = e.target;
+     btn.disabled = true; btn.textContent = 'بيحفظ...';
+     try{
+-      const d = await crmApi('crm-create-pos-invoice', payload);
++      const supplyPid = Number(document.getElementById('invSupplyProject')?.value) || 0;
++      const d = supplyPid
++        ? await crmApi('supply-create-invoice', { projectId: supplyPid, payload })
++        : await crmApi('crm-create-pos-invoice', payload);
++      if(d.supply && d.supply.linked === false) alert(d.supply.warning);
+       window.__einvoiceTrial = !!d.trialMode;
+       closeInvoiceModal();
+       if(SESSION.role === 'admin'){

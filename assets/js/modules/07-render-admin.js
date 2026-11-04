@@ -65,8 +65,8 @@ function pfRenderPanels(){
       </button>
       <div class="pf-gbody">
         <table class="admtable pf-tbl">
-          <colgroup><col style="width:5%"><col style="width:9%"><col style="width:8%"><col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:11%"><col style="width:16%"><col style="width:9%"><col style="width:14%"></colgroup>
-          <thead><tr><th>افتراضي</th><th>البراند</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W</th><th>الحالة</th><th>ظاهر للعميل</th><th></th></tr></thead>
+          <colgroup><col style="width:5%"><col style="width:8%"><col style="width:11%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:10%"><col style="width:14%"><col style="width:8%"><col style="width:13%"></colgroup>
+          <thead><tr><th>افتراضي</th><th>البراند</th><th>الموديل</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W</th><th>الحالة</th><th>ظاهر للعميل</th><th></th></tr></thead>
           <tbody>
           ${g.rows.map(({p,i})=>{
             const isDef = `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||'');
@@ -74,6 +74,7 @@ function pfRenderPanels(){
             return `<tr data-pfrow data-brand="${pnlEsc(g.key)}" data-power="${Number(p.power)||0}" data-vis="${vis?1:0}" data-priced="${priced?1:0}">
               <td style="text-align:center">${isDef?'<span title="اللوح الافتراضي" style="color:#E7AC12;font-size:17px">★</span>':''}</td>
               <td><b>${pnlEsc(p.brand)}</b></td>
+              <td dir="ltr" style="text-align:right">${pnlEsc(p.model||'')}</td>
               <td>${pnlEsc(p.power)}</td>
               <td>${pnlEsc(p.vimp)}</td>
               <td>${pnlEsc(p.voc)}</td>
@@ -2618,7 +2619,7 @@ ${(function(){
   <div class="card no-print">
     <h3>إدارة المناديب</h3>
     <table class="admtable">
-      <thead><tr><th>اسم المستخدم</th><th>الاسم الظاهر</th><th>كلمة مرور جديدة</th><th>مفعّل</th><th>الأسعار<br><small style="font-weight:400">⚠️ بيانات تكلفة</small></th><th>الحاسبات</th><th>المنتجات</th><th>البورتفوليو</th><th></th></tr></thead>
+      <thead><tr><th>اسم المستخدم</th><th>الاسم الظاهر</th><th>كلمة مرور جديدة</th><th>مفعّل</th><th>الأسعار<br><small style="font-weight:400">⚠️ بيانات تكلفة</small></th><th>الحاسبات</th><th>المنتجات</th><th>البورتفوليو</th><th>التوريدات<br><small style="font-weight:400">أرقام السيريال</small></th><th></th></tr></thead>
       <tbody>
         ${adminReps.map(r=>{const p=r.permissions||{};return `
           <tr>
@@ -2630,13 +2631,14 @@ ${(function(){
             <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_calcs" ${p.calcs?'checked':''}></td>
             <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_products" ${p.products?'checked':''}></td>
             <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_portfolio" ${p.portfolio?'checked':''}></td>
+            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_supply" ${p.supply?'checked':''}></td>
             <td class="op"><button class="btn danger small" data-delrep="${r.id}">✕</button></td>
           </tr>`;}).join('')}
         <tr>
           <td><input id="newrep_username" placeholder="اسم مستخدم جديد"></td>
           <td><input id="newrep_displayname" placeholder="اسم المندوب"></td>
           <td><input id="newrep_password" type="password" placeholder="كلمة مرور"></td>
-          <td></td><td></td><td></td><td></td><td></td>
+          <td></td><td></td><td></td><td></td><td></td><td></td>
           <td class="op"><button class="btn small" id="addRepBtn">+ إضافة</button></td>
         </tr>
       </tbody>
