@@ -473,6 +473,7 @@ body.printing-cert #certPrintArea{display:block!important;}
     <div class="roleTabs">
       <div class="roleTab active" data-role="rep">دخول كمندوب</div>
       <div class="roleTab" data-role="admin">دخول كأدمن</div>
+      <div class="roleTab" data-role="staff">دخول موظف</div>
     </div>
     <form id="loginForm">
       <div id="userField">
@@ -485,6 +486,19 @@ body.printing-cert #certPrintArea{display:block!important;}
       <div class="errMsg" id="loginErr"></div>
     </form>
   </div>
+</div>
+
+<!-- ================= STAFF PORTAL ================= -->
+<div id="staffApp" class="hidden">
+  <header class="top"><div class="brandrow">
+    <div class="brand"><div class="mark"><img src="assets/logo.png" alt="Holoul Energy" onerror="this.parentNode.classList.add('fallback');this.replaceWith('☀️')"></div>
+      <div><div class="name">بوابة الموظف</div><div class="sub"><span id="staffWho"></span></div></div></div>
+    <div class="userChip"><button class="btn ghost small" id="staffLogout" type="button">خروج</button></div>
+  </div></header>
+  <main style="max-width:1100px;margin:0 auto;padding:16px;">
+    <div class="filterBar" id="staffNav"></div>
+    <div id="staffBody"><div class="loadingNote">بيحمّل...</div></div>
+  </main>
 </div>
 
 <!-- ================= APP ================= -->
@@ -539,6 +553,7 @@ body.printing-cert #certPrintArea{display:block!important;}
         <div class="gt">الإدارة</div>
         <button data-tab="segments" id="segmentsTabBtn" class="hidden"><span class="ic">📊</span>الشرائح</button>
         <button data-tab="audit" id="auditTabBtn" class="hidden"><span class="ic">🕘</span>سجل التغييرات</button>
+        <button data-tab="roles" id="rolesTabBtn" class="hidden"><span class="ic">🔐</span>الأدوار والموظفين</button>
         <button data-tab="settings" id="settingsTabBtn" class="hidden"><span class="ic">⚙️</span>الإعدادات</button>
       </div>
     </nav>
@@ -746,6 +761,14 @@ body.printing-cert #certPrintArea{display:block!important;}
       <div id="finBody"><div class="loadingNote">بيحمّل...</div></div>
     </section>
 
+    <section id="view-roles" class="view">
+      <div class="card"><h3><span class="lbl">🔐 الأدوار والصلاحيات</span></h3>
+        <p class="emptyNote">حدّد لكل وظيفة إيه اللي تشوفه. الصلاحيات بتتطبّق من السيرفر وتسري فورًا على كل موظف عنده الدور. الموظف ممكن يبقى له أكتر من دور (بتتجمّع صلاحياتهم). الصلاحيات المكتوب عليها «قريبًا» هتشتغل لما شاشاتها تتبني.</p>
+        <div id="rolesBox"><div class="loadingNote">بيحمّل...</div></div></div>
+      <div class="card"><h3><span class="lbl">👤 حسابات الموظفين</span><button class="btn small" type="button" onclick="staffForm()">+ موظف جديد</button></h3>
+        <div id="staffFormBox"></div><div id="staffBox"><div class="loadingNote">بيحمّل...</div></div></div>
+    </section>
+
     <section id="view-audit" class="view">
       <div class="card" id="undoCard">
         <h3><span class="lbl">↩︎ الرجوع عن آخر 6 إضافات / تعديلات (للأدمن فقط)</span></h3>
@@ -823,6 +846,7 @@ const UNDO_FN = SUPABASE_URL + '/functions/v1/admin-undo'; // الرجوع عن 
 const UNDO_ACTIONS = new Set(['admin-undo-list','admin-undo-apply']);
 const PROCUREMENT_FN = SUPABASE_URL + '/functions/v1/finance-procurement'; // طلبات عروض الأسعار وكشف حساب المورد (أدمن فقط) — actions بتبدأ بـ proc-
 const PURCHASING_FN = SUPABASE_URL + '/functions/v1/finance-purchasing'; // المشتريات: أوامر الشراء وفواتير الموردين (أدمن فقط) — actions بتبدأ بـ purchasing-
+const STAFF_FN = SUPABASE_URL + '/functions/v1/staff-api'; // الأدوار والموظفين — actions بتبدأ بـ staff- / roles-
 const EXTRAS_FN = SUPABASE_URL + '/functions/v1/finance-extras'; // أعمال إضافية على المشروع (أمر تغيير) — أدمن فقط — actions بتبدأ بـ extras-
 const ATTACH_FN = SUPABASE_URL + '/functions/v1/finance-attachments'; // مرفقات فواتير الموردين (صور / PDF) — أدمن فقط — actions بتبدأ بـ attach-
 const TREASURY_FN = SUPABASE_URL + '/functions/v1/finance-treasury'; // الخزنة والموردين (أدمن فقط) — actions بتبدأ بـ treasury-
@@ -888,7 +912,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch(COMPANY_ACTIONS.has(action) ? COMPANY_FN : action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : action.startsWith('extras-') ? EXTRAS_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
+  const res = await fetch(COMPANY_ACTIONS.has(action) ? COMPANY_FN : action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : (action.startsWith('staff-')||action.startsWith('roles-')) ? STAFF_FN : action.startsWith('extras-') ? EXTRAS_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -920,6 +944,7 @@ document.querySelectorAll('.roleTab').forEach(t=>{
     t.classList.add('active');
     loginRole = t.dataset.role;
     document.getElementById('loginUser').required = loginRole !== 'admin';
+    document.getElementById('loginUser').placeholder = '';
     document.getElementById('loginUser').placeholder = loginRole==='admin' ? 'اسم مستخدم الأدمن' : '';
   });
 });
@@ -930,6 +955,15 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   errEl.textContent = "";
   const password = document.getElementById('loginPass').value;
   try{
+    if(loginRole === 'staff'){
+      const r = await fetch(STAFF_FN, { method:"POST", headers:{"Content-Type":"application/json","Authorization":"Bearer "+SUPABASE_ANON_KEY,"apikey":SUPABASE_ANON_KEY},
+        body: JSON.stringify({ action:'staff-login', username: document.getElementById('loginUser').value.trim(), password }) });
+      const d = await r.json();
+      if(d.error || !d.token){ errEl.textContent = d.error || "بيانات الدخول غير صحيحة"; return; }
+      SESSION = { role:'staff', token:d.token, displayName:d.displayName, permissions:d.permissions||[], roles:d.roles||[] };
+      sessionStorage.setItem('holoul_crm_session', JSON.stringify(SESSION));
+      enterApp(); return;
+    }
     let body;
     if(loginRole === 'admin'){
       body = { action:'admin-login', adminPassword: adminCred(document.getElementById('loginUser').value, password) };
@@ -958,12 +992,14 @@ document.getElementById('logoutBtn').addEventListener('click', ()=>{
 });
 
 async function enterApp(){
+  if(SESSION.role === 'staff'){ return enterStaff(); }
   syncSellerFromServer(); // يحمّل بيانات البائع من السيرفر (مصدر واحد)
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('repNameChip').textContent = SESSION.displayName;
   if(SESSION.role === 'admin'){
     document.getElementById('settingsTabBtn').classList.remove('hidden');
+    document.getElementById('rolesTabBtn').classList.remove('hidden');
     document.getElementById('auditTabBtn').classList.remove('hidden');
     document.getElementById('segmentsTabBtn').classList.remove('hidden');
     document.getElementById('financeTabBtn').classList.remove('hidden');
@@ -1046,11 +1082,171 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='maintenance') loadMaintenance();
   if(tab==='invoices'){ if(SESSION.role==='admin') loadInvReport(); else loadInvoices(); }
   if(tab==='settings') loadSettingsScreen();
+  if(tab==='roles') loadRolesScreen();
   if(tab==='audit'){ loadUndoPanel(); loadAuditLog(); }
   if(tab==='segments') loadSegments();
   if(tab==='finance') loadFinance();
   if(tab==='purchases') loadPurchases();
 });
+
+
+/* ============ ROLES & STAFF — admin screen ============ */
+let ROLES_DATA = null, STAFF_DATA = [];
+async function loadRolesScreen(){
+  try{
+    const [r, st] = await Promise.all([crmApi('roles-list'), crmApi('staff-list')]);
+    ROLES_DATA = r; STAFF_DATA = st.staff || [];
+    renderRoles(); renderStaff();
+  }catch(e){ document.getElementById('rolesBox').innerHTML = '<div class="emptyNote">'+escapeHtml(e.message)+'</div>'; }
+}
+function renderRoles(){
+  const cat = ROLES_DATA.catalog, groups = [...new Set(cat.map(c=>c.group))];
+  const card = (r, isNew) => `<div class="card" style="background:var(--sand);margin-bottom:10px;" data-role-card="${escapeHtml(r.key)}">
+    <div class="grid2" style="margin-bottom:8px;">
+      <div><label>اسم الدور</label><input type="text" class="rlName" value="${escapeHtml(r.name_ar||'')}"></div>
+      <div><label>${isNew?'مفتاح الدور (إنجليزي صغير)':'المفتاح'}</label><input type="text" class="rlKey" value="${escapeHtml(r.key||'')}" ${isNew?'':'readonly'} dir="ltr"></div>
+    </div>
+    ${groups.map(g=>`<div style="margin:8px 0 2px;font-weight:700;font-size:12.5px;color:var(--night);">${escapeHtml(g)}</div>`+
+      cat.filter(c=>c.group===g).map(c=>`<label style="display:flex;gap:8px;align-items:center;font-weight:500;font-size:13px;margin:3px 0;${c.active?'':'opacity:.65;'}">
+        <input type="checkbox" class="rlPerm" value="${c.key}" ${(r.permissions||[]).includes(c.key)?'checked':''} style="width:auto;">
+        <span>${escapeHtml(c.label)}${c.active?'':' <span class="tag" style="background:var(--sun-tint);color:#8a6209">قريبًا</span>'}</span></label>`).join('')).join('')}
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button class="btn small" type="button" onclick="roleSave(this)">💾 حفظ</button>
+      ${(r.is_system||isNew)?'':`<button class="btn ghost small" type="button" onclick="roleDelete('${escapeHtml(r.key)}')">🗑 حذف الدور</button>`}
+    </div></div>`;
+  document.getElementById('rolesBox').innerHTML =
+    ROLES_DATA.roles.map(r=>`<details style="margin-bottom:8px;"><summary style="cursor:pointer;font-weight:700;padding:6px 0;">${escapeHtml(r.name_ar)} <small style="color:var(--muted);font-weight:500;">(${(r.permissions||[]).length} صلاحية)</small></summary>${card(r,false)}</details>`).join('') +
+    `<details><summary style="cursor:pointer;font-weight:700;padding:6px 0;color:var(--night-2);">+ إضافة دور جديد</summary>${card({key:'',name_ar:'',permissions:[]},true)}</details>`;
+}
+async function roleSave(btn){
+  const c = btn.closest('[data-role-card]');
+  const perms = [...c.querySelectorAll('.rlPerm:checked')].map(x=>x.value);
+  try{
+    await crmApi('roles-save',{ key:c.querySelector('.rlKey').value.trim(), nameAr:c.querySelector('.rlName').value.trim(), permissions:perms });
+    toast('اتحفظ ✓'); loadRolesScreen();
+  }catch(e){ toast(e.message); }
+}
+async function roleDelete(key){
+  if(!confirm('حذف الدور نهائيًا؟')) return;
+  try{ await crmApi('roles-delete',{key}); toast('اتحذف'); loadRolesScreen(); }catch(e){ toast(e.message); }
+}
+function renderStaff(){
+  const nm = k => (ROLES_DATA.roles.find(r=>r.key===k)||{}).name_ar || k;
+  document.getElementById('staffBox').innerHTML = STAFF_DATA.length ? `<div style="overflow:auto"><table class="admtable"><thead><tr><th>الاسم</th><th>اسم الدخول</th><th>الأدوار</th><th>الحالة</th><th></th></tr></thead><tbody>${
+    STAFF_DATA.map(u=>`<tr><td>${escapeHtml(u.display_name)}</td><td dir="ltr">${escapeHtml(u.username)}</td><td>${(u.roles||[]).map(nm).map(escapeHtml).join('، ')||'—'}</td><td>${u.active?'مفعّل':'<span class="od">موقوف</span>'}</td>
+    <td style="white-space:nowrap"><button class="btn ghost small" type="button" onclick="staffForm(${u.id})">تعديل</button> <button class="btn ghost small" type="button" onclick="staffToggle(${u.id})">${u.active?'إيقاف':'تفعيل'}</button> <button class="btn ghost small" type="button" onclick="staffDelete(${u.id})">🗑</button></td></tr>`).join('')}</tbody></table></div>` : '<div class="emptyNote">مفيش موظفين لسه.</div>';
+}
+function staffForm(id){
+  const u = id ? STAFF_DATA.find(x=>x.id===id) : null;
+  document.getElementById('staffFormBox').innerHTML = `<div class="card" style="background:var(--sand)" id="staffFormCard" data-id="${u?u.id:''}">
+    <div class="grid2">
+      <div><label>الاسم</label><input type="text" id="sfName" value="${escapeHtml(u?u.display_name:'')}"></div>
+      <div><label>اسم الدخول (إنجليزي/أرقام)</label><input type="text" id="sfUser" dir="ltr" value="${escapeHtml(u?u.username:'')}" ${u?'readonly':''}></div>
+      <div><label>${u?'كلمة مرور جديدة (سيبها فاضية لو مش هتغيّر)':'كلمة المرور (6 خانات على الأقل)'}</label><input type="password" id="sfPass" autocomplete="new-password"></div>
+      <div></div>
+    </div>
+    <label style="margin-top:8px;">الأدوار (ممكن أكتر من دور)</label>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;">${ROLES_DATA.roles.map(r=>`<label style="display:flex;gap:6px;align-items:center;font-weight:500;"><input type="checkbox" class="sfRole" value="${r.key}" ${u&&(u.roles||[]).includes(r.key)?'checked':''} style="width:auto;">${escapeHtml(r.name_ar)}</label>`).join('')}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;"><button class="btn small" type="button" onclick="staffSave()">💾 حفظ</button><button class="btn ghost small" type="button" onclick="document.getElementById('staffFormBox').innerHTML=''">إلغاء</button></div></div>`;
+}
+async function staffSave(){
+  const card = document.getElementById('staffFormCard'), id = card.dataset.id;
+  const p = { displayName:document.getElementById('sfName').value.trim(), roles:[...card.querySelectorAll('.sfRole:checked')].map(x=>x.value) };
+  const pw = document.getElementById('sfPass').value; if(pw) p.password = pw;
+  if(id) p.id = Number(id); else p.username = document.getElementById('sfUser').value.trim();
+  try{ await crmApi('staff-save',p); toast('اتحفظ ✓'); document.getElementById('staffFormBox').innerHTML=''; loadRolesScreen(); }catch(e){ toast(e.message); }
+}
+async function staffToggle(id){
+  const u = STAFF_DATA.find(x=>x.id===id);
+  try{ await crmApi('staff-save',{id,active:!u.active}); loadRolesScreen(); }catch(e){ toast(e.message); }
+}
+async function staffDelete(id){
+  if(!confirm('حذف حساب الموظف نهائيًا؟')) return;
+  try{ await crmApi('staff-delete',{id}); loadRolesScreen(); }catch(e){ toast(e.message); }
+}
+
+/* ============ STAFF PORTAL (read-only, permission-driven) ============ */
+const STAFF_SCREENS = [
+  { key:'projects', perm:'projects.view', label:'🏗️ المشاريع' },
+  { key:'profit', perm:'profit.view', label:'📈 الربح العام' },
+  { key:'customers', perm:'customers.fin.view', label:'👥 حسابات العملاء' },
+  { key:'suppliers', perm:'suppliers.view', label:'🏭 الموردون' },
+  { key:'treasury', perm:'treasury.view', label:'💰 الخزنة' },
+];
+function enterStaff(){
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('staffApp').classList.remove('hidden');
+  document.getElementById('staffWho').textContent = SESSION.displayName || '';
+  document.getElementById('staffLogout').onclick = ()=>{ sessionStorage.removeItem('holoul_crm_session'); location.reload(); };
+  const perms = new Set(SESSION.permissions||[]);
+  const mine = STAFF_SCREENS.filter(x=>perms.has(x.perm));
+  const nav = document.getElementById('staffNav');
+  if(!mine.length){ nav.innerHTML=''; document.getElementById('staffBody').innerHTML='<div class="card"><div class="emptyNote">مفيش صلاحيات متاحة لحسابك لسه. كلّم الأدمن.</div></div>'; return; }
+  nav.innerHTML = mine.map(x=>`<button class="btn ghost small" type="button" data-sk="${x.key}">${x.label}</button>`).join('');
+  nav.onclick = e=>{ const b=e.target.closest('[data-sk]'); if(b) staffShow(b.dataset.sk); };
+  staffShow(mine[0].key);
+}
+async function staffShow(k){
+  document.querySelectorAll('#staffNav [data-sk]').forEach(b=>b.style.outline = b.dataset.sk===k?'2px solid var(--sun)':'none');
+  const body = document.getElementById('staffBody'); body.innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  const tbl = (head, rows) => `<div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows||`<tr><td colspan="${head.length}">لا بيانات</td></tr>`}</tbody></table></div>`;
+  try{
+    if(k==='projects'){
+      const d = await crmApi('staff-projects');
+      body.innerHTML = tbl(['المشروع','العميل','الحالة','التعاقد','التكاليف','الربح','الهامش %','المحصّل','المتبقي',''], d.projects.map(p=>`<tr><td>${escapeHtml(p.project_number||p.project_id)}</td><td>${escapeHtml(p.customer_name||'')}</td><td>${escapeHtml(p.status||'')}</td><td>${finN(p.contract_gross)}</td><td>${finN(p.cost_gross)}</td><td>${finS(p.actual_profit)}</td><td>${p.margin_pct==null?'—':finN(p.margin_pct)}</td><td>${finN(p.collected)}</td><td>${finN(p.remaining)}</td><td><button class="btn ghost small" type="button" onclick="staffProject(${p.project_id})">تفاصيل</button></td></tr>`).join(''));
+    } else if(k==='profit'){
+      const d = await crmApi('staff-profit');
+      const box = (t,v,sub)=>`<div class="card" style="flex:1;min-width:200px;"><div style="color:var(--muted);font-size:12.5px;">${t}</div><div style="font-size:22px;font-weight:800;color:var(--night);">${v}</div>${sub?`<div style="font-size:12px;color:var(--muted);">${sub}</div>`:''}</div>`;
+      const pc = v => v==null?'—':finN(v)+'%';
+      body.innerHTML = `<h3 style="margin:4px 0 8px">كل المشاريع (${d.projects})</h3><div style="display:flex;gap:10px;flex-wrap:wrap;">${box('إجمالي الربح',finS(d.all.profit))}${box('نسبة الربح (من الإيراد الصافي)',pc(d.all.margin_pct))}${box('الإيراد الصافي',finN(d.all.revenue_net))}</div>
+      <h3 style="margin:14px 0 8px">المشاريع المنتهية (${d.completed})</h3><div style="display:flex;gap:10px;flex-wrap:wrap;">${box('ربح المنتهية',finS(d.completed_only.profit))}${box('النسبة',pc(d.completed_only.margin_pct))}${box('الإيراد الصافي',finN(d.completed_only.revenue_net))}</div>
+      <h3 style="margin:14px 0 8px">التحصيل</h3><div style="display:flex;gap:10px;flex-wrap:wrap;">${box('المحصّل',finN(d.collected))}${box('المتبقي عند العملاء',finN(d.remaining))}</div>`;
+    } else if(k==='customers'){
+      const d = await crmApi('staff-customers');
+      body.innerHTML = tbl(['العميل','مشاريع','التعاقد','المحصّل','المتبقي',''], d.customers.map(c=>`<tr><td>${escapeHtml(c.name||'')}</td><td>${c.projects}</td><td>${finN(c.contract)}</td><td>${finN(c.collected)}</td><td>${finN(c.remaining)}</td><td><button class="btn ghost small" type="button" onclick="staffCustomer(${c.customer_id})">كشف</button></td></tr>`).join(''));
+    } else if(k==='suppliers'){
+      const d = await crmApi('staff-suppliers');
+      body.innerHTML = `<div class="card">إجمالي المستحق للموردين: <b>${finN(d.totals.payable)}</b> · دفعات مقدّمة مفتوحة: <b>${finN(d.totals.advances)}</b></div>` +
+        tbl(['المورد','الجوال','إجمالي الفواتير','المسدّد','الرصيد','مقدّم',''], d.suppliers.map(x=>`<tr><td>${escapeHtml(x.name||'')}</td><td dir="ltr">${escapeHtml(x.phone||'')}</td><td>${finN(x.total_bills)}</td><td>${finN(x.total_paid)}</td><td>${supBal(x.balance)}</td><td>${supAdv(x.advance_open)}</td><td><button class="btn ghost small" type="button" onclick="staffSupplier(${x.supplier_id})">كشف</button></td></tr>`).join(''));
+    } else if(k==='treasury'){
+      const d = await crmApi('staff-treasury');
+      body.innerHTML = `<div class="card">إجمالي الأرصدة: <b>${finN(d.totalBalance)}</b></div>` +
+        tbl(['الحساب','النوع','الوارد','الصادر','الرصيد'], d.accounts.map(a=>`<tr><td>${escapeHtml(a.name||'')}</td><td>${escapeHtml(a.kind||'')}</td><td>${finN(a.total_in)}</td><td>${finN(a.total_out)}</td><td>${finS(a.balance)}</td></tr>`).join('')) +
+        '<h3 style="margin:14px 0 8px">آخر الحركات</h3>' +
+        tbl(['التاريخ','الحساب','الاتجاه','المبلغ','البيان','مشروع/عميل/مورد'], d.ledger.map(l=>`<tr><td>${escapeHtml(fmtDate(l.entry_date))}</td><td>${escapeHtml(l.account_name||'')}</td><td>${l.direction==='in'?'وارد':'صادر'}</td><td>${finN(l.amount)}</td><td>${escapeHtml(l.notes||l.reference||'')}</td><td>${escapeHtml(l.project_number||l.customer_name||l.supplier_name||'')}</td></tr>`).join(''));
+    }
+  }catch(e){ body.innerHTML = '<div class="card"><div class="emptyNote">'+escapeHtml(e.message)+'</div></div>'; }
+}
+function staffDetailShell(html){
+  document.getElementById('staffBody').innerHTML = `<button class="btn ghost small" type="button" onclick="staffShow('${html.back}')">↩ رجوع</button>` + html.body;
+}
+async function staffProject(id){
+  try{
+    const d = await crmApi('staff-project-detail',{projectId:id}), p = d.project;
+    const t = (h,rows)=>`<div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows||`<tr><td colspan="${h.length}">لا بيانات</td></tr>`}</tbody></table></div>`;
+    staffDetailShell({back:'projects', body:`<h3 style="margin:10px 0">مشروع ${escapeHtml(p.project_number||id)} — ${escapeHtml(p.customer_name||'')}</h3>
+      <div class="card">التعاقد: <b>${finN(p.contract_gross)}</b> · التكاليف: <b>${finN(p.cost_gross)}</b> · الربح: <b>${finS(p.actual_profit)}</b> (${p.margin_pct==null?'—':finN(p.margin_pct)}%) · المحصّل: <b>${finN(p.collected)}</b> · المتبقي: <b>${finN(p.remaining)}</b></div>
+      <h4>الدفعات</h4>${t(['التاريخ','المبلغ','الطريقة'], d.payments.map(x=>`<tr><td>${escapeHtml(fmtDate(x.payment_date))}</td><td>${finN(x.amount)}</td><td>${escapeHtml(x.method||'')}</td></tr>`).join(''))}
+      <h4>فواتير الموردين</h4>${t(['المورد','رقم الفاتورة','التاريخ','المبلغ','المسدّد','المتبقي'], d.bills.map(x=>`<tr><td>${escapeHtml(x.supplier_name||'')}</td><td>${escapeHtml(x.bill_number||'')}</td><td>${escapeHtml(fmtDate(x.bill_date))}</td><td>${finN(x.amount)}</td><td>${finN(x.paid)}</td><td>${finN(x.remaining)}</td></tr>`).join(''))}
+      <h4>أوامر الشراء</h4>${t(['الأمر','المورد','التاريخ','المبلغ','الحالة'], d.orders.map(x=>`<tr><td>${escapeHtml(x.po_number||'')}</td><td>${escapeHtml(x.supplier_name||'')}</td><td>${escapeHtml(fmtDate(x.order_date))}</td><td>${finN(x.amount)}</td><td>${escapeHtml(x.status||'')}</td></tr>`).join(''))}
+      <h4>تكاليف أخرى</h4>${t(['التاريخ','النوع','البيان','المبلغ'], d.costs.map(x=>`<tr><td>${escapeHtml(fmtDate(x.cost_date))}</td><td>${escapeHtml(x.cost_type||'')}</td><td>${escapeHtml(x.description||'')}</td><td>${finN(x.amount)}</td></tr>`).join(''))}`});
+  }catch(e){ toast(e.message); }
+}
+async function staffCustomer(id){
+  try{
+    const d = await crmApi('staff-customer-statement',{customerId:id});
+    staffDetailShell({back:'customers', body:`<h3 style="margin:10px 0">كشف حساب: ${escapeHtml(d.customer.name||'')}</h3>
+      <div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>المشروع</th><th>الحالة</th><th>التعاقد</th><th>المحصّل</th><th>المتبقي</th></tr></thead><tbody>${d.projects.map(p=>`<tr><td>${escapeHtml(p.project_number||'')}</td><td>${escapeHtml(p.status||'')}</td><td>${finN(p.contract_gross)}</td><td>${finN(p.collected)}</td><td>${finN(p.remaining)}</td></tr>`).join('')}</tbody></table></div>
+      <h4>الدفعات</h4><div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>التاريخ</th><th>المشروع</th><th>المبلغ</th><th>الطريقة</th></tr></thead><tbody>${d.payments.map(x=>`<tr><td>${escapeHtml(fmtDate(x.payment_date))}</td><td>${escapeHtml(x.project_number||'')}</td><td>${finN(x.amount)}</td><td>${escapeHtml(x.method||'')}</td></tr>`).join('')||'<tr><td colspan="4">لا دفعات</td></tr>'}</tbody></table></div>`});
+  }catch(e){ toast(e.message); }
+}
+async function staffSupplier(id){
+  try{
+    const d = await crmApi('staff-supplier-statement',{supplierId:id});
+    staffDetailShell({back:'suppliers', body:`<h3 style="margin:10px 0">كشف حساب: ${escapeHtml(d.supplier.name||'')}</h3>
+      <div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr><th>التاريخ</th><th>النوع</th><th>المرجع</th><th>المشروع</th><th>المبلغ</th><th>الرصيد الجاري</th></tr></thead><tbody>${d.statement.map(x=>`<tr><td>${escapeHtml(fmtDate(x.doc_date))}</td><td>${escapeHtml(x.doc_kind||'')}</td><td>${escapeHtml(x.ref||x.po_number||'')}</td><td>${escapeHtml(x.project_number||'')}</td><td>${finN(x.amount)}</td><td>${supRun(x.running_balance)}</td></tr>`).join('')||'<tr><td colspan="6">لا حركات</td></tr>'}</tbody></table></div>`});
+  }catch(e){ toast(e.message); }
+}
 
 /* ============ FINANCE (admin only) ============ */
 /* كل المبالغ بتتسجل زي ما اتدفعت (شامل الضريبة)، والسيرفر بيفصل الصافي والضريبة. */
