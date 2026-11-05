@@ -2617,34 +2617,9 @@ ${(function(){
 
 <section class="admsec ${currentAdminSection==='reps'?'active':''}" data-admsec="reps">
   <div class="card no-print">
-    <h3>إدارة المناديب</h3>
-    <table class="admtable">
-      <thead><tr><th>اسم المستخدم</th><th>الاسم الظاهر</th><th>كلمة مرور جديدة</th><th>مفعّل</th><th>الأسعار<br><small style="font-weight:400">⚠️ بيانات تكلفة</small></th><th>الحاسبات</th><th>المنتجات</th><th>البورتفوليو</th><th>التوريدات<br><small style="font-weight:400">أرقام السيريال</small></th><th></th></tr></thead>
-      <tbody>
-        ${adminReps.map(r=>{const p=r.permissions||{};return `
-          <tr>
-            <td><input data-repid="${r.id}" data-rf="username" value="${r.username}"></td>
-            <td><input data-repid="${r.id}" data-rf="displayName" value="${r.display_name}"></td>
-            <td><input data-repid="${r.id}" data-rf="password" type="password" placeholder="اتركه فارغًا لعدم التغيير"></td>
-            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="active" ${r.active?'checked':''}></td>
-            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_pricing" ${p.pricing?'checked':''}></td>
-            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_calcs" ${p.calcs?'checked':''}></td>
-            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_products" ${p.products?'checked':''}></td>
-            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_portfolio" ${p.portfolio?'checked':''}></td>
-            <td style="text-align:center"><input type="checkbox" data-repid="${r.id}" data-rf="perm_supply" ${p.supply?'checked':''}></td>
-            <td class="op"><button class="btn danger small" data-delrep="${r.id}">✕</button></td>
-          </tr>`;}).join('')}
-        <tr>
-          <td><input id="newrep_username" placeholder="اسم مستخدم جديد"></td>
-          <td><input id="newrep_displayname" placeholder="اسم المندوب"></td>
-          <td><input id="newrep_password" type="password" placeholder="كلمة مرور"></td>
-          <td></td><td></td><td></td><td></td><td></td><td></td>
-          <td class="op"><button class="btn small" id="addRepBtn">+ إضافة</button></td>
-        </tr>
-      </tbody>
-    </table>
-    <button class="btn ghost small" id="saveRepsBtn" style="margin-top:8px">💾 حفظ تعديلات المناديب</button>
-    <div class="note" style="margin-top:8px">كل مندوب يسجّل دخوله بحسابه الخاص من شاشة الحاسبة الرئيسية. تعطيل "مفعّل" يمنعه من الدخول فورًا بدون حذف بياناته. الأعمدة الأربعة الأخيرة صلاحيات اختيارية لتعديل أقسام محددة من لوحة التحكم — بدون أي منها المندوب يقدر يعمل عروض أسعار فقط، زي أي مندوب عادي.</div>
+    <h3>إدارة المناديب والموظفين</h3>
+    <p class="note">إدارة المناديب والموظفين وصلاحياتهم بقت في مكان واحد: <b>CRM ← 🔐 الأدوار والموظفين</b>.</p>
+    <a class="btn" href="crm.html#roles">فتح الأدوار والموظفين ↗</a>
   </div>
 </section>
 

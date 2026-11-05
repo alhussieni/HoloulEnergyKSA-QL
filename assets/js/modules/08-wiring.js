@@ -621,7 +621,7 @@ function wire(){
       });
     }
 
-    document.getElementById('addRepBtn').onclick = async ()=>{
+    const _addRep = document.getElementById('addRepBtn'); if(_addRep) _addRep.onclick = async ()=>{
       const username = document.getElementById('newrep_username').value.trim();
       const displayName = document.getElementById('newrep_displayname').value.trim();
       const password = document.getElementById('newrep_password').value;
@@ -633,7 +633,7 @@ function wire(){
         render();
       }catch(e){ alert('تعذرت الإضافة: '+e.message); }
     };
-    document.getElementById('saveRepsBtn').onclick = async ()=>{
+    const _saveReps = document.getElementById('saveRepsBtn'); if(_saveReps) _saveReps.onclick = async ()=>{
       const rows = {};
       const checkboxFields = ['active','perm_pricing','perm_calcs','perm_products','perm_portfolio','perm_supply'];
       document.querySelectorAll('[data-repid]').forEach(inp=>{

@@ -765,6 +765,9 @@ body.printing-cert #certPrintArea{display:block!important;}
       <div class="card"><h3><span class="lbl">🔐 الأدوار والصلاحيات</span></h3>
         <p class="emptyNote">حدّد لكل وظيفة إيه اللي تشوفه. الصلاحيات بتتطبّق من السيرفر وتسري فورًا على كل موظف عنده الدور. الموظف ممكن يبقى له أكتر من دور (بتتجمّع صلاحياتهم). الصلاحيات المكتوب عليها «قريبًا» هتشتغل لما شاشاتها تتبني.</p>
         <div id="rolesBox"><div class="loadingNote">بيحمّل...</div></div></div>
+      <div class="card"><h3><span class="lbl">🧑‍💼 المناديب (مبيعات)</span></h3>
+        <p class="emptyNote">المندوب والبائع نفس الشخص. دخوله من «دخول كمندوب». الصلاحيات الخمسة تحدد أقسام لوحة التحكم المتاحة له، وبدونها يعمل عروض أسعار فقط.</p>
+        <div id="repsBox"><div class="loadingNote">بيحمّل...</div></div></div>
       <div class="card"><h3><span class="lbl">👤 حسابات الموظفين</span><button class="btn small" type="button" onclick="staffForm()">+ موظف جديد</button></h3>
         <div id="staffFormBox"></div><div id="staffBox"><div class="loadingNote">بيحمّل...</div></div></div>
     </section>
@@ -846,6 +849,7 @@ const UNDO_FN = SUPABASE_URL + '/functions/v1/admin-undo'; // الرجوع عن 
 const UNDO_ACTIONS = new Set(['admin-undo-list','admin-undo-apply']);
 const PROCUREMENT_FN = SUPABASE_URL + '/functions/v1/finance-procurement'; // طلبات عروض الأسعار وكشف حساب المورد (أدمن فقط) — actions بتبدأ بـ proc-
 const PURCHASING_FN = SUPABASE_URL + '/functions/v1/finance-purchasing'; // المشتريات: أوامر الشراء وفواتير الموردين (أدمن فقط) — actions بتبدأ بـ purchasing-
+const REP_ACTIONS = new Set(['admin-list-reps','admin-save-rep','admin-delete-rep']); // المناديب (compute-quote) — بتتدار من شاشة الأدوار والموظفين
 const STAFF_FN = SUPABASE_URL + '/functions/v1/staff-api'; // الأدوار والموظفين — actions بتبدأ بـ staff- / roles-
 const EXTRAS_FN = SUPABASE_URL + '/functions/v1/finance-extras'; // أعمال إضافية على المشروع (أمر تغيير) — أدمن فقط — actions بتبدأ بـ extras-
 const ATTACH_FN = SUPABASE_URL + '/functions/v1/finance-attachments'; // مرفقات فواتير الموردين (صور / PDF) — أدمن فقط — actions بتبدأ بـ attach-
@@ -912,7 +916,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch(COMPANY_ACTIONS.has(action) ? COMPANY_FN : action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : (action.startsWith('staff-')||action.startsWith('roles-')) ? STAFF_FN : action.startsWith('extras-') ? EXTRAS_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
+  const res = await fetch(COMPANY_ACTIONS.has(action) ? COMPANY_FN : action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : (action.startsWith('staff-')||action.startsWith('roles-')) ? STAFF_FN : REP_ACTIONS.has(action) ? ENGINE_FN : action.startsWith('extras-') ? EXTRAS_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -1021,6 +1025,7 @@ async function enterApp(){
     SETTINGS.ticketPriorities.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');
   loadDashboard();
   loadCustomers();
+  if(SESSION.role==='admin' && location.hash==='#roles'){ const b=document.getElementById('rolesTabBtn'); if(b) b.click(); }
 }
 
 (async function tryRestoreSession(){
@@ -1091,12 +1096,12 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
 
 
 /* ============ ROLES & STAFF — admin screen ============ */
-let ROLES_DATA = null, STAFF_DATA = [];
+let ROLES_DATA = null, STAFF_DATA = [], REPS_DATA = [];
 async function loadRolesScreen(){
   try{
-    const [r, st] = await Promise.all([crmApi('roles-list'), crmApi('staff-list')]);
-    ROLES_DATA = r; STAFF_DATA = st.staff || [];
-    renderRoles(); renderStaff();
+    const [r, st, rp] = await Promise.all([crmApi('roles-list'), crmApi('staff-list'), crmApi('admin-list-reps').catch(()=>({reps:[]}))]);
+    ROLES_DATA = r; STAFF_DATA = st.staff || []; REPS_DATA = rp.reps || [];
+    renderRoles(); renderStaff(); renderReps();
   }catch(e){ document.getElementById('rolesBox').innerHTML = '<div class="emptyNote">'+escapeHtml(e.message)+'</div>'; }
 }
 function renderRoles(){
@@ -1129,6 +1134,37 @@ async function roleSave(btn){
 async function roleDelete(key){
   if(!confirm('حذف الدور نهائيًا؟')) return;
   try{ await crmApi('roles-delete',{key}); toast('اتحذف'); loadRolesScreen(); }catch(e){ toast(e.message); }
+}
+const REP_PERMS = [['pricing','الأسعار ⚠️ تكلفة'],['calcs','الحاسبات'],['products','المنتجات'],['portfolio','البورتفوليو'],['supply','التوريدات']];
+function renderReps(){
+  const ck = (r,k)=>`<td style="text-align:center"><input type="checkbox" data-rp="${r.id}" data-f="p_${k}" ${(r.permissions||{})[k]?'checked':''} style="width:auto;"></td>`;
+  document.getElementById('repsBox').innerHTML = `<div style="overflow:auto"><table class="admtable"><thead><tr><th>اسم الدخول</th><th>الاسم</th><th>كلمة مرور جديدة</th><th>مفعّل</th>${REP_PERMS.map(x=>`<th>${x[1]}</th>`).join('')}<th></th></tr></thead><tbody>${
+    REPS_DATA.map(r=>`<tr><td><input data-rp="${r.id}" data-f="username" value="${escapeHtml(r.username)}" dir="ltr"></td><td><input data-rp="${r.id}" data-f="displayName" value="${escapeHtml(r.display_name)}"></td><td><input type="password" data-rp="${r.id}" data-f="password" placeholder="سيبها فاضية لو مش هتغيّر" autocomplete="new-password"></td><td style="text-align:center"><input type="checkbox" data-rp="${r.id}" data-f="active" ${r.active?'checked':''} style="width:auto;"></td>${REP_PERMS.map(x=>ck(r,x[0])).join('')}<td><button class="btn ghost small" type="button" onclick="repDelete(${r.id})">🗑</button></td></tr>`).join('')}
+    <tr><td><input id="nrUser" dir="ltr" placeholder="اسم دخول جديد"></td><td><input id="nrName" placeholder="اسم المندوب"></td><td><input id="nrPass" type="password" placeholder="كلمة مرور" autocomplete="new-password"></td><td></td><td colspan="5"></td><td><button class="btn small" type="button" onclick="repAdd()">+ إضافة</button></td></tr></tbody></table></div>
+    <button class="btn small" type="button" style="margin-top:8px" onclick="repsSave()">💾 حفظ تعديلات المناديب</button>`;
+}
+async function repAdd(){
+  const username=document.getElementById('nrUser').value.trim(), displayName=document.getElementById('nrName').value.trim(), password=document.getElementById('nrPass').value;
+  if(!username||!displayName||!password){ toast('اكتب اسم الدخول والاسم وكلمة المرور'); return; }
+  try{ await crmApi('admin-save-rep',{username,displayName,password,active:true}); toast('اتضاف ✓'); loadRolesScreen(); }catch(e){ toast(e.message); }
+}
+async function repsSave(){
+  const rows = {};
+  document.querySelectorAll('#repsBox [data-rp]').forEach(i=>{ const id=i.dataset.rp; rows[id]=rows[id]||{}; rows[id][i.dataset.f]= i.type==='checkbox' ? i.checked : i.value; });
+  try{
+    for(const id of Object.keys(rows)){
+      const r=rows[id], orig=(REPS_DATA.find(x=>String(x.id)===id)||{}).permissions||{};
+      const permissions={pricing:!!r.p_pricing,calcs:!!r.p_calcs,products:!!r.p_products,portfolio:!!r.p_portfolio};
+      const pl={id:+id,username:r.username,displayName:r.displayName,active:r.active,permissions}; if(r.password) pl.password=r.password;
+      await crmApi('admin-save-rep',pl);
+      if(!!r.p_supply!==!!orig.supply) await crmApi('supply-set-rep-access',{repId:+id,enabled:!!r.p_supply});
+    }
+    toast('اتحفظ ✓'); loadRolesScreen();
+  }catch(e){ toast('تعذر الحفظ: '+e.message); }
+}
+async function repDelete(id){
+  if(!confirm('حذف المندوب نهائيًا؟')) return;
+  try{ await crmApi('admin-delete-rep',{id}); loadRolesScreen(); }catch(e){ toast(e.message); }
 }
 function renderStaff(){
   const nm = k => (ROLES_DATA.roles.find(r=>r.key===k)||{}).name_ar || k;
