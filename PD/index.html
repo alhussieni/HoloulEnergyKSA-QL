@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>PD — مستندات المشاريع | حلول الطاقة المتجددة والمقاولات</title>
+<style>
+  :root{--brand:#c55a11;--ink:#1d2939;--mut:#667085;--line:#d0d5dd;--bg:#f6f7f9;--ok:#067647;--bad:#b42318;--card:#fff}
+  @media (prefers-color-scheme:dark){:root{--ink:#e6e9ef;--mut:#98a2b3;--line:#344054;--bg:#0f1420;--card:#171d2b}}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Noto Naskh Arabic","Segoe UI",Tahoma,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
+  header{background:var(--card);border-bottom:3px solid var(--brand);padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;color:var(--brand)}
+  header .sp{flex:1}
+  a.lnk{color:var(--brand);text-decoration:none;font-size:14px}
+  main{max-width:1100px;margin:16px auto;padding:0 12px}
+  .tabs{display:flex;gap:6px;margin-bottom:12px}
+  .tabs button{padding:8px 14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;cursor:pointer;font:inherit}
+  .tabs button.on{background:var(--brand);border-color:var(--brand);color:#fff}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}
+  th{color:var(--mut);font-weight:600}
+  .wrap{overflow-x:auto}
+  button.b{padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;font:inherit;font-size:13px}
+  button.p{background:var(--brand);border-color:var(--brand);color:#fff}
+  button.d{color:var(--bad);border-color:var(--bad)}
+  a.b{display:inline-block;padding:6px 12px;border-radius:8px;border:1px solid var(--line);text-decoration:none;font-size:13px;color:var(--ink);background:var(--card)}
+  a.b.p{background:var(--brand);border-color:var(--brand);color:#fff}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .badge{display:inline-block;padding:1px 8px;border-radius:20px;font-size:12px;border:1px solid var(--line)}
+  .badge.issued{color:#b54708;border-color:#b54708}.badge.signed{color:var(--ok);border-color:var(--ok)}.badge.void{color:var(--bad);border-color:var(--bad)}
+  .muted{color:var(--mut);font-size:13px}
+  .err{background:#fef3f2;color:var(--bad);border:1px solid #fecdca;border-radius:8px;padding:8px 12px;margin:8px 0}
+  .ok{color:var(--ok)}
+  .warn{background:#fffaeb;color:#b54708;border:1px solid #fedf89;border-radius:8px;padding:8px 12px;margin:8px 0}
+  dialog{border:1px solid var(--line);border-radius:12px;padding:0;width:min(980px,96vw);max-height:92vh;background:var(--card);color:var(--ink)}
+  dialog::backdrop{background:rgba(0,0,0,.45)}
+  .dh{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card);z-index:2}
+  .dh h2{font-size:16px;margin:0;flex:1}
+  .db{padding:12px 14px;overflow:auto;max-height:calc(92vh - 110px)}
+  .df{padding:10px 14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}
+  fieldset{border:1px solid var(--line);border-radius:8px;margin:0 0 12px;padding:8px 12px}
+  legend{color:var(--brand);font-weight:700;padding:0 6px}
+  .g{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px 12px}
+  label{display:block;font-size:13px;color:var(--mut)}
+  input,select,textarea{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:inherit;font-size:14px}
+  input.ltr{direction:ltr;text-align:right}
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:2px 10px;font-size:14px}
+  .kv span:nth-child(odd){color:var(--mut)}
+  iframe{width:100%;height:68vh;border:1px solid var(--line);border-radius:8px;background:#fff}
+  #login{max-width:360px;margin:12vh auto;text-align:center}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+
+<section id="gate" class="card hide" style="max-width:420px;margin:12vh auto;text-align:center">
+  <h1 style="color:var(--brand);font-size:20px">PD — مستندات المشاريع</h1>
+  <p id="gateMsg" class="muted"></p>
+  <p><a class="b p" href="../login.html">تسجيل الدخول</a> <a class="b" href="../home.html">الرئيسية</a></p>
+</section>
+
+<div id="app" class="hide">
+  <header>
+    <h1>PD — مستندات المشاريع</h1>
+    <span class="muted">Projects Documents</span>
+    <span class="sp"></span>
+    <a class="lnk" href="../crm.html">← الرجوع إلى CRM</a>
+    <a class="b" href="../home.html">الرئيسية</a>
+  </header>
+  <main>
+    <div class="tabs">
+      <button id="tab-opps" class="on">الصفقات المقبولة</button>
+      <button id="tab-docs">المستندات الصادرة</button>
+    </div>
+    <div id="msg"></div>
+    <div id="view"></div>
+  </main>
+</div>
+
+<dialog id="issueDlg">
+  <div class="dh"><h2 id="issueTitle">إصدار عقد</h2><button class="b" data-close="issueDlg">إغلاق</button></div>
+  <div class="db" id="issueBody"></div>
+  <div class="df">
+    <button class="b" id="checkBtn">تحقق من الاكتمال</button>
+    <button class="b p" id="issueBtn">إصدار العقد وتجميده</button>
+    <span class="muted" id="issueNote"></span>
+  </div>
+</dialog>
+
+<dialog id="viewDlg">
+  <div class="dh"><h2 id="viewTitle">مستند</h2><span id="viewIntact" class="muted"></span>
+    <button class="b p" id="printBtn">طباعة / حفظ PDF</button><button class="b" data-close="viewDlg">إغلاق</button></div>
+  <div class="db"><iframe id="docFrame" sandbox="allow-same-origin allow-modals" title="المستند"></iframe></div>
+</dialog>
+
+<script>
+(function () {
+  "use strict";
+  var FN = "https://xhgwvszdatqlvlgqiikj.supabase.co/functions/v1";
+  var ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhoZ3d2c3pkYXRxbHZsZ3FpaWtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzMzU1ODUsImV4cCI6MjA5ODkxMTU4NX0._AGyzezR5UFnd6AB26--DsAwuswTP5Vqz1U7LMYp8fU";
+  var $ = function (id) { return document.getElementById(id); };
+
+  function h(tag, attrs) {
+    var n = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === "style") n.style.cssText = attrs[k];
+      else if (k === "class") n.className = attrs[k];
+      else if (k.indexOf("on") === 0) n.addEventListener(k.slice(2), attrs[k]);
+      else n.setAttribute(k, attrs[k]);
+    });
+    function add(c) {
+      if (c == null || c === false) return;
+      if (Array.isArray(c)) { c.forEach(add); return; }
+      n.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+    }
+    for (var i = 2; i < arguments.length; i++) add(arguments[i]);
+    return n;
+  }
+  function money(n) { return Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtDate(s) { try { return new Date(s).toLocaleDateString("en-GB"); } catch (e) { return ""; } }
+  var STATUS = { issued: "صادر (بانتظار التوقيع)", signed: "موقّع", void: "ملغى" };
+
+  // ---------------- API ----------------
+  async function post(fn, body) {
+    var res = await fetch(FN + "/" + fn, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: ANON, Authorization: "Bearer " + ANON },
+      body: JSON.stringify(body)
+    });
+    var data = await res.json().catch(function () { return {}; });
+    if (res.status === 401 && fn === "docs-api") { logout(); }
+    if (!res.ok && !data.error) data.error = "تعذّر الاتصال (" + res.status + ")";
+    return data;
+  }
+  function api(action, extra) {
+    return post("docs-api", Object.assign({ action: action, adminToken: token() }, extra || {}));
+  }
+
+  // ---------------- الجلسة الموحّدة ----------------
+  // الدخول الوحيد هو login.html (auth-api). الجلسة مشتركة بين الصفحات تحت المفتاح holoul_session_v1.
+  // هذه الصفحة للأدمن فقط: تقرأ توكن الأدمن من الجلسة وتتحقق منه عبر auth-api (session-check).
+  var SESSION_KEY = "holoul_session_v1";
+  var sessionToken = "";
+  function token() { return sessionToken; }
+  function readSession() {
+    var raw = null;
+    try { raw = localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_KEY); } catch (e) {}
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) { return null; }
+  }
+  function findAdminToken(o, depth) {
+    if (!o || typeof o !== "object" || depth > 4) return "";
+    if (o.tokens && typeof o.tokens.admin === "string") return o.tokens.admin;
+    for (var k in o) {
+      var v = o[k];
+      if (k === "admin" && typeof v === "string" && v.split(".").length === 2) return v;
+      if (v && typeof v === "object") { var r = findAdminToken(v, depth + 1); if (r) return r; }
+    }
+    return "";
+  }
+  function showGate(msg) { $("gateMsg").textContent = msg; $("gate").classList.remove("hide"); $("app").classList.add("hide"); }
+  function logout() { sessionToken = ""; showGate("انتهت الجلسة. سجّل الدخول من جديد."); }
+  async function boot() {
+    var s = readSession(), t = findAdminToken(s, 0);
+    var exp = s && s.exp && typeof s.exp.admin === "number" ? s.exp.admin : null;
+    if (!t || (exp && exp * 1000 < Date.now())) { showGate("هذه الصفحة للأدمن فقط. سجّل الدخول أولاً."); return; }
+    var r = await post("auth-api", { action: "session-check", tokens: { admin: t } });
+    if (r.error || !r.valid || r.valid.indexOf("admin") < 0) { showGate(r.error || "الجلسة لا تتضمن صلاحية الأدمن."); return; }
+    sessionToken = t; $("gate").classList.add("hide"); $("app").classList.remove("hide"); go("opps");
+  }
+
+  // ---------------- التبويبات ----------------
+  var cur = "opps";
+  function go(tab) {
+    cur = tab;
+    $("tab-opps").classList.toggle("on", tab === "opps");
+    $("tab-docs").classList.toggle("on", tab === "docs");
+    $("msg").textContent = "";
+    (tab === "opps" ? renderOpps : renderDocs)();
+  }
+  $("tab-opps").addEventListener("click", function () { go("opps"); });
+  $("tab-docs").addEventListener("click", function () { go("docs"); });
+  document.addEventListener("click", function (e) {
+    var id = e.target && e.target.getAttribute && e.target.getAttribute("data-close");
+    if (id) $(id).close();
+  });
+  function note(text, cls) { var m = $("msg"); m.textContent = ""; if (text) m.appendChild(h("div", { class: cls || "warn" }, text)); }
+
+  // ---------------- الصفقات المقبولة ----------------
+  async function renderOpps() {
+    var v = $("view"); v.textContent = "جارٍ التحميل…";
+    var r = await api("pd-overview");
+    if (r.error) { v.textContent = ""; note(r.error, "err"); return; }
+    v.textContent = "";
+    if (!r.items.length) { v.appendChild(h("div", { class: "card muted" }, "لا توجد صفقات بحالة «فازت» حالياً.")); return; }
+    var tb = h("tbody");
+    r.items.forEach(function (o) {
+      var live = o.docs.filter(function (d) { return d.status !== "void"; })[0];
+      var actions = h("td", null,
+        h("button", { class: "b p", onclick: function () { openIssue(o); } }, live ? "إصدار نسخة جديدة" : "إصدار عقد"),
+        live ? h("button", { class: "b", style: "margin-inline-start:6px", onclick: function () { openDoc(live.id); } }, "عرض " + live.doc_no) : null);
+      tb.appendChild(h("tr", null,
+        h("td", null, o.customer ? o.customer.name : "—", h("div", { class: "muted" }, o.customer ? o.customer.phone || "" : "")),
+        h("td", null, o.name || "—", h("div", { class: "muted" }, o.estimated_capacity ? o.estimated_capacity + " " : "")),
+        h("td", null, o.project ? (o.project.project_number || "مشروع " + o.project.id) : h("span", { class: "muted" }, "لم يتحول لمشروع")),
+        h("td", null, live ? h("span", { class: "badge " + live.status }, STATUS[live.status]) : h("span", { class: "muted" }, "لا عقد")),
+        actions));
+    });
+    v.appendChild(h("div", { class: "card wrap" }, h("table", null,
+      h("thead", null, h("tr", null, h("th", null, "العميل"), h("th", null, "الصفقة"), h("th", null, "المشروع"), h("th", null, "العقد"), h("th", null, ""))), tb)));
+  }
+
+  // ---------------- المستندات الصادرة ----------------
+  async function renderDocs() {
+    var v = $("view"); v.textContent = "جارٍ التحميل…";
+    var r = await api("pd-docs");
+    if (r.error) { v.textContent = ""; note(r.error, "err"); return; }
+    v.textContent = "";
+    if (!r.docs.length) { v.appendChild(h("div", { class: "card muted" }, "لم يصدر أي مستند بعد.")); return; }
+    var tb = h("tbody");
+    r.docs.forEach(function (d) {
+      var acts = h("td", null, h("button", { class: "b", onclick: function () { openDoc(d.id); } }, "عرض / طباعة"));
+      if (d.status === "issued") {
+        acts.appendChild(h("button", { class: "b p", style: "margin-inline-start:6px", onclick: function () { markSigned(d); } }, "تسجيل التوقيع"));
+      }
+      if (d.status !== "void") acts.appendChild(h("button", { class: "b d", style: "margin-inline-start:6px", onclick: function () { markVoid(d); } }, "إلغاء"));
+      tb.appendChild(h("tr", null,
+        h("td", null, d.doc_no, h("div", { class: "muted" }, d.template_version)),
+        h("td", null, h("span", { class: "badge " + d.status }, STATUS[d.status]), d.void_reason ? h("div", { class: "muted" }, d.void_reason) : null),
+        h("td", null, fmtDate(d.issued_at)), h("td", null, d.signed_on || "—"), acts));
+    });
+    v.appendChild(h("div", { class: "card wrap" }, h("table", null,
+      h("thead", null, h("tr", null, h("th", null, "رقم المستند"), h("th", null, "الحالة"), h("th", null, "تاريخ الإصدار"), h("th", null, "تاريخ التوقيع"), h("th", null, ""))), tb)));
+  }
+  async function markSigned(d) {
+    var on = prompt("تاريخ التوقيع (YYYY-MM-DD):", new Date().toISOString().slice(0, 10)); if (!on) return;
+    var r = await api("pd-status", { docId: d.id, status: "signed", signedOn: on });
+    if (r.error) note(r.error, "err"); else go(cur);
+  }
+  async function markVoid(d) {
+    var why = prompt("سبب الإلغاء (مطلوب):"); if (!why) return;
+    var r = await api("pd-status", { docId: d.id, status: "void", reason: why });
+    if (r.error) note(r.error, "err"); else go(cur);
+  }
+
+  // ---------------- عرض مستند ----------------
+  async function openDoc(id) {
+    var r = await api("pd-render", { docId: id });
+    if (r.error) { note(r.error, "err"); return; }
+    $("viewTitle").textContent = r.meta.doc_no + " — " + STATUS[r.meta.status];
+    $("viewIntact").textContent = r.intact ? "البصمة سليمة ✓" : "تحذير: البصمة لا تطابق اللقطة!";
+    $("viewIntact").className = r.intact ? "muted ok" : "muted err";
+    $("docFrame").srcdoc = r.html;
+    $("viewDlg").showModal();
+  }
+  $("printBtn").addEventListener("click", function () {
+    var f = $("docFrame"); f.contentWindow.focus(); f.contentWindow.print();
+  });
+
+  // ---------------- إصدار عقد ----------------
+  var S = null; // حالة نافذة الإصدار
+
+  function openIssue(opp) {
+    S = { opp: opp, quoteId: null, inputs: {}, data: null };
+    $("issueTitle").textContent = "إصدار عقد — " + (opp.customer ? opp.customer.name : opp.name);
+    $("issueBody").textContent = "جارٍ التحميل…"; $("issueNote").textContent = "";
+    $("issueDlg").showModal();
+    load();
+  }
+  async function load() {
+    var r = await api("pd-prepare", { opportunityId: S.opp.id, quoteId: S.quoteId, inputs: S.inputs });
+    if (r.error) { $("issueBody").textContent = ""; $("issueBody").appendChild(h("div", { class: "err" }, r.error)); return; }
+    S.data = r; renderForm();
+  }
+
+  function val(path, dflt) { var v = S.inputs[path]; return v === undefined ? dflt : v; }
+  function inp(key, label, opts) {
+    opts = opts || {};
+    var el = opts.options
+      ? h("select", null, [h("option", { value: "" }, "— اختر —")].concat(opts.options.map(function (o) { return h("option", { value: o[0] }, o[1]); })))
+      : h("input", { type: opts.type || "text", class: opts.ltr ? "ltr" : "", placeholder: opts.ph || "" });
+    var cur = val(key, opts.dflt);
+    if (cur !== undefined && cur !== null) el.value = String(cur);
+    el.addEventListener("change", function () {
+      var v = el.value;
+      if (opts.bool) S.inputs[key] = v === "" ? undefined : v === "yes";
+      else if (opts.type === "number") S.inputs[key] = v === "" ? undefined : Number(v);
+      else S.inputs[key] = v;
+    });
+    // تسجيل القيمة الافتراضية كمدخل فعلي إن لم يغيّرها المستخدم
+    if (cur !== undefined && cur !== null && S.inputs[key] === undefined && opts.dflt !== undefined && opts.dflt !== "") S.inputs[key] = opts.type === "number" ? Number(cur) : cur;
+    return h("div", null, h("label", null, label), el);
+  }
+  function nested(parent, key, label, opts) { // companyRep.name ونحوها
+    opts = opts || {};
+    var el = h("input", { type: "text", class: opts.ltr ? "ltr" : "" });
+    S.inputs[parent] = S.inputs[parent] || {};
+    var d = (S.data.defaults && S.data.defaults[parent]) || {};
+    var cur = S.inputs[parent][key] !== undefined ? S.inputs[parent][key] : d[key];
+    if (cur) { el.value = cur; S.inputs[parent][key] = cur; }
+    el.addEventListener("change", function () { S.inputs[parent][key] = el.value; });
+    return h("div", null, h("label", null, label), el);
+  }
+
+  function renderForm() {
+    var d = S.data, v = d.view, q = v.quote, body = $("issueBody");
+    body.textContent = "";
+
+    // 1) اختيار عرض السعر
+    var qsel = h("select", null, [h("option", { value: "" }, "— اختر عرض السعر المعتمد —")].concat(d.quotes.map(function (x) {
+      return h("option", { value: x.id }, x.ref_code + " | " + (x.hp || "?") + " HP | " + money(x.final_total) + " | " + fmtDate(x.created_at));
+    })));
+    if (S.quoteId) qsel.value = String(S.quoteId);
+    qsel.addEventListener("change", function () { S.quoteId = qsel.value ? Number(qsel.value) : null; load(); });
+    body.appendChild(h("fieldset", null, h("legend", null, "1) عرض السعر المعتمد (من النظام)"), qsel,
+      d.quotes.length ? null : h("div", { class: "err" }, "لا توجد عروض مجمّدة لهذا العميل. جمّد عرض السعر في CRM أولاً.")));
+    if (!q) { return; }
+
+    // 2) ملخص من النظام (قراءة فقط)
+    var kv = h("div", { class: "kv" });
+    function row(a, b) { kv.appendChild(h("span", null, a)); kv.appendChild(h("span", null, b == null || b === "" ? "—" : String(b))); }
+    row("العميل", v.customer.name + " (" + (v.isCompany ? "منشأة" : "فرد") + ")");
+    row("الجوال", v.customer.phone);
+    row(v.isCompany ? "السجل التجاري" : "الهوية", v.isCompany ? v.customer.cr : (v.identityPresent ? "مسجّلة في النظام ✓" : "غير مسجّلة"));
+    row("الموقع", v.site ? (v.site.hasGps ? "إحداثيات مسجّلة ✓" : v.site.hasLink ? "رابط خريطة ✓" : "بلا إحداثيات") : "لا موقع مسجّل");
+    row("النظام", q.totalPanels + " × " + q.panelLabel + " = " + q.calcKW + " كيلوواط | إنفرتر " + q.invBrand + " " + (q.invKW || "") + " كيلوواط");
+    row("قيمة العرض", money(q.commercial.exVat) + " + ضريبة " + money(q.commercial.vat) + " = " + money(q.commercial.total) + " ريال");
+    row("الطرف الأول", v.company.name + " | س.ت " + v.company.cr + " | موحد " + v.company.unified + " | ض " + v.company.vat);
+    body.appendChild(h("fieldset", null, h("legend", null, "2) بيانات من النظام (قراءة فقط، لا تُعدَّل من هنا)"), kv,
+      v.projectValueDiff != null && Math.abs(v.projectValueDiff) > 1
+        ? h("div", { class: "warn" }, "تنبيه: قيمة المشروع في CRM (" + money(v.project.contract_value) + ") تختلف عن عرض السعر بمقدار " + money(v.projectValueDiff) + ". العقد يُبنى على عرض السعر.") : null,
+      h("div", { class: "muted" }, "تحقق من اسم الطرف الأول أعلاه: يجب أن يطابق السجل التجاري حرفياً. وإن وُجد خطأ فصحّحه في company_profile لا هنا.")));
+
+    // 3) الطرف الأول
+    var f1 = h("fieldset", null, h("legend", null, "3) الطرف الأول"), h("div", { class: "g" },
+      inp("place", "مكان التحرير", { dflt: d.defaults.place }),
+      nested("companyRep", "name", "ممثل الشركة: الاسم"), nested("companyRep", "title", "الصفة"), nested("companyRep", "authority", "سند التفويض"),
+      inp("formerName", "الاسم السابق (اختياري — يكشف الاسم القديم)"),
+      nested("bank", "holder", "صاحب الحساب (مطابق للسجل)"), nested("bank", "bank", "البنك"), nested("bank", "iban", "IBAN", { ltr: true })));
+    body.appendChild(f1);
+
+    // 4) الطرف الثاني (مدخلات للمستند فقط)
+    var g2 = h("div", { class: "g" },
+      inp("customerAddress", "العنوان الوطني/البريدي"),
+      inp("customerEmail", "البريد الإلكتروني (للإخطارات)", { dflt: d.defaults.customerEmail, ltr: true }));
+    if (!v.isCompany && !v.identityPresent) {
+      g2.appendChild(inp("manualIdType", "نوع الوثيقة", { options: [["national_id", "هوية وطنية"], ["iqama", "إقامة"], ["gcc_id", "هوية خليجية"], ["passport", "جواز سفر"]] }));
+      g2.appendChild(inp("manualIdNumber", "رقم الوثيقة (يُحفظ في المستند فقط)", { ltr: true }));
+    }
+    if (v.isCompany) {
+      g2.appendChild(nested("customerRep", "name", "ممثل المنشأة: الاسم")); g2.appendChild(nested("customerRep", "title", "الصفة")); g2.appendChild(nested("customerRep", "authority", "سند التفويض"));
+    }
+    if (!v.site || (!v.site.hasGps && !v.site.hasLink)) g2.appendChild(inp("siteText", "وصف/إحداثيات الموقع (يُحفظ في المستند فقط)", { ltr: true }));
+    body.appendChild(h("fieldset", null, h("legend", null, "4) الطرف الثاني — حقول ناقصة في النظام تُدخل هنا وتُحفظ في المستند فقط"), g2));
+
+    // 5) خيارات العقد
+    var YN = [["yes", "نعم"], ["no", "لا"]];
+    var g3 = h("div", { class: "g" });
+    var OPT = [["optional", "اختياري بسعر (يُحسم قبل الموعد)"], ["waived", "غير مشمول بإقرار رفض كتابي"]];
+    if (!q.toggles.earth) { g3.appendChild(inp("earthingStatus", "التأريض (غير مشمول في العرض)", { options: OPT })); g3.appendChild(inp("earthingPrice", "سعر التأريض", { type: "number" })); }
+    if (!q.toggles.reactor) { g3.appendChild(inp("reactorStatus", "REACTOR (غير مشمول في العرض)", { options: OPT })); g3.appendChild(inp("reactorPrice", "سعر الـREACTOR", { type: "number" })); }
+    g3.appendChild(inp("earthingDeadline", "موعد حسم الاختيارات (المادة 3-3)", { dflt: d.defaults.earthingDeadline }));
+    g3.appendChild(inp("guard", "الحراسة أثناء التنفيذ", { options: [["company", "على الشركة ضمن السعر"], ["client", "على العميل"], ["paid", "على الشركة بمقابل إضافي"]] }));
+    g3.appendChild(inp("guardPrice", "مقابل الحراسة (إن وُجد)", { type: "number" }));
+    g3.appendChild(inp("disputeType", "تسوية المنازعات", { options: [["court", "محكمة مختصة"], ["arbitration", "تحكيم"]] }));
+    g3.appendChild(inp("courtName", "المحكمة")); g3.appendChild(inp("courtCity", "مدينة المحكمة"));
+    g3.appendChild(inp("arbitrationCenter", "جهة التحكيم")); g3.appendChild(inp("arbitrationSeat", "مقر التحكيم"));
+    g3.appendChild(inp("photoConsent", "موافقة العميل على التصوير والعرض", { options: YN, bool: true }));
+    g3.appendChild(inp("contactYears", "مدة التزام الشركة بالتواصل مع المصنّع (سنوات)", { type: "number", dflt: d.defaults.contactYears }));
+    body.appendChild(h("fieldset", null, h("legend", null, "5) خيارات العقد (قرارات قانونية: تُحسم لكل عقد)"), g3));
+
+    // 6) المواصفات والضمان
+    var w = (d.defaults.warranty) || {};
+    S.inputs.warranty = S.inputs.warranty || {};
+    function wf(key, label) {
+      var el = h("input", { type: "text" }); var cur = S.inputs.warranty[key] !== undefined ? S.inputs.warranty[key] : w[key];
+      el.value = cur || ""; S.inputs.warranty[key] = el.value;
+      el.addEventListener("change", function () { S.inputs.warranty[key] = el.value; });
+      return h("div", null, h("label", null, label), el);
+    }
+    var cabItem = (q.items || []).filter(function (i) { return i.label.indexOf("الكابلات") >= 0; })[0];
+    body.appendChild(h("fieldset", null, h("legend", null, "6) المواصفات والضمان (الضمان نص للمراجعة، افتراضاته من العقد القديم)"), h("div", { class: "g" },
+      wf("panels", "ضمان الألواح"), wf("structure", "ضمان الهياكل"), wf("inverter", "ضمان الإنفرتر"), wf("cables", "ضمان الكابلات"), wf("combiner", "ضمان Combiner"),
+      inp("cableLengthText", "طول الكابلات (من العرض: " + (cabItem ? cabItem.qty : "—") + ")", { dflt: cabItem ? cabItem.qty : "" }),
+      inp("cablePricePerM", "سعر المتر الزائد (ريال)", { type: "number" }),
+      q.toggles.concrete ? inp("concreteDims", "أبعاد القواعد ومقاومة الخرسانة") : null)));
+
+    // 7) الدفعات
+    S.inputs.payments = S.inputs.payments || d.defaults.payments.map(function (p) { return { title: p.title, pct: p.pct, trigger: p.trigger }; });
+    var pbox = h("div"), sum = h("div", { class: "muted" });
+    function drawPay() {
+      pbox.textContent = "";
+      var total = 0;
+      S.inputs.payments.forEach(function (p, i) {
+        total += Number(p.pct) || 0;
+        var t = h("input", { type: "text", value: p.title }), pc = h("input", { type: "number", value: p.pct, style: "max-width:90px" }),
+          tr = h("input", { type: "text", value: p.trigger });
+        t.addEventListener("change", function () { p.title = t.value; }); tr.addEventListener("change", function () { p.trigger = tr.value; });
+        pc.addEventListener("change", function () { p.pct = Number(pc.value); drawPay(); });
+        pbox.appendChild(h("div", { style: "display:grid;grid-template-columns:140px 90px 1fr 60px;gap:6px;margin-bottom:6px" }, t, pc, tr,
+          h("button", { class: "b d", onclick: function () { S.inputs.payments.splice(i, 1); drawPay(); } }, "حذف")));
+      });
+      sum.textContent = "المجموع: " + total + "%" + (Math.round(total * 100) === 10000 ? " ✓" : " (يجب 100%)");
+      sum.className = Math.round(total * 100) === 10000 ? "muted ok" : "muted err";
+    }
+    drawPay();
+    var crmMs = (v.crmMilestones || []).map(function (m) { return (m.title || "") + " " + money(m.amount) + " (" + (m.status || "") + ")"; }).join(" | ");
+    body.appendChild(h("fieldset", null, h("legend", null, "7) جدول الدفعات التعاقدي (الملحق ب)"), pbox, sum,
+      h("button", { class: "b", onclick: function () { S.inputs.payments.push({ title: "دفعة", pct: 0, trigger: "" }); drawPay(); } }, "+ دفعة"),
+      crmMs ? h("div", { class: "muted", style: "margin-top:6px" }, "مرجع فقط — دفعات CRM الحالية (متابعة تحصيل وليست جدولاً تعاقدياً): " + crmMs) : null));
+
+    // الأخطاء
+    var eb = h("div", { id: "errs" }); body.appendChild(eb); showErrors();
+  }
+
+  function showErrors() {
+    var eb = $("errs"); if (!eb) return; eb.textContent = "";
+    var errs = S.data.errors || [];
+    if (!errs.length) { eb.appendChild(h("div", { class: "ok" }, "✓ البيانات مكتملة وجاهزة للإصدار")); return; }
+    var ul = h("ul", { style: "margin:4px 0;padding-inline-start:20px" });
+    errs.forEach(function (e) { ul.appendChild(h("li", null, e.msg)); });
+    eb.appendChild(h("div", { class: "err" }, h("b", null, "ناقص أو غير صالح:"), ul));
+  }
+
+  function payload() {
+    var i = Object.assign({}, S.inputs);
+    if (i.manualIdType || i.manualIdNumber) i.manualId = { idType: i.manualIdType, idNumber: i.manualIdNumber };
+    return i;
+  }
+  $("checkBtn").addEventListener("click", async function () {
+    S.inputs = payload();
+    var r = await api("pd-prepare", { opportunityId: S.opp.id, quoteId: S.quoteId, inputs: S.inputs });
+    if (r.error) { $("issueNote").textContent = r.error; return; }
+    S.data.errors = r.errors; showErrors(); $("issueNote").textContent = "";
+  });
+  $("issueBtn").addEventListener("click", async function () {
+    if (!S.quoteId) { $("issueNote").textContent = "اختر عرض السعر أولاً"; return; }
+    var btn = $("issueBtn"); btn.disabled = true; $("issueNote").textContent = "جارٍ الإصدار…";
+    try {
+      var body = { opportunityId: S.opp.id, quoteId: S.quoteId, inputs: payload() };
+      var r = await api("pd-issue", body);
+      if (r.needsConfirm) {
+        if (!confirm(r.message)) { $("issueNote").textContent = "لم يُصدر"; return; }
+        body.replaceExisting = true; r = await api("pd-issue", body);
+      }
+      if (r.errors) { S.data.errors = r.errors; showErrors(); $("issueNote").textContent = "لم يُصدر: أكمل الحقول الناقصة"; return; }
+      if (r.error) { $("issueNote").textContent = r.error; return; }
+      $("issueDlg").close(); note("صدر العقد " + r.docNo, "warn"); go("docs"); openDoc(r.id);
+    } finally { btn.disabled = false; }
+  });
+
+  // ---------------- البدء ----------------
+  boot();
+})();
+</script>
+</body>
+</html>
