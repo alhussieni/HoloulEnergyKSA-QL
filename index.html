@@ -8,31 +8,34 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/styles.css">
+<link rel="stylesheet" href="assets/css/header.css">
 <link rel="stylesheet" href="assets/css/unified-font.css">
 </head>
 <body>
-<header class="top">
+<header class="top hl-header">
   <div class="brandrow">
     <div class="brand">
       <div class="mark"><img src="assets/logo.png" alt="Holoul Energy logo" width="120" height="120" decoding="async"></div>
       <div>
         <div class="name">حلول الطاقة المتجددة والمقاولات</div>
-        <div class="sub">HoloulEnergy — حاسبة عروض أسعار محطات الطاقة الشمسية</div>
+        <div class="sub">حاسبة عروض أسعار محطات الطاقة الشمسية</div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-      <a class="btn small" style="text-decoration:none" href="tel:+966561274344">📞 اتصال</a>
-      <a class="btn small" style="text-decoration:none;background:#25D366;color:#fff" href="https://wa.me/966561274344" target="_blank" rel="noopener">💬 واتساب</a>
+    <div class="hl-mid">
       <nav class="tabs no-print">
         <button data-view="calc" class="active">الحاسبة</button>
         <button data-view="products" id="productsNavBtn">قائمة المنتجات</button>
         <button data-view="portfolio">البورتفوليو</button>
         <button data-view="admin">لوحة التحكم</button>
       </nav>
-      <a href="pump-calculator.html" class="btn small" style="text-decoration:none">🚜 حاسبة الضخ الزراعي</a>
-      <a id="homeLink" class="btn ghost small no-print" style="display:none;text-decoration:none" href="home.html">🏠 الرئيسية</a>
-      <span id="repNameBadge" class="no-print" style="display:none;font-size:12.5px;color:var(--muted);font-weight:600"></span>
-      <button id="repLogoutBtn" class="btn ghost small no-print" style="display:none">خروج</button>
+    </div>
+    <div class="hl-actions">
+      <a class="hl-btn opt" href="tel:+966561274344">📞 اتصال</a>
+      <a class="hl-btn wa opt" href="https://wa.me/966561274344" target="_blank" rel="noopener">💬 واتساب</a>
+      <a class="hl-btn" href="pump-calculator.html">🚜 حاسبة الضخ</a>
+      <div data-hl-nav hidden></div>
+      <span id="repNameBadge" class="hl-user no-print" style="display:none"></span>
+      <button id="repLogoutBtn" class="hl-btn ghost no-print" type="button" style="display:none">خروج</button>
     </div>
   </div>
 </header>
@@ -52,6 +55,7 @@
      in the HTML, and later files (e.g. 08-wiring.js) call functions
      defined in earlier ones (e.g. 05-render-calculator.js). -->
 <script src="assets/js/holoul-auth.js"></script>
+<script src="assets/js/site-header.js"></script>
 <script src="assets/js/modules/01-supabase-engine.js"></script>
 <script src="assets/js/modules/02-client-cache.js"></script>
 <script src="assets/js/modules/03-admin-auth.js"></script>

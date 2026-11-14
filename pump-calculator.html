@@ -37,14 +37,6 @@ body{margin:0;background:linear-gradient(180deg,#FFFFFF 0,#F7FAF9 260px,var(--sa
 h1,h2,h3{font-family:'Cairo',sans-serif;}
 a{color:inherit;}
 
-header.top{background:rgba(255,255,255,.94);color:var(--ink);padding:14px 28px;position:sticky;top:0;z-index:50;border-bottom:1px solid var(--line);box-shadow:var(--shadow-soft);backdrop-filter:blur(10px);}
-.brandrow{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;max-width:1320px;margin:0 auto;}
-.brand{display:flex;align-items:center;gap:12px;text-decoration:none;}
-.brand .mark{width:44px;height:44px;border-radius:10px;background:#fff;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;padding:4px;box-shadow:var(--shadow-soft);}
-.brand .mark img{width:100%;height:100%;object-fit:contain;}
-.brand .name{font-weight:800;font-size:20px;color:var(--night);}
-.brand .sub{font-size:12px;color:var(--muted);margin-top:2px;}
-.headeractions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:9px;font-family:'Cairo',sans-serif;font-weight:700;font-size:13.5px;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--night);text-decoration:none;transition:.15s;}
 .btn:hover{border-color:var(--teal);}
 .btn.wa{background:#25D366;color:#fff;border-color:#25D366;}
@@ -132,26 +124,16 @@ main{max-width:1180px;margin:0 auto;padding:24px 20px 70px;}
 
 .site-footer{max-width:1180px;margin:20px auto 0;padding:20px;color:var(--muted);font-size:12.5px;text-align:center;border-top:1px solid var(--line);}
 </style>
+<link rel="stylesheet" href="assets/css/header.css">
 <link rel="stylesheet" href="assets/css/unified-font.css">
 </head>
 <body>
 
-<header class="top">
-  <div class="brandrow">
-    <a class="brand" href="index.html">
-      <div class="mark"><img src="assets/logo.png" alt="Holoul Energy logo" width="44" height="44"></div>
-      <div>
-        <div class="name">حلول الطاقة المتجددة والمقاولات</div>
-        <div class="sub">حاسبة نظام الضخ الزراعي</div>
-      </div>
-    </a>
-    <div class="headeractions">
-      <a class="btn" href="index.html"><i class="ti ti-arrow-right"></i> رجوع للحاسبة الرئيسية</a>
-      <a class="btn" href="tel:+966561274344">📞 اتصال</a>
-      <a class="btn wa" href="https://wa.me/966561274344" target="_blank" rel="noopener">💬 واتساب</a>
-    </div>
-  </div>
+<header class="top hl-header" data-hl-header data-title="حاسبة نظام الضخ الزراعي" data-actions="contact,nav,user,logout">
+  <a class="hl-btn" data-hl-slot="actions" href="index.html">← الحاسبة الرئيسية</a>
 </header>
+<script src="assets/js/holoul-auth.js"></script>
+<script src="assets/js/site-header.js"></script>
 
 <main>
   <div class="hero">
