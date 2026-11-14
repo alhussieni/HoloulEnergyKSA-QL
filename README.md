@@ -151,3 +151,17 @@ behaviour as today — the only difference is where the math happens.
 | `get-product-catalog` | none | public reference list prices for any rep |
 | `get-portfolio` | none | public portfolio content (hero, projects, partners, timeline) |
 | `hash-password` | none | convenience helper — not used by the frontend anymore |
+
+## الدخول الموحّد (Unified login)
+
+صفحة دخول واحدة `login.html`: اسم مستخدم + كلمة مرور + تذكرني + إظهار/إخفاء — لا غير. **مفيش اختيار نوع حساب**:
+دالة `auth-api` (`supabase/functions/auth-api`) بتدوّر على الحساب في (الأدمن / الموظفين / المناديب) وبتصدر نفس التوكنز
+القديمة، فباقي الدوال (`compute-quote`, `staff-api`, `crm-api` …) ما اتغيّرتش.
+
+- `login.html` ← الدخول الوحيد. `home.html` ← الصفحات المتاحة للمستخدم (السيرفر هو اللي يحدد، دالة `MODULES` في `auth-api`).
+- `assets/js/holoul-auth.js` ← مساعد الجلسة المشترك (مفتاح واحد `holoul_session_v1`).
+- تذكرني: مفعّلة = 14 يوم (localStorage)، متعطّلة = لحد قفل التبويب (sessionStorage) وتوكن قصير (أدمن 4س / غيره 12س).
+- تعطيل حساب أو تغيير كلمة مرور = إبطال كل توكناته فورًا (`session_version`).
+- حماية من التخمين: 6 محاولات فاشلة / 10 دقايق لكل (اسم مستخدم + IP) — جدول `auth_login_attempts` (`0017_auth_login_attempts.sql`).
+- الأدمن: اسم المستخدم = اللي متسجّل في لوحة التحكم؛ لو ما اتحددش قبل كده، اسم المستخدم هو `admin`.
+- لإضافة صفحة/صلاحية جديدة: عدّل `MODULES` في `auth-api` وانشر الدالة (`supabase functions deploy auth-api`).

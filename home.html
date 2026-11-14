@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>الرئيسية | حلول الطاقة المتجددة والمقاولات</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{ --ink:#122436; --night:#0D3452; --night-2:#155E85; --teal:#0FA98D; --teal-dark:#0B7A66; --teal-tint:#E7F8F4; --sand:#F6F8F7; --card:#FFF; --line:#DEE7E4; --muted:#63736F; }
+  *{box-sizing:border-box}
+  body{margin:0; font-family:'Cairo',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif; color:var(--ink); background:var(--sand); min-height:100vh}
+  header{background:linear-gradient(120deg,var(--night),var(--night-2)); color:#fff; padding:14px 20px}
+  .bar{max-width:980px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:800; font-size:16px}
+  .brand img{width:38px; height:38px; object-fit:contain; background:#fff; border-radius:9px; padding:3px}
+  .who{display:flex; align-items:center; gap:12px; font-size:14px}
+  .who b{font-weight:700}
+  .out{border:1px solid rgba(255,255,255,.45); background:transparent; color:#fff; font:inherit; font-size:13px; font-weight:600; padding:7px 14px; border-radius:9px; cursor:pointer}
+  .out:hover{background:rgba(255,255,255,.14)}
+  main{max-width:980px; margin:0 auto; padding:26px 20px 40px}
+  h2{margin:0 0 4px; font-size:22px; font-weight:800; color:var(--night)}
+  .sub{margin:0 0 22px; color:var(--muted); font-size:14px}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:14px}
+  a.tile{
+    display:flex; gap:14px; align-items:flex-start; text-decoration:none; color:inherit; background:var(--card);
+    border:1.5px solid var(--line); border-radius:15px; padding:18px; transition:transform .12s, box-shadow .12s, border-color .12s;
+  }
+  a.tile:hover,a.tile:focus-visible{transform:translateY(-2px); border-color:var(--teal); box-shadow:0 8px 22px rgba(13,52,82,.12); outline:none}
+  .ic{flex:none; width:46px; height:46px; border-radius:12px; background:var(--teal-tint); display:flex; align-items:center; justify-content:center; font-size:24px}
+  .tile h3{margin:0 0 3px; font-size:16px; font-weight:800; color:var(--night)}
+  .tile p{margin:0; font-size:13px; color:var(--muted); line-height:1.6}
+  .state{text-align:center; color:var(--muted); padding:60px 0; font-size:15px}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand"><img src="assets/logo.png" alt="" onerror="this.style.display='none'"><span>حلول الطاقة المتجددة والمقاولات</span></div>
+    <div class="who"><span id="who"></span><button class="out" id="out" type="button">خروج</button></div>
+  </div>
+</header>
+<main>
+  <h2 id="hello">أهلاً بك</h2>
+  <p class="sub">دي الصفحات المتاحة لحسابك.</p>
+  <div id="mods" class="state">جارٍ التحميل…</div>
+</main>
+
+<script src="assets/js/holoul-auth.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+
+  $('out').addEventListener('click', function(){ HoloulAuth.logout(); });
+
+  if(!HoloulAuth.read()){ HoloulAuth.goLogin('home.html'); return; }
+
+  // الصلاحيات بتتجدد من السيرفر في كل فتح للصفحة — أي تعديل من الأدمن بيظهر فورًا
+  HoloulAuth.refresh().then(function(s){
+    if(!s){ HoloulAuth.goLogin('home.html'); return; }
+    $('who').innerHTML = '👤 <b>' + esc(s.user.displayName) + '</b>';
+    $('hello').textContent = 'أهلاً، ' + s.user.displayName;
+    var mods = s.modules || [];
+    var box = $('mods');
+    if(!mods.length){ box.className = 'state'; box.textContent = 'مفيش صفحات متاحة لحسابك دلوقتي. كلّم الأدمن.'; return; }
+    box.className = 'grid';
+    box.innerHTML = mods.map(function(m){
+      return '<a class="tile" href="' + esc(m.url) + '"><div class="ic">' + esc(m.icon) + '</div><div><h3>' + esc(m.label) + '</h3><p>' + esc(m.desc) + '</p></div></a>';
+    }).join('');
+  });
+})();
+</script>
+</body>
+</html>

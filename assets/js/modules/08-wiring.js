@@ -28,6 +28,11 @@ let deepLinkReadySystemId = null;
   }
 }
 
+if(window.location.hash === '#admin' && !deepLinkReadySystemId){
+  currentView = 'admin';
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === 'admin'));
+}
+
 /* ---- rep login gate — every rep has their own username/password, verified
    server-side. Session is kept in sessionStorage (gone once the tab closes)
    unless "remember me" was checked, in which case it's kept in localStorage
@@ -54,49 +59,36 @@ function decodeAdminTokenExp(token){
     return JSON.parse(atob(s)).exp || null; // unix seconds, set by the server to match the token's real TTL
   }catch(e){ return null; }
 }
-function shareAdminSession(token){
-  const exp = decodeAdminTokenExp(token);
-  if(exp) localStorage.setItem(ADMIN_SSO_KEY, JSON.stringify({token, exp}));
-}
-function readSharedAdminSession(){
-  let saved;
-  try{ saved = JSON.parse(localStorage.getItem(ADMIN_SSO_KEY)||'null'); }catch(e){ saved = null; }
-  if(!saved || !saved.token || !saved.exp) return null;
-  if(saved.exp * 1000 <= Date.now()){ localStorage.removeItem(ADMIN_SSO_KEY); return null; }
-  return saved.token;
-}
-function clearSharedAdminSession(){ localStorage.removeItem(ADMIN_SSO_KEY); }
+// الدخول الموحّد: توكن الأدمن بيتقرا ويتحدّث من الجلسة الموحّدة (HoloulAuth) — مفيش تخزين منفصل.
+function shareAdminSession(token){ try{ HoloulAuth.setToken('admin', token); applyNavByAccess(); }catch(e){} }
+function readSharedAdminSession(){ try{ return HoloulAuth.token('admin'); }catch(e){ return null; } }
+function clearSharedAdminSession(){ try{ HoloulAuth.dropToken('admin'); applyNavByAccess(); }catch(e){} }
 
 let repAuthed = false, repUsername = null, repTokenMem = null, repDisplayName = null, repPermissions = {};
 try{
-  const remembered = JSON.parse(localStorage.getItem(REP_REMEMBER_KEY)||'null');
-  if(remembered && remembered.expiresAt > Date.now() && remembered.username && remembered.token){
-    repUsername = remembered.username; repTokenMem = remembered.token; repDisplayName = remembered.displayName;
-    repPermissions = remembered.permissions || {}; repAuthed = true;
-  } else {
-    if(remembered) localStorage.removeItem(REP_REMEMBER_KEY);
-    const savedRep = JSON.parse(sessionStorage.getItem('holoul_rep_session')||'null');
-    if(savedRep && savedRep.username && savedRep.token){
-      repUsername = savedRep.username; repTokenMem = savedRep.token; repDisplayName = savedRep.displayName;
-      repPermissions = savedRep.permissions || {}; repAuthed = true;
-    }
+  // دخول موحّد: لو الحساب ليه توكن مندوب بنستخدمه (نفس مسار المندوب القديم بالظبط)
+  const _hs = HoloulAuth.read();
+  if(_hs && HoloulAuth.token('rep')){
+    repUsername = HoloulAuth.username('rep'); repTokenMem = HoloulAuth.token('rep'); repDisplayName = _hs.user.displayName;
+    repPermissions = (_hs.permissions && _hs.permissions.rep) || {}; repAuthed = true;
   }
 }catch(e){}
 
 let guestMode = false, guestRegistered = false;
 
 function renderRepLogin(){
-  return `<div class="card" style="max-width:360px;margin:60px auto">
-    <h3>تسجيل دخول المندوب</h3>
-    <label>اسم المستخدم</label>
-    <input type="text" id="rep_user" autocomplete="username">
-    <label>كلمة المرور</label>
-    <input type="password" id="rep_pass" autocomplete="current-password">
-    <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;cursor:pointer">
-      <input type="checkbox" id="rep_remember"> تذكرني على هذا الجهاز لمدة أسبوعين
-    </label>
-    <button class="btn" id="rep_login_btn" style="margin-top:14px;width:100%">دخول</button>
-    <div id="rep_login_err" class="note" style="margin-top:10px;color:#B0432C;display:none"></div>
+  // مفيش نموذج دخول هنا — الدخول من صفحة login.html الموحّدة فقط
+  if(HoloulAuth.read()){
+    return `<div class="card" style="max-width:380px;margin:60px auto;text-align:center">
+      <h3>الحاسبة غير متاحة لحسابك</h3>
+      <div class="note" style="margin-bottom:14px">حسابك مالوش صلاحية على حاسبة عروض الأسعار.</div>
+      <a class="btn" href="home.html" style="display:block;text-decoration:none">الصفحة الرئيسية</a>
+    </div>`;
+  }
+  return `<div class="card" style="max-width:380px;margin:60px auto;text-align:center">
+    <h3>حاسبة عروض الأسعار</h3>
+    <div class="note" style="margin-bottom:14px">سجّل دخولك لاستخدام الحاسبة.</div>
+    <a class="btn" href="login.html?next=index.html" style="display:block;text-decoration:none">تسجيل الدخول</a>
     <div style="text-align:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)">
       <button class="btn ghost small" id="guestModeBtn" type="button">أنا عميل — التسعير مباشرة بدون مندوب</button>
     </div>
@@ -118,17 +110,15 @@ function renderGuestRegister(){
 /* ---- admin login gate — password verified server-side (see adminPasswordGate) ---- */
 let adminAuthed = false;
 
+let adminLoadFailed = false;
 function renderAdminLogin(){
-  return `<div class="card" style="max-width:360px;margin:40px auto">
-    <h3>دخول لوحة التحكم</h3>
-    <label>اسم المستخدم</label>
-    <input type="text" id="adm_user" autocomplete="username" placeholder="اتركه فاضي لو لسه ما اتحددش">
-    <label>كلمة المرور</label>
-    <input type="password" id="adm_pass" autocomplete="current-password">
-    <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:13px;cursor:pointer">
-      <input type="checkbox" id="adm_remember"> تذكرني على هذا الجهاز لمدة أسبوعين
-    </label>
-    <button class="btn" id="adm_login_btn" style="margin-top:14px;width:100%">دخول</button>
+  if(HoloulAuth.token('admin')){ // الأدمن مسجّل — بيتحمّل في الخلفية
+    return `<div class="card" style="max-width:360px;margin:40px auto;text-align:center"><div class="note">${adminLoadFailed ? 'تعذّر تحميل لوحة التحكم دلوقتي — حدّث الصفحة وحاول تاني.' : 'جارٍ تحميل لوحة التحكم…'}</div></div>`;
+  }
+  return `<div class="card" style="max-width:360px;margin:40px auto;text-align:center">
+    <h3>لوحة التحكم</h3>
+    <div class="note" style="margin-bottom:14px">الصفحة دي لحسابات الأدمن فقط.</div>
+    <a class="btn" href="login.html?next=index.html%23admin" style="display:block;text-decoration:none">تسجيل الدخول</a>
   </div>`;
 }
 
@@ -149,30 +139,7 @@ function render(){
 
 function wire(){
   if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail' && currentView!=='irrigation-quick'){
-    document.getElementById('rep_login_btn').onclick = async ()=>{
-      const username = document.getElementById('rep_user').value.trim();
-      const password = document.getElementById('rep_pass').value;
-      const remember = document.getElementById('rep_remember').checked;
-      const errBox = document.getElementById('rep_login_err');
-      try{
-        const data = await callEngine('rep-login', { username, password, rememberMe: remember });
-        repUsername = username; repTokenMem = data.token; repDisplayName = data.displayName; repAuthed = true;
-        repPermissions = data.permissions || {};
-        if(remember){
-          localStorage.setItem(REP_REMEMBER_KEY, JSON.stringify({username, token:data.token, displayName:data.displayName, permissions:repPermissions, expiresAt: Date.now() + 14*24*3600*1000}));
-          sessionStorage.removeItem('holoul_rep_session');
-        } else {
-          sessionStorage.setItem('holoul_rep_session', JSON.stringify({username, token:data.token, displayName:data.displayName, permissions:repPermissions}));
-          localStorage.removeItem(REP_REMEMBER_KEY);
-        }
-        showRepBadge();
-        refresh();
-      }catch(e){
-        errBox.textContent = e.message || 'بيانات الدخول غير صحيحة';
-        errBox.style.display = 'block';
-      }
-    };
-    document.getElementById('guestModeBtn').onclick = ()=>{
+    const _gb = document.getElementById('guestModeBtn'); if(_gb) _gb.onclick = ()=>{
       guestMode = true;
       render();
     };
@@ -191,27 +158,7 @@ function wire(){
     return;
   }
   if(currentView==='admin' && !adminAuthed){
-    document.getElementById('adm_login_btn').onclick = async ()=>{
-      const p=document.getElementById('adm_pass').value;
-      const remember = document.getElementById('adm_remember').checked;
-      try{
-        const loginData = await callEngine('admin-login', { adminPassword: adminCred(document.getElementById('adm_user').value, p), rememberMe: remember });
-        adminTokenMem = loginData.token;
-        const data = await callEngine('admin-config', { adminToken: adminTokenMem });
-        adminConfig = normalizeAdminConfig(data.config); adminAuthed = true;
-        try{
-          const repsData = await callEngine('admin-list-reps', { adminToken: adminTokenMem });
-          adminReps = repsData.reps || [];
-        }catch(e){ adminReps = []; }
-        if(remember){
-          localStorage.setItem(ADMIN_REMEMBER_KEY, JSON.stringify({token: adminTokenMem, expiresAt: Date.now() + 14*24*3600*1000}));
-        } else {
-          localStorage.removeItem(ADMIN_REMEMBER_KEY);
-        }
-        shareAdminSession(adminTokenMem); // let crm.html pick this session up too, no re-login needed there
-        render();
-      }catch(e){ adminTokenMem = null; alert('اسم المستخدم أو كلمة المرور غير صحيحة'); }
-    };
+
     return;
   }
   if(currentView==='ready'){
@@ -621,7 +568,7 @@ function wire(){
       });
     }
 
-    const _addRep = document.getElementById('addRepBtn'); if(_addRep) _addRep.onclick = async ()=>{
+    document.getElementById('addRepBtn').onclick = async ()=>{
       const username = document.getElementById('newrep_username').value.trim();
       const displayName = document.getElementById('newrep_displayname').value.trim();
       const password = document.getElementById('newrep_password').value;
@@ -633,7 +580,7 @@ function wire(){
         render();
       }catch(e){ alert('تعذرت الإضافة: '+e.message); }
     };
-    const _saveReps = document.getElementById('saveRepsBtn'); if(_saveReps) _saveReps.onclick = async ()=>{
+    document.getElementById('saveRepsBtn').onclick = async ()=>{
       const rows = {};
       const checkboxFields = ['active','perm_pricing','perm_calcs','perm_products','perm_portfolio','perm_supply'];
       document.querySelectorAll('[data-repid]').forEach(inp=>{
@@ -989,14 +936,7 @@ function wire(){
       }catch(e){ alert('تعذر التحديث: '+e.message); }
       render();
     };
-    document.getElementById('adm_logout').onclick = ()=>{
-      adminAuthed = false; adminTokenMem = null; adminConfig = null; currentView='calc';
-      localStorage.removeItem(ADMIN_REMEMBER_KEY);
-      clearSharedAdminSession();
-      document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
-      document.querySelector('[data-view="calc"]').classList.add('active');
-      render();
-    };
+    document.getElementById('adm_logout').onclick = ()=>{ HoloulAuth.logout(); };
     /* ===== الألواح الشمسية: إضافة/تعديل من نافذة منبثقة (الجدول للعرض فقط) ===== */
     const pmOverlay = document.getElementById('panelModalOverlay');
     let pmEditIdx = null;   // null = لوح جديد، رقم = index اللوح في adminConfig.panels (مش ترتيب العرض)
@@ -1584,7 +1524,17 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
   };
 });
 
+/* إخفاء/إظهار عناصر الواجهة حسب الصلاحية (التنفيذ الفعلي في السيرفر — ده للعرض فقط) */
+function applyNavByAccess(){
+  try{
+    const adminBtn = document.querySelector('nav.tabs [data-view="admin"]');
+    if(adminBtn) adminBtn.style.display = HoloulAuth.token('admin') ? '' : 'none';
+    const home = document.getElementById('homeLink');
+    if(home) home.style.display = HoloulAuth.read() ? '' : 'none';
+  }catch(e){}
+}
 function showRepBadge(){
+  applyNavByAccess();
   const badge = document.getElementById('repNameBadge');
   const logoutBtn = document.getElementById('repLogoutBtn');
   const productsBtn = document.getElementById('productsNavBtn');
@@ -1603,6 +1553,7 @@ function showRepBadge(){
   }
 }
 document.getElementById('repLogoutBtn').onclick = ()=>{
+  if(HoloulAuth.read()){ HoloulAuth.logout(); return; }
   repAuthed = false; repUsername = null; repTokenMem = null; repDisplayName = null; repPermissions = {};
   guestMode = false; guestRegistered = false;
   sessionStorage.removeItem('holoul_rep_session');
@@ -1726,6 +1677,13 @@ function applyCrmNewQuoteHandoff(){
 }
 let crmNewQuoteMode = false;
 try{ crmNewQuoteMode = applyCrmNewQuoteHandoff(); }catch(e){}
+// دخول موحّد: الأدمن بيستخدم الحاسبة بتوكن الأدمن (نفس مسار الـ CRM — العروض بتتسجّل باسم الأدمن)
+if(!crmNewQuoteMode && !repAuthed){
+  try{
+    const _at = HoloulAuth.token('admin');
+    if(_at){ embedAdminToken = _at; repUsername = 'admin'; repTokenMem = null; repDisplayName = 'الأدمن'; repAuthed = true; showRepBadge(); }
+  }catch(e){}
+}
 // خيار إضافي: لو الحاسبة اتفتحت من زر "تعديل (مراجعة جديدة)" في الـ CRM، حمّل العرض قبل أول حساب
 if(!crmNewQuoteMode){ try{ applyCrmEditHandoff(); }catch(e){} }
 refresh();
@@ -1759,7 +1717,9 @@ refresh();
   }catch(e){
     adminTokenMem = null; adminAuthed = false;
     if(fromRememberMe) localStorage.removeItem(ADMIN_REMEMBER_KEY); // token expired/invalidated server-side — stop retrying
-    else clearSharedAdminSession();
+    // السيرفر هو الحكم: لو التوكن مرفوض فعلًا بيتمسح، لو بس عطل مؤقت (شبكة/500) الجلسة بتفضل زي ما هي
+    adminLoadFailed = true;
+    HoloulAuth.refresh().then(()=>{ try{ applyNavByAccess(); render(); }catch(_){} });
   }
 })();
 

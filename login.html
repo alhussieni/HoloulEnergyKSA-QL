@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>تسجيل الدخول | حلول الطاقة المتجددة والمقاولات</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#122436; --night:#0D3452; --night-2:#155E85; --teal:#0FA98D; --teal-dark:#0B7A66;
+    --teal-tint:#E7F8F4; --sand:#F6F8F7; --card:#FFFFFF; --line:#DEE7E4; --muted:#63736F; --err:#B0432C;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:'Cairo',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif; color:var(--ink);
+    background:linear-gradient(160deg,var(--night) 0%,var(--night-2) 55%,var(--teal-dark) 100%);
+    display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .card{
+    width:100%; max-width:380px; background:var(--card); border-radius:18px; padding:30px 26px 26px;
+    box-shadow:0 18px 50px rgba(0,0,0,.28);
+  }
+  .brand{text-align:center; margin-bottom:22px}
+  .brand .mark{width:84px; height:84px; margin:0 auto 10px; display:flex; align-items:center; justify-content:center; font-size:44px}
+  .brand .mark img{width:100%; height:100%; object-fit:contain}
+  .brand h1{margin:0; font-size:20px; font-weight:800; color:var(--night)}
+  .brand p{margin:4px 0 0; font-size:13px; color:var(--muted)}
+  label.f{display:block; margin:14px 0 6px; font-size:13.5px; font-weight:700}
+  .inp{
+    width:100%; height:46px; padding:0 14px; font:inherit; font-size:15px; color:var(--ink);
+    border:1.5px solid var(--line); border-radius:11px; background:var(--sand); outline:none;
+    transition:border-color .15s, box-shadow .15s, background .15s;
+  }
+  .inp:focus{border-color:var(--teal); background:#fff; box-shadow:0 0 0 3px var(--teal-tint)}
+  .pw{position:relative}
+  .pw .inp{padding-inline-end:48px}
+  .eye{
+    position:absolute; inset-block:0; inset-inline-end:0; width:46px; border:0; background:transparent; cursor:pointer;
+    color:var(--muted); display:flex; align-items:center; justify-content:center; border-radius:0 11px 11px 0;
+  }
+  [dir=rtl] .eye{border-radius:11px 0 0 11px}
+  .eye:hover{color:var(--night)}
+  .eye:focus-visible{outline:2px solid var(--teal); outline-offset:-2px}
+  .eye svg{width:21px; height:21px}
+  .eye .off{display:none}
+  .eye[aria-pressed=true] .on{display:none}
+  .eye[aria-pressed=true] .off{display:block}
+  .remember{display:flex; align-items:center; gap:8px; margin:16px 0 4px; font-size:13.5px; cursor:pointer; user-select:none}
+  .remember input{width:18px; height:18px; accent-color:var(--teal); cursor:pointer; margin:0}
+  .btn{
+    width:100%; height:48px; margin-top:16px; border:0; border-radius:12px; cursor:pointer;
+    font:inherit; font-size:16px; font-weight:800; color:#fff; background:var(--teal);
+    transition:background .15s, transform .05s;
+  }
+  .btn:hover{background:var(--teal-dark)}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled{opacity:.65; cursor:wait}
+  .err{
+    margin-top:14px; padding:10px 12px; border-radius:10px; font-size:13.5px; font-weight:600;
+    color:var(--err); background:#FBEDEA; border:1px solid #F1CFC7; display:none;
+  }
+  .err.show{display:block}
+  .boot{text-align:center; color:var(--muted); font-size:14px; padding:30px 0 10px; display:none}
+  body.checking form{display:none}
+  body.checking .boot{display:block}
+</style>
+</head>
+<body class="checking">
+<main class="card">
+  <div class="brand">
+    <div class="mark"><img src="assets/logo.png" alt="Holoul Energy" onerror="this.replaceWith('☀️')"></div>
+    <h1>تسجيل الدخول</h1>
+    <p>حلول الطاقة المتجددة والمقاولات</p>
+  </div>
+
+  <div class="boot" role="status">جارٍ التحقق من الجلسة…</div>
+
+  <form id="f" novalidate>
+    <label class="f" for="u">اسم المستخدم</label>
+    <input class="inp" id="u" name="username" type="text" dir="ltr" autocomplete="username"
+           autocapitalize="none" autocorrect="off" spellcheck="false" required autofocus>
+
+    <label class="f" for="p">كلمة المرور</label>
+    <div class="pw">
+      <input class="inp" id="p" name="password" type="password" dir="ltr" autocomplete="current-password" required>
+      <button class="eye" id="eye" type="button" aria-pressed="false" aria-controls="p" aria-label="إظهار كلمة المرور" title="إظهار / إخفاء كلمة المرور">
+        <svg class="on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg class="off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+      </button>
+    </div>
+
+    <label class="remember"><input type="checkbox" id="r"> تذكرني</label>
+
+    <button class="btn" id="go" type="submit">دخول</button>
+    <div class="err" id="err" role="alert" aria-live="assertive"></div>
+  </form>
+</main>
+
+<script src="assets/js/holoul-auth.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var next = new URLSearchParams(location.search).get('next');
+
+  function go(session){ location.replace(HoloulAuth.destination(session, next)); }
+
+  // لو فيه جلسة صالحة بالفعل → ادخل على طول من غير ما تعرض الفورم
+  (function boot(){
+    if(!HoloulAuth.read()){ document.body.classList.remove('checking'); $('u').focus(); return; }
+    HoloulAuth.refresh().then(function(s){
+      if(s) return go(s);
+      document.body.classList.remove('checking'); $('u').focus();
+    });
+  })();
+
+  // إظهار / إخفاء كلمة المرور
+  $('eye').addEventListener('click', function(){
+    var show = $('p').type === 'password';
+    $('p').type = show ? 'text' : 'password';
+    this.setAttribute('aria-pressed', String(show));
+    this.setAttribute('aria-label', show ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور');
+    $('p').focus();
+  });
+
+  function showErr(m){ var e = $('err'); e.textContent = m; e.classList.add('show'); }
+
+  $('f').addEventListener('submit', function(ev){
+    ev.preventDefault();
+    var u = $('u').value.trim(), p = $('p').value;
+    $('err').classList.remove('show');
+    if(!u || !p){ showErr('اكتب اسم المستخدم وكلمة المرور'); (u ? $('p') : $('u')).focus(); return; }
+    var btn = $('go'); btn.disabled = true; btn.textContent = 'جارٍ الدخول…';
+    HoloulAuth.login(u, p, $('r').checked).then(go).catch(function(e){
+      btn.disabled = false; btn.textContent = 'دخول';
+      showErr(e && e.status ? e.message : 'مشكلة في الاتصال، حاول تاني');
+      $('p').value = ''; $('p').focus();
+    });
+  });
+})();
+</script>
+</body>
+</html>
