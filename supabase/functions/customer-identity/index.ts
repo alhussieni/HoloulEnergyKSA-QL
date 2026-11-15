@@ -5,9 +5,10 @@
 //
 // الصلاحيات:
 //   identity-get     : أدمن فقط  — الرقم كاملاً (لإصدار العقود والتعديل)
-//   identity-set     : أدمن فقط  — إنشاء/تعديل (تطبيع + تحقق + تدقيق بدون الرقم كاملاً)
+//   identity-set     : مندوب/أدمن — إنشاء/تعديل (تطبيع + تحقق + تدقيق بدون الرقم كاملاً)
 //   identity-clear   : أدمن فقط  — حذف
 //   identity-status  : مندوب/أدمن — هل الهوية مسجّلة؟ (المندوب: نعم/لا فقط، الأدمن: مقنّعة)
+//   address-set      : مندوب/أدمن — حفظ العنوان الوطني للعميل (اختياري، jsonb مرن)
 //
 // لا يُكتب الرقم كاملاً في audit_log ولا في أي استجابة لغير الأدمن.
 //
@@ -15,7 +16,7 @@
 // توكنها بنفسها.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { ID_TYPES, maskId, normalizeId, validateId } from "./validate.ts";
+import { ID_TYPES, maskId, normalizeDigits, normalizeId, validateId } from "./validate.ts";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -100,17 +101,44 @@ async function authenticate(body: any): Promise<Auth | null> {
   return null;
 }
 
-async function logAudit(auth: Auth, actionType: string, customerId: number, label: string | null, oldV: unknown, newV: unknown) {
+async function logAudit(auth: Auth, actionType: string, customerId: number, label: string | null, oldV: unknown, newV: unknown, entityType = "customer_identity") {
   try {
     await supabase.from("audit_log").insert({
       actor: auth.actor, actor_role: auth.isAdmin ? "admin" : "rep",
-      action_type: actionType, entity_type: "customer_identity",
+      action_type: actionType, entity_type: entityType,
       entity_id: customerId, entity_label: label, old_value: oldV ?? null, new_value: newV ?? null,
     });
   } catch { /* لا نكسر العملية الأساسية بسبب فشل التسجيل */ }
 }
 
 const ADMIN_ONLY = { error: "بيانات الهوية متاحة للأدمن فقط" };
+
+// ---- العنوان الوطني: كل الحقول اختيارية. البنية النهائية بانتظار رد المحاسب القانوني. ----
+const ADDR_DIGIT_RULES: Record<string, [RegExp, string]> = {
+  building_no: [/^[0-9]{4}$/, "رقم المبنى 4 أرقام"],
+  postal_code: [/^[0-9]{5}$/, "الرمز البريدي 5 أرقام"],
+  additional_no: [/^[0-9]{4}$/, "الرقم الإضافي 4 أرقام"],
+};
+function normalizeAddress(raw: any): { value: Record<string, string> | null; error?: string } {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) return { value: null };
+  const out: Record<string, string> = {};
+  const short = normalizeDigits(raw.short_code).toUpperCase();
+  if (short) {
+    if (!/^[A-Z]{4}[0-9]{4}$/.test(short)) return { value: null, error: "العنوان المختصر: 4 حروف إنجليزية ثم 4 أرقام (مثال RDMC8001)" };
+    out.short_code = short;
+  }
+  for (const k of Object.keys(ADDR_DIGIT_RULES)) {
+    const v = normalizeDigits(raw[k]);
+    if (!v) continue;
+    if (!ADDR_DIGIT_RULES[k][0].test(v)) return { value: null, error: ADDR_DIGIT_RULES[k][1] };
+    out[k] = v;
+  }
+  for (const k of ["street", "district", "city"]) {
+    const v = String(raw[k] ?? "").trim().slice(0, 100);
+    if (v) out[k] = v;
+  }
+  return { value: Object.keys(out).length ? out : null };
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
@@ -137,7 +165,6 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === "identity-set") {
-      if (!auth.isAdmin) return json(ADMIN_ONLY, 403);
       const customerId = Number(body.customerId);
       if (!customerId) return json({ error: "customerId required" }, 400);
       const idType = String(body.idType || "");
@@ -201,6 +228,22 @@ Deno.serve(async (req: Request) => {
       }
       for (const id of ids) if (!(String(id) in byId)) byId[String(id)] = { present: false };
       return json({ ok: true, status: byId });
+    }
+
+    if (action === "address-set") {
+      const customerId = Number(body.customerId);
+      if (!customerId) return json({ error: "customerId required" }, 400);
+      const n = normalizeAddress(body.address);
+      if (n.error) return json({ error: n.error }, 400);
+      const { data: cust, error: cErr } = await supabase.from("customers")
+        .select("id, name, phone, national_address").eq("id", customerId).maybeSingle();
+      if (cErr) throw cErr;
+      if (!cust) return json({ error: "العميل غير موجود" }, 404);
+      const { error } = await supabase.from("customers")
+        .update({ national_address: n.value, updated_at: new Date().toISOString() }).eq("id", customerId);
+      if (error) throw error;
+      await logAudit(auth, "update", customerId, cust.name || cust.phone, cust.national_address ?? null, n.value, "customer_address");
+      return json({ ok: true, national_address: n.value });
     }
 
     return json({ error: "unknown_action" }, 400);

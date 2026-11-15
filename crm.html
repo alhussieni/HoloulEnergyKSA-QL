@@ -794,6 +794,7 @@ body.printing-cert #certPrintArea{display:block!important;}
 <div id="certPrintArea"></div>
 
 <script src="assets/js/invoices-report.js"></script>
+<script src="assets/js/customer-identity-ui.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.4.4/qrcode.min.js" onerror="window.__qrLibFailed=true;"></script>
 
 <script>
@@ -802,6 +803,7 @@ const SUPABASE_URL = 'https://xhgwvszdatqlvlgqiikj.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_4qWmgl6fWMpoU6F_o__ykg_Z0Xy_aJY';
 const ENGINE_FN = SUPABASE_URL + '/functions/v1/compute-quote'; // login only
 const CRM_FN = SUPABASE_URL + '/functions/v1/crm-api';          // everything else
+const IDENTITY_FN = SUPABASE_URL + '/functions/v1/customer-identity'; // هوية العميل (أدمن) + العنوان الوطني
 const INVOICE_FN = SUPABASE_URL + '/functions/v1/invoice-api';  // e-invoices (QR, credit notes, numbering)
 const WARRANTY_FN = SUPABASE_URL + '/functions/v1/warranty-api'; // شهادات الضمان: إصدار مرة واحدة من فاتورة مسددة، طباعة اختيارية
 const WARRANTY_ACTIONS = new Set(['crm-warranty-config','crm-warranty-list','crm-customer-warranties','crm-issue-warranties','crm-print-warranty','crm-void-warranty']);
@@ -873,7 +875,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch(COMPANY_ACTIONS.has(action) ? COMPANY_FN : action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : (action.startsWith('staff-')||action.startsWith('roles-')) ? STAFF_FN : action.startsWith('extras-') ? EXTRAS_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
+  const res = await fetch((action.startsWith('identity-')||action==='address-set') ? IDENTITY_FN : COMPANY_ACTIONS.has(action) ? COMPANY_FN : action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : (action.startsWith('staff-')||action.startsWith('roles-')) ? STAFF_FN : action.startsWith('extras-') ? EXTRAS_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -3587,10 +3589,25 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       <div><label>سبب توقف التنفيذ</label><select id="f_blocker">${optHtml(SETTINGS.blockerReasons, c.blocker_reason)}</select></div>
     </div>`}
 
-    <div id="legalFieldsGroup" class="grid2" style="margin-top:14px;${c.customer_type==='individual'?'display:none':''}">
-      <div><label>السجل التجاري</label><input type="text" id="f_cr" value="${c.commercial_registration||''}"></div>
-      <div><label>الرقم الضريبي (VAT)</label><input type="text" id="f_vat" value="${c.vat_number||''}"></div>
-      <div style="grid-column:1/-1;"><label>الرقم الموحد</label><input type="text" id="f_unified" value="${c.unified_number||''}"></div>
+    <div class="section" style="margin-top:14px;padding-top:14px;">
+      <h4>بيانات رسمية (اختيارية — تُطلب فقط عند إصدار عقد أو فاتورة ضريبية)</h4>
+      <div id="legalFieldsGroup" class="grid2">
+        <div><label>السجل التجاري</label><input type="text" id="f_cr" value="${escapeHtml(c.commercial_registration||'')}" placeholder="10 أرقام"></div>
+        <div><label>الرقم الضريبي (VAT)</label><input type="text" id="f_vat" value="${escapeHtml(c.vat_number||'')}" placeholder="15 رقم يبدأ وينتهي بـ 3"></div>
+        <div style="grid-column:1/-1;"><label>الرقم الموحد</label><input type="text" id="f_unified" value="${escapeHtml(c.unified_number||'')}" placeholder="10 أرقام تبدأ بـ 7"></div>
+      </div>
+      <h4 style="margin-top:12px">العنوان الوطني (اختياري)</h4>
+      <div id="addrGroup" class="grid2">
+        <div><label>العنوان المختصر</label><input type="text" id="a_short" value="${escapeHtml((c.national_address||{}).short_code||'')}" placeholder="مثال: RDMC8001" style="direction:ltr;text-align:right"></div>
+        <div><label>رقم المبنى</label><input type="text" id="a_bld" value="${escapeHtml((c.national_address||{}).building_no||'')}" placeholder="4 أرقام"></div>
+        <div><label>الشارع</label><input type="text" id="a_street" value="${escapeHtml((c.national_address||{}).street||'')}"></div>
+        <div><label>الحي</label><input type="text" id="a_district" value="${escapeHtml((c.national_address||{}).district||'')}"></div>
+        <div><label>المدينة</label><input type="text" id="a_city" value="${escapeHtml((c.national_address||{}).city||'')}"></div>
+        <div><label>الرمز البريدي</label><input type="text" id="a_postal" value="${escapeHtml((c.national_address||{}).postal_code||'')}" placeholder="5 أرقام"></div>
+        <div><label>الرقم الإضافي</label><input type="text" id="a_addl" value="${escapeHtml((c.national_address||{}).additional_no||'')}" placeholder="4 أرقام"></div>
+      </div>
+      <h4 style="margin-top:12px">وثيقة الهوية (للأفراد)</h4>
+      <div id="identity-slot"></div>
     </div>
     ${!hasOpps ? `
     <div id="stallNotesGroup" style="${c.status==='won'?'display:none':''}">
@@ -3721,9 +3738,14 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
   m.querySelector('#custInvoiceBtn').addEventListener('click', ()=>{
     openInvoiceModal({ customer: c });
   });
-  m.querySelector('#f_ctype').addEventListener('change', (e)=>{
-    m.querySelector('#legalFieldsGroup').style.display = e.target.value === 'individual' ? 'none' : '';
-  });
+  if(window.HoloulIdentity){
+    HoloulIdentity.mount(m.querySelector('#identity-slot'), {
+      apiUrl: IDENTITY_FN, anonKey: SUPABASE_ANON_KEY, customerId: c.id,
+      customerType: null, // متاحة لكل عميل بغض النظر عن النوع (نوع العميل غير مضبوط في البيانات الحالية)
+      getAdminToken: ()=> SESSION.role==='admin' ? SESSION.token : null,
+      getRepToken: ()=> SESSION.role==='admin' ? null : SESSION.token,
+    });
+  }
   const statusEl = m.querySelector('#f_status');
   if(statusEl) statusEl.addEventListener('change', (e)=>{
     const won = e.target.value === 'won';
@@ -3754,6 +3776,12 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
         fields.blocker_notes = m.querySelector('#f_notes').value.trim();
       }
       await crmApi('admin-crm-update', {customerId:c.id, fields});
+      await crmApi('address-set', {customerId:c.id, address:{
+        short_code: m.querySelector('#a_short').value, building_no: m.querySelector('#a_bld').value,
+        street: m.querySelector('#a_street').value, district: m.querySelector('#a_district').value,
+        city: m.querySelector('#a_city').value, postal_code: m.querySelector('#a_postal').value,
+        additional_no: m.querySelector('#a_addl').value,
+      }});
       toast('اتحفظ ✅');
       loadCustomers(); loadDashboard(); openCustomer(c.id);
     }catch(err){ toast('خطأ: '+err.message); }

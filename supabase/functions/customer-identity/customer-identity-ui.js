@@ -15,7 +15,7 @@
  *     });
  *   </script>
  *
- * يعرض: للأدمن حقل الإدخال والحفظ والحذف. للمندوب: حالة "مسجّلة/غير مسجّلة" فقط.
+ * يعرض: للمندوب والأدمن حقل الإدخال والحفظ؛ الحذف والرقم المقنّع للأدمن فقط. المندوب يرى حالة "مسجّلة/غير مسجّلة" فقط.
  * لا يستخدم innerHTML مع أي بيانات قادمة من الخادم (منعاً لـ XSS).
  */
 (function (global) {
@@ -107,7 +107,7 @@
       if (clearBtn) clearBtn.style.display = s.present ? "" : "none";
     }
 
-    if (isAdmin) {
+    {
       editWrap = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;align-items:center" });
       typeSel = el("select");
       TYPES.forEach(function (t) { typeSel.appendChild(el("option", { value: t[0] }, t[1])); });
@@ -116,7 +116,7 @@
       saveBtn = el("button", { type: "button" }, "حفظ");
       clearBtn = el("button", { type: "button", style: "display:none" }, "حذف");
       editWrap.appendChild(typeSel); editWrap.appendChild(numInp);
-      editWrap.appendChild(saveBtn); editWrap.appendChild(clearBtn);
+      editWrap.appendChild(saveBtn); if (isAdmin) editWrap.appendChild(clearBtn);
       box.appendChild(editWrap);
 
       async function doSave(confirmed) {
