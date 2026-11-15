@@ -88,7 +88,7 @@
     var msg = el("div", { style: "margin-top:6px;min-height:1.2em;font-size:13px" });
     box.appendChild(statusLine);
 
-    var typeSel, numInp, saveBtn, clearBtn, editWrap;
+    var typeSel, numInp, saveBtn, clearBtn, editWrap, docWrap, docLine, docFile, docBtn, docViewBtn;
 
     function say(text, bad) {
       msg.textContent = text || "";
@@ -105,6 +105,37 @@
         statusLine.textContent = "مسجّلة: " + label + " " + s.masked;
       } else statusLine.textContent = "مسجّلة";
       if (clearBtn) clearBtn.style.display = s.present ? "" : "none";
+      if (docWrap) {
+        docWrap.style.display = s.present ? "" : "none";
+        docLine.textContent = s.doc ? "صورة الهوية: مرفقة" : "صورة الهوية: غير مرفقة";
+        docBtn.textContent = s.doc ? "استبدال الصورة" : "إرفاق صورة الهوية";
+        if (docViewBtn) docViewBtn.style.display = s.doc ? "" : "none";
+      }
+    }
+
+    // يصغّر الصور قبل الرفع (حد أقصى 1800px) لتبقى أقل من 4MB؛ PDF يُرفع كما هو
+    function prepareFile(file) {
+      return new Promise(function (resolve, reject) {
+        if (file.type === "application/pdf") {
+          if (file.size > 4 * 1024 * 1024) return reject(new Error("ملف PDF أكبر من 4 ميجا"));
+          var fr = new FileReader();
+          fr.onload = function () { resolve(String(fr.result).split(",")[1]); };
+          fr.onerror = function () { reject(new Error("تعذّر قراءة الملف")); };
+          return fr.readAsDataURL(file);
+        }
+        if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return reject(new Error("الصيغ المسموحة: JPG أو PNG أو WEBP أو PDF"));
+        var url = URL.createObjectURL(file), img = new Image();
+        img.onload = function () {
+          var k = Math.min(1, 1800 / Math.max(img.width, img.height));
+          var c = document.createElement("canvas");
+          c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+          c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(url);
+          resolve(c.toDataURL("image/jpeg", 0.85).split(",")[1]);
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("تعذّر قراءة الصورة")); };
+        img.src = url;
+      });
     }
 
     {
@@ -142,6 +173,36 @@
         if (r.error) say(r.error, true); else { say("تم الحذف"); await refresh(); }
       });
     }
+
+    docWrap = el("div", { style: "margin-top:10px;padding-top:8px;border-top:1px dashed #d0d5dd;display:none" });
+    docLine = el("div", { style: "margin-bottom:6px;color:#344054" }, "");
+    var docRow = el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;align-items:center" });
+    docFile = el("input", { type: "file", accept: "image/jpeg,image/png,image/webp,application/pdf", style: "display:none" });
+    docBtn = el("button", { type: "button" }, "إرفاق صورة الهوية");
+    docRow.appendChild(docBtn); docRow.appendChild(docFile);
+    if (isAdmin) {
+      docViewBtn = el("button", { type: "button", style: "display:none" }, "عرض الصورة");
+      docRow.appendChild(docViewBtn);
+      docViewBtn.addEventListener("click", async function () {
+        var r = await call(cfg, "identity-doc-url");
+        if (r.error) say(r.error, true); else global.open(r.url, "_blank", "noopener");
+      });
+    }
+    docWrap.appendChild(docLine); docWrap.appendChild(docRow);
+    box.appendChild(docWrap);
+    docBtn.addEventListener("click", function () { docFile.click(); });
+    docFile.addEventListener("change", async function () {
+      var f = docFile.files && docFile.files[0];
+      docFile.value = "";
+      if (!f) return;
+      docBtn.disabled = true; say("جارٍ الرفع…");
+      try {
+        var b64 = await prepareFile(f);
+        var r = await call(cfg, "identity-doc-upload", { dataBase64: b64 });
+        if (r.error) say(r.error, true); else { say("تم رفع الصورة"); await refresh(); }
+      } catch (e) { say(e.message || "فشل الرفع", true); }
+      finally { docBtn.disabled = false; }
+    });
 
     box.appendChild(msg);
     refresh();

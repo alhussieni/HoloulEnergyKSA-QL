@@ -8,6 +8,8 @@
 //   identity-set     : مندوب/أدمن — إنشاء/تعديل (تطبيع + تحقق + تدقيق بدون الرقم كاملاً)
 //   identity-clear   : أدمن فقط  — حذف
 //   identity-status  : مندوب/أدمن — هل الهوية مسجّلة؟ (المندوب: نعم/لا فقط، الأدمن: مقنّعة)
+//   identity-doc-upload : مندوب/أدمن — إرفاق/استبدال صورة الهوية (JPG/PNG/WEBP/PDF حتى 4MB، bucket خاص)
+//   identity-doc-url    : أدمن فقط — رابط مؤقت (120 ثانية) لعرض الصورة
 //   address-set      : مندوب/أدمن — حفظ العنوان الوطني للعميل (اختياري، jsonb مرن)
 //
 // لا يُكتب الرقم كاملاً في audit_log ولا في أي استجابة لغير الأدمن.
@@ -113,6 +115,17 @@ async function logAudit(auth: Auth, actionType: string, customerId: number, labe
 
 const ADMIN_ONLY = { error: "بيانات الهوية متاحة للأدمن فقط" };
 
+const DOC_BUCKET = "customer-id-docs";
+const DOC_MAX = 4 * 1024 * 1024;
+const DOC_EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" };
+function sniffMime(b: Uint8Array): string | null {
+  if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return "image/jpeg";
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return "image/png";
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return "image/webp";
+  if (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46) return "application/pdf";
+  return null;
+}
+
 // ---- العنوان الوطني: كل الحقول اختيارية. البنية النهائية بانتظار رد المحاسب القانوني. ----
 const ADDR_DIGIT_RULES: Record<string, [RegExp, string]> = {
   building_no: [/^[0-9]{4}$/, "رقم المبنى 4 أرقام"],
@@ -205,10 +218,11 @@ Deno.serve(async (req: Request) => {
       const customerId = Number(body.customerId);
       if (!customerId) return json({ error: "customerId required" }, 400);
       const { data: existing } = await supabase.from("customer_identity")
-        .select("id_type, id_number").eq("customer_id", customerId).maybeSingle();
+        .select("id_type, id_number, doc_path").eq("customer_id", customerId).maybeSingle();
       if (!existing) return json({ ok: true });
       const { error } = await supabase.from("customer_identity").delete().eq("customer_id", customerId);
       if (error) throw error;
+      if (existing.doc_path) await supabase.storage.from(DOC_BUCKET).remove([existing.doc_path]);
       await logAudit(auth, "delete", customerId, null, { id_type: existing.id_type, masked: maskId(existing.id_number) }, null);
       return json({ ok: true });
     }
@@ -218,16 +232,62 @@ Deno.serve(async (req: Request) => {
         .map(Number).filter((n: number) => n > 0).slice(0, 500);
       if (!ids.length) return json({ error: "customerIds required" }, 400);
       const { data, error } = await supabase.from("customer_identity")
-        .select("customer_id, id_type, id_number").in("customer_id", ids);
+        .select("customer_id, id_type, id_number, doc_path, doc_mime").in("customer_id", ids);
       if (error) throw error;
       const byId: Record<string, unknown> = {};
       for (const r of data || []) {
         byId[String(r.customer_id)] = auth.isAdmin
-          ? { present: true, id_type: r.id_type, masked: maskId(r.id_number) }
-          : { present: true };
+          ? { present: true, id_type: r.id_type, masked: maskId(r.id_number), doc: !!r.doc_path, doc_mime: r.doc_mime }
+          : { present: true, doc: !!r.doc_path };
       }
       for (const id of ids) if (!(String(id) in byId)) byId[String(id)] = { present: false };
       return json({ ok: true, status: byId });
+    }
+
+    if (action === "identity-doc-upload") {
+      const customerId = Number(body.customerId);
+      if (!customerId) return json({ error: "customerId required" }, 400);
+      const b64 = String(body.dataBase64 || "").replace(/^data:[^;]+;base64,/, "");
+      if (!b64) return json({ error: "الملف مفقود" }, 400);
+      if (b64.length > Math.ceil(DOC_MAX * 4 / 3) + 16) return json({ error: "الملف أكبر من 4 ميجا" }, 400);
+      let bytes: Uint8Array;
+      try {
+        const bin = atob(b64);
+        bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      } catch { return json({ error: "الملف غير صالح" }, 400); }
+      if (bytes.length > DOC_MAX) return json({ error: "الملف أكبر من 4 ميجا" }, 400);
+      const mime = sniffMime(bytes);
+      if (!mime) return json({ error: "نوع الملف غير مدعوم (JPG أو PNG أو WEBP أو PDF)" }, 400);
+      const { data: row, error: rErr } = await supabase.from("customer_identity")
+        .select("doc_path").eq("customer_id", customerId).maybeSingle();
+      if (rErr) throw rErr;
+      if (!row) return json({ error: "سجّل رقم الهوية أولاً ثم أرفق الصورة" }, 400);
+      const path = `${customerId}/${crypto.randomUUID()}.${DOC_EXT[mime]}`;
+      const { error: upErr } = await supabase.storage.from(DOC_BUCKET).upload(path, bytes, { contentType: mime, upsert: false });
+      if (upErr) throw upErr;
+      const { error } = await supabase.from("customer_identity").update({
+        doc_path: path, doc_mime: mime, doc_size: bytes.length,
+        doc_uploaded_by: auth.actor, doc_uploaded_at: new Date().toISOString(),
+      }).eq("customer_id", customerId);
+      if (error) { await supabase.storage.from(DOC_BUCKET).remove([path]); throw error; }
+      if (row.doc_path) await supabase.storage.from(DOC_BUCKET).remove([row.doc_path]);
+      await logAudit(auth, row.doc_path ? "update" : "create", customerId, null, null, { mime, size: bytes.length }, "customer_identity_doc");
+      return json({ ok: true, doc: { mime, size: bytes.length } });
+    }
+
+    if (action === "identity-doc-url") {
+      if (!auth.isAdmin) return json(ADMIN_ONLY, 403);
+      const customerId = Number(body.customerId);
+      if (!customerId) return json({ error: "customerId required" }, 400);
+      const { data: row, error } = await supabase.from("customer_identity")
+        .select("doc_path, doc_mime").eq("customer_id", customerId).maybeSingle();
+      if (error) throw error;
+      if (!row?.doc_path) return json({ error: "لا توجد صورة مرفقة" }, 404);
+      const { data: signed, error: sErr } = await supabase.storage.from(DOC_BUCKET).createSignedUrl(row.doc_path, 120);
+      if (sErr || !signed) throw sErr || new Error("signed url failed");
+      await logAudit(auth, "view", customerId, null, null, { doc: true }, "customer_identity_doc");
+      return json({ ok: true, url: signed.signedUrl, mime: row.doc_mime });
     }
 
     if (action === "address-set") {

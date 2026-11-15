@@ -3565,7 +3565,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     <div class="grid2">
       <div><label>الاسم</label><input type="text" id="f_name" value="${c.name||''}"></div>
       <div><label>رقم الهاتف</label><input type="text" id="f_phone" value="${c.phone||''}"></div>
-      <div><label>نوع العميل</label><select id="f_ctype">${optHtml(SETTINGS.customerTypes, c.customer_type)}</select></div>
+      <div><label>نوع العميل</label><select id="f_ctype">${optHtml(SETTINGS.customerTypes, c.customer_type==='فرد'?'individual':c.customer_type)}</select></div>
       <div><label>التصنيف</label><select id="f_classif">${optHtml(SETTINGS.classifications, c.classification)}</select></div>
       <div><label>المدينة</label><input type="text" id="f_city" value="${c.city||''}"></div>
       <div><label>المنطقة</label><select id="f_region">${optHtml(SETTINGS.regions, c.region)}</select></div>
@@ -3590,13 +3590,19 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
     </div>`}
 
     <div class="section" style="margin-top:14px;padding-top:14px;">
-      <h4>بيانات رسمية (اختيارية — تُطلب فقط عند إصدار عقد أو فاتورة ضريبية)</h4>
+      <div id="sec-hint" style="color:#667085;display:none">اختر نوع العميل (فرد / مؤسسة / شركة) لعرض البيانات الرسمية الخاصة به.</div>
+      <div id="sec-individual" style="display:none">
+        <h4>بيانات الفرد (اختيارية — تُطلب فقط عند إصدار عقد)</h4>
+        <div id="identity-slot"></div>
+      </div>
+      <div id="sec-company" style="display:none">
+        <h4>بيانات الشركة / المؤسسة (اختيارية — تُطلب فقط عند إصدار عقد أو فاتورة ضريبية)</h4>
       <div id="legalFieldsGroup" class="grid2">
         <div><label>السجل التجاري</label><input type="text" id="f_cr" value="${escapeHtml(c.commercial_registration||'')}" placeholder="10 أرقام"></div>
         <div><label>الرقم الضريبي (VAT)</label><input type="text" id="f_vat" value="${escapeHtml(c.vat_number||'')}" placeholder="15 رقم يبدأ وينتهي بـ 3"></div>
         <div style="grid-column:1/-1;"><label>الرقم الموحد</label><input type="text" id="f_unified" value="${escapeHtml(c.unified_number||'')}" placeholder="10 أرقام تبدأ بـ 7"></div>
       </div>
-      <h4 style="margin-top:12px">العنوان الوطني (اختياري)</h4>
+      <h4 style="margin-top:12px">العنوان الوطني</h4>
       <div id="addrGroup" class="grid2">
         <div><label>العنوان المختصر</label><input type="text" id="a_short" value="${escapeHtml((c.national_address||{}).short_code||'')}" placeholder="مثال: RDMC8001" style="direction:ltr;text-align:right"></div>
         <div><label>رقم المبنى</label><input type="text" id="a_bld" value="${escapeHtml((c.national_address||{}).building_no||'')}" placeholder="4 أرقام"></div>
@@ -3606,8 +3612,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
         <div><label>الرمز البريدي</label><input type="text" id="a_postal" value="${escapeHtml((c.national_address||{}).postal_code||'')}" placeholder="5 أرقام"></div>
         <div><label>الرقم الإضافي</label><input type="text" id="a_addl" value="${escapeHtml((c.national_address||{}).additional_no||'')}" placeholder="4 أرقام"></div>
       </div>
-      <h4 style="margin-top:12px">وثيقة الهوية (للأفراد)</h4>
-      <div id="identity-slot"></div>
+      </div>
     </div>
     ${!hasOpps ? `
     <div id="stallNotesGroup" style="${c.status==='won'?'display:none':''}">
@@ -3738,6 +3743,14 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
   m.querySelector('#custInvoiceBtn').addEventListener('click', ()=>{
     openInvoiceModal({ customer: c });
   });
+  const applyTypeSections=()=>{
+    const t=m.querySelector('#f_ctype').value, ind=t==='individual', comp=(t==='institution'||t==='company');
+    m.querySelector('#sec-individual').style.display=ind?'':'none';
+    m.querySelector('#sec-company').style.display=comp?'':'none';
+    m.querySelector('#sec-hint').style.display=(!ind&&!comp)?'':'none';
+  };
+  m.querySelector('#f_ctype').addEventListener('change', applyTypeSections);
+  applyTypeSections();
   if(window.HoloulIdentity){
     HoloulIdentity.mount(m.querySelector('#identity-slot'), {
       apiUrl: IDENTITY_FN, anonKey: SUPABASE_ANON_KEY, customerId: c.id,
