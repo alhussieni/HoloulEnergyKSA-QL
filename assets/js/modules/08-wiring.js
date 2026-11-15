@@ -1708,10 +1708,6 @@ refresh();
     adminTokenMem = saved.token;
     const data = await callEngine('admin-config', { adminToken: adminTokenMem });
     adminConfig = normalizeAdminConfig(data.config); adminAuthed = true;
-    try{
-      const repsData = await callEngine('admin-list-reps', { adminToken: adminTokenMem });
-      adminReps = repsData.reps || [];
-    }catch(e){ adminReps = []; }
     if(!fromRememberMe) shareAdminSession(adminTokenMem); // refresh our copy's exp tracking either way
     render();
   }catch(e){

@@ -1992,7 +1992,7 @@ function wireCompanySection(){
 }
 
 function renderAdmin(){
-  const admSectionTitles = {'overview':'نظرة عامة','discounts':'الخصومات','pricing':'الأسعار والهوامش','calcs':'حاسبات الأنظمة','products':'المنتجات والكتالوج','portfolio':'البورتفوليو','leads':'قاعدة العملاء','reps':'إدارة المناديب','company':'بيانات المؤسسة','security':'الحماية والنظام'};
+  const admSectionTitles = {'overview':'نظرة عامة','discounts':'الخصومات','pricing':'الأسعار والهوامش','calcs':'حاسبات الأنظمة','products':'المنتجات والكتالوج','portfolio':'البورتفوليو','leads':'قاعدة العملاء','company':'بيانات المؤسسة','security':'الحماية والنظام'};
   return `
   <div class="admin-shell">
   <aside class="admin-sidebar no-print">
@@ -2007,7 +2007,6 @@ function renderAdmin(){
       <button class="admin-nav-btn ${currentAdminSection==='products'?'active':''}" data-admsec="products" type="button"><span class="ic">📦</span><span class="lbl">المنتجات والكتالوج</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='portfolio'?'active':''}" data-admsec="portfolio" type="button"><span class="ic">🖼️</span><span class="lbl">البورتفوليو</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='leads'?'active':''}" data-admsec="leads" type="button"><span class="ic">📋</span><span class="lbl">قاعدة العملاء</span></button>
-      <button class="admin-nav-btn ${currentAdminSection==='reps'?'active':''}" data-admsec="reps" type="button"><span class="ic">👥</span><span class="lbl">إدارة المناديب</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='company'?'active':''}" data-admsec="company" type="button"><span class="ic">🏢</span><span class="lbl">بيانات المؤسسة</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='security'?'active':''}" data-admsec="security" type="button"><span class="ic">🔒</span><span class="lbl">الحماية والنظام</span></button>
     </nav>
@@ -2026,14 +2025,13 @@ function renderAdmin(){
     <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.productCatalog.reduce((s,c)=>s+(c.rows?.length||0),0)}</div><div class="l">إجمالي المنتجات</div></div>
     <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.panels.length}</div><div class="l">أنواع الألواح</div></div>
     <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.readyOffgridSystems.length}</div><div class="l">منظومات جاهزة</div></div>
-    <div class="stat stat-click" data-admsec-jump="reps"><div class="v">${adminReps.filter(r=>r.active).length}/${adminReps.length}</div><div class="l">مناديب نشطون</div></div>
     <div class="stat stat-click" data-admsec-jump="leads"><div class="v" id="ovLeadsCount">${overviewStats ? overviewStats.totalCustomers : '…'}</div><div class="l">عملاء مسجّلون</div></div>
     <div class="stat stat-click" data-admsec-jump="discounts"><div class="v">${adminConfig.discountTiers.length}</div><div class="l">فئات الخصم</div></div>
   </div>
   <div class="stats" style="margin-bottom:16px">
     <div class="stat stat-click" data-admsec-jump="leads"><div class="v">${overviewStats ? overviewStats.quotesThisMonth : '…'}</div><div class="l">عروض أسعار هذا الشهر</div></div>
     <div class="stat stat-click" data-admsec-jump="leads"><div class="v">${overviewStats ? fmt(overviewStats.avgQuoteValue)+' ﷼' : '…'}</div><div class="l">متوسط قيمة العرض (الشهر)</div></div>
-    <div class="stat stat-click" data-admsec-jump="reps"><div class="v" style="font-size:14px">${overviewStats ? overviewStats.mostActiveRep : '…'}</div><div class="l">الأكثر نشاطًا هذا الشهر (${overviewStats?overviewStats.mostActiveRepCount:0} عرض)</div></div>
+    <div class="stat stat-click" data-admsec-jump="leads"><div class="v" style="font-size:14px">${overviewStats ? overviewStats.mostActiveRep : '…'}</div><div class="l">الأكثر نشاطًا هذا الشهر (${overviewStats?overviewStats.mostActiveRepCount:0} عرض)</div></div>
   </div>
 </section>
 
@@ -2613,14 +2611,6 @@ ${(function(){
 
 <section class="admsec ${currentAdminSection==='leads'?'active':''}" data-admsec="leads">
   ${renderCustomersSection()}
-</section>
-
-<section class="admsec ${currentAdminSection==='reps'?'active':''}" data-admsec="reps">
-  <div class="card no-print">
-    <h3>إدارة المناديب والموظفين</h3>
-    <p class="note">إدارة المناديب والموظفين وصلاحياتهم بقت في مكان واحد: <b>CRM ← 🔐 الأدوار والموظفين</b>.</p>
-    <a class="btn" href="crm.html#roles">فتح الأدوار والموظفين ↗</a>
-  </div>
 </section>
 
 <section class="admsec ${currentAdminSection==='company'?'active':''}" data-admsec="company">
