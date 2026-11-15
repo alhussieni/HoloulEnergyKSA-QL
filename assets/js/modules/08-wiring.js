@@ -1125,6 +1125,52 @@ function wire(){
         render();
       }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
     });
+    // --- سجل الماركات وشعاراتها ---
+    function brandUpsertLogo(name, logo){
+      adminConfig.brands = adminConfig.brands || [];
+      const k = brandKey(name);
+      const ex = adminConfig.brands.find(b=>brandKey(b && b.name)===k);
+      if(ex) ex.logo = logo; else adminConfig.brands.push({ name: String(name).trim(), logo });
+    }
+    async function brandPersist(){
+      harvestAdminInputs();
+      await callEngine('update-config', { adminToken: adminTokenMem, config: adminConfig });
+    }
+    document.querySelectorAll('[data-brandlogo]').forEach(inp=>inp.onchange = async ()=>{
+      const file = inp.files[0]; if(!file) return;
+      try{
+        const url = await uploadImage(file);
+        brandUpsertLogo(inp.dataset.brandlogo, url);
+        await brandPersist(); render();
+      }catch(e){ alert('تعذر رفع الشعار: ' + e.message); }
+    });
+    document.querySelectorAll('[data-brandlogoclear]').forEach(b=>b.onclick = async ()=>{
+      if(!confirm(`إزالة شعار ${b.dataset.brandlogoclear}؟`)) return;
+      try{ brandUpsertLogo(b.dataset.brandlogoclear, ''); await brandPersist(); render(); }
+      catch(e){ alert('تعذر الحفظ: ' + e.message); }
+    });
+    document.querySelectorAll('[data-branddel]').forEach(b=>b.onclick = async ()=>{
+      const k = brandKey(b.dataset.branddel);
+      if(!confirm(`حذف ${b.dataset.branddel} من سجل الماركات؟`)) return;
+      try{ adminConfig.brands = (adminConfig.brands||[]).filter(x=>brandKey(x && x.name)!==k); await brandPersist(); render(); }
+      catch(e){ alert('تعذر الحذف: ' + e.message); }
+    });
+    const brandNewLogoEl = document.getElementById('brandNewLogo');
+    if(brandNewLogoEl) brandNewLogoEl.onchange = ()=>{
+      const f = document.getElementById('brandNewFile'); if(f) f.textContent = brandNewLogoEl.files[0] ? brandNewLogoEl.files[0].name : '';
+    };
+    const brandAddBtn = document.getElementById('brandAddBtn');
+    if(brandAddBtn) brandAddBtn.onclick = async ()=>{
+      const name = (document.getElementById('brandNewName').value || '').trim();
+      if(!name){ alert('اكتب اسم الماركة أولًا'); return; }
+      brandAddBtn.disabled = true;
+      try{
+        const file = brandNewLogoEl && brandNewLogoEl.files[0];
+        const url = file ? await uploadImage(file) : '';
+        brandUpsertLogo(name, url);
+        await brandPersist(); render();
+      }catch(e){ alert('تعذر إضافة الماركة: ' + e.message); brandAddBtn.disabled = false; }
+    };
     document.querySelectorAll('[data-readysysimg]').forEach(inp=>inp.onchange = async ()=>{
       const file = inp.files[0]; if(!file) return;
       harvestAdminInputs();

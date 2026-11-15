@@ -18,6 +18,7 @@ function normalizeAdminConfig(cfg){
   }
   if(!Array.isArray(cfg.readyOffgridSystems)) cfg.readyOffgridSystems = [];
   if(!Array.isArray(cfg.discounts)) cfg.discounts = [];
+  if(!Array.isArray(cfg.brands)) cfg.brands = []; // سجل الماركات: [{name, logo}]
   return cfg;
 }
 

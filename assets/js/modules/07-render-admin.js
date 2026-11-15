@@ -30,6 +30,49 @@ const pfBadges = (vis, priced)=> (vis && priced)
   ? '<span class="tag good">متاح</span>'
   : (!vis ? '<span class="tag warn">مخفي</span> ' : '') + (!priced ? '<span class="tag warn">بدون سعر</span>' : '');
 
+function brdStyleHtml(){ return `<style>
+  .brd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;margin:12px 0}
+  .brd-card{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px;align-items:center;text-align:center;background:#fff}
+  .brd-logo{width:100%;height:84px;display:flex;align-items:center;justify-content:center;background:var(--sand);border-radius:8px}
+  .brd-logo img{max-width:90%;max-height:72px;object-fit:contain}
+  .brd-logo .brd-ph{font-size:22px;font-weight:800;color:var(--muted)}
+  .brd-ops{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+  .brd-add{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;border-top:1px solid var(--line);padding-top:12px;margin-top:6px}
+</style>`; }
+
+function brandsTabHtml(){
+  const names = getAllBrandNames(adminConfig);
+  const usage = {};
+  const bump = (n,f)=>{ const k=brandKey(n); if(!k) return; (usage[k]=usage[k]||{p:0,c:0})[f]++; };
+  (adminConfig.panels||[]).forEach(p=>bump(p.brand,'p'));
+  (adminConfig.productCatalog||[]).forEach(cat=>(cat.rows||[]).forEach((r,i)=>bump(cat.productDetails&&cat.productDetails[String(i)]&&cat.productDetails[String(i)].brand,'c')));
+  const cards = names.map(n=>{
+    const logo = getBrandLogo(adminConfig, n);
+    const u = usage[brandKey(n)] || {p:0,c:0};
+    const inReg = (adminConfig.brands||[]).some(b=>brandKey(b&&b.name)===brandKey(n));
+    return `<div class="brd-card">
+      <div class="brd-logo">${logo?`<img src="${escAttr(logo)}" alt="${escAttr(n)}">`:`<span class="brd-ph">${esc(n.slice(0,2).toUpperCase())}</span>`}</div>
+      <b>${esc(n)}</b>
+      <div class="note" style="margin:0">${u.p} لوح · ${u.c} منتج في الكتالوج</div>
+      <div class="brd-ops">
+        <label class="btn ghost small" style="cursor:pointer">📷 ${logo?'تغيير الشعار':'رفع الشعار'}<input type="file" accept="image/*" data-brandlogo="${escAttr(n)}" style="display:none"></label>
+        ${logo?`<button type="button" class="btn ghost small" data-brandlogoclear="${escAttr(n)}">إزالة الشعار</button>`:''}
+        ${(inReg && !u.p && !u.c)?`<button type="button" class="btn danger small" data-branddel="${escAttr(n)}">🗑 حذف</button>`:''}
+      </div>
+    </div>`;
+  }).join('') || '<div class="note">لا توجد ماركات بعد.</div>';
+  return `<div class="card no-print">
+    <h3>🏷️ الماركات وشعاراتها</h3>
+    <div class="note">سجّل شعار كل ماركة مرة واحدة هنا (JA / Aiko / Jinko / TW / VEICHI / SINOBOLY …) وهيتحفظ في الإعدادات ويتاح استخدامه في أي مكان مستقبلًا. الماركات اللي في الألواح والكتالوج بتظهر هنا تلقائيًا (JA وJa نفس الماركة). الشعار بيتحفظ فور رفعه.</div>
+    <div class="brd-grid">${cards}</div>
+    <div class="brd-add">
+      <div style="flex:1;min-width:200px"><label>اسم ماركة جديدة</label><input type="text" id="brandNewName" placeholder="مثال: Huawei"></div>
+      <div><label class="btn ghost small" style="cursor:pointer">📷 اختيار الشعار<input type="file" accept="image/*" id="brandNewLogo" style="display:none"></label> <span class="note" id="brandNewFile" style="margin:0"></span></div>
+      <button type="button" class="btn small" id="brandAddBtn">+ إضافة الماركة</button>
+    </div>
+  </div>`;
+}
+
 function pfRenderPanels(){
   const panels = adminConfig.panels || [];
   const map = new Map();
@@ -2036,82 +2079,9 @@ function renderAdmin(){
 </section>
 
 <section class="admsec ${currentAdminSection==='discounts'?'active':''}" data-admsec="discounts">
-${(function(){
-  const brandOptions = getCatalogBrandOptions(adminConfig);
-  const categories = Object.keys(brandOptions);
-  const selCategory = discountFormState.category || categories[0] || '';
-  const brandsForSel = brandOptions[selCategory] || [];
-  const selBrand = brandsForSel.includes(discountFormState.brand) ? discountFormState.brand : (brandsForSel[0] || '');
-  const catOptsHtml = categories.map(c=>`<option value="${escAttr(c)}" ${c===selCategory?'selected':''}>${esc(c)}</option>`).join('') || '<option value="">لا توجد فئات</option>';
-  const brandOptsHtml = brandsForSel.map(b=>`<option value="${escAttr(b)}" ${b===selBrand?'selected':''}>${esc(b)}</option>`).join('') || '<option value="">لا توجد ماركات</option>';
-  const rows = (adminConfig.discounts||[]);
-  const rowsHtml = rows.length ? rows.map((d,i)=>`
-    <tr>
-      <td>${esc(d.category)}</td>
-      <td>${esc(d.brand)}</td>
-      <td>${(Number(d.supplierDiscountPct)||0)}%</td>
-      <td>${(Number(d.sellDiscountPct)||0)}%</td>
-      <td>${d.promoActive ? `${(Number(d.promoDiscountPct)||0)}% (شغّال) <button class="btn ghost small" data-disc-clearpromo="${i}" type="button">حذف الترويجي</button>` : `${(Number(d.promoDiscountPct)||0)}% (متوقف)`}</td>
-      <td style="white-space:nowrap">
-        <button class="btn ghost small" data-disc-edit="${i}" type="button">تعديل</button>
-        <button class="btn ghost small" data-disc-del="${i}" type="button">حذف</button>
-      </td>
-    </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted)">لا توجد خصومات مسجّلة بعد</td></tr>`;
-  return `
   <div class="card" style="margin-bottom:16px">
-    <h3 style="margin-top:0">🏷️ الخصومات</h3>
-    <p style="color:var(--muted);font-size:14px;line-height:1.9;margin-bottom:16px">
-      الخصم مسجّل على مستوى (الفئة + الماركة) — يعني يغطي كل موديلات نفس الماركة تلقائيًا، من غير ما تحتاج تسجّل كل موديل لوحده.
-      يتحسب على سعر البيع المعروض على الموقع، ويُستخدم بس داخليًا لحساب هامش الربح في عروض أسعار المناديب — مش ظاهر للعميل ولا المندوب أبدًا.
-    </p>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-      <div style="flex:1;min-width:180px">
-        <label>الفئة</label>
-        <select id="disc_category">${catOptsHtml}</select>
-      </div>
-      <div style="flex:1;min-width:180px">
-        <label>الماركة</label>
-        <select id="disc_brand">${brandOptsHtml}</select>
-      </div>
-      <div style="flex:1;min-width:160px">
-        <label>خصم المورد % (تكلفة الشركة)</label>
-        <input type="number" id="disc_supplier" value="${discountFormState.supplierDiscountPct}" step="0.1">
-      </div>
-      <div style="flex:1;min-width:160px">
-        <label>خصم البيع % (للعميل)</label>
-        <input type="number" id="disc_sell" value="${discountFormState.sellDiscountPct}" step="0.1">
-      </div>
-    </div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:14px">
-      <div style="flex:1;min-width:200px">
-        <label>خصم ترويجي % (صفحة المنتجات فقط)</label>
-        <input type="number" id="disc_promo" value="${discountFormState.promoDiscountPct}" step="0.1">
-      </div>
-      <div style="flex:1;min-width:160px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
-          <input type="checkbox" id="disc_promo_active" ${discountFormState.promoActive?'checked':''}> الترويجي شغّال
-        </label>
-      </div>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center">
-      <button class="btn" id="disc_save_btn" type="button">💾 حفظ الخصومات</button>
-      ${discountFormState.editKey ? '<button class="btn ghost" id="disc_cancel_edit" type="button">إلغاء التعديل</button>' : ''}
-    </div>
-    <p style="color:var(--muted);font-size:13px;margin-top:14px;line-height:1.9">
-      خصم البيع لازم يكون أقل من أو يساوي خصم المورد دايمًا (عشان الشركة نفسها متبقاش بتخسر) — القاعدة نفسها بترفض أي قيمة مخالفة.
-      الخصم الترويجي مستقل تمامًا ويؤثر بس على السعر الظاهر في صفحة المنتجات لنفس الفئة والماركة المختارة فوق — مبيلمسش خصم المورد ولا سعر عروض أسعار المناديب.
-    </p>
+    <p style="color:var(--muted);font-size:14px;line-height:1.9;margin:0">🏷️ خصومات الماركات (المورد / البيع / الترويجي) اتنقلت إلى <b>المنتجات والكتالوج ← الخصومات</b>. هنا فئات الخصم الخاصة بالعملاء فقط.</p>
   </div>
-
-  <div class="card">
-    <h3 style="margin-top:0">الخصومات المسجّلة حاليًا</h3>
-    <table class="admtable">
-      <thead><tr><th>الفئة</th><th>الماركة</th><th>خصم المورد</th><th>خصم البيع</th><th>خصم ترويجي</th><th></th></tr></thead>
-      <tbody>${rowsHtml}</tbody>
-    </table>
-  </div>
-  `;
-})()}
 
   <div class="card">
     <h3>فئات الخصم</h3>
@@ -2263,9 +2233,93 @@ ${(function(){
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='panels'?'active':''}" data-admsubparent="products" data-admsub="panels" type="button"><span class="ic">☀️</span><span class="lbl">الألواح الشمسية</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='bomimages'?'active':''}" data-admsubparent="products" data-admsub="bomimages" type="button"><span class="ic">🖼️</span><span class="lbl">صور عناصر العرض</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='items'?'active':''}" data-admsubparent="products" data-admsub="items" type="button"><span class="ic">🏷️</span><span class="lbl">الأصناف والضمان</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.products==='discounts'?'active':''}" data-admsubparent="products" data-admsub="discounts" type="button"><span class="ic">💸</span><span class="lbl">الخصومات</span></button>
+    <button class="admsub-nav-btn ${currentAdminSubSection.products==='brands'?'active':''}" data-admsubparent="products" data-admsub="brands" type="button"><span class="ic">🏷️</span><span class="lbl">الماركات والشعارات</span></button>
     <button class="admsub-nav-btn ${currentAdminSubSection.products==='ready'?'active':''}" data-admsubparent="products" data-admsub="ready" type="button"><span class="ic">🧰</span><span class="lbl">منظومات جاهزة</span></button>
   </aside>
   <div class="admsub-main">
+  ${brdStyleHtml()}
+  <div class="admsubsec ${currentAdminSubSection.products==='discounts'?'active':''}" data-admsub="discounts">
+${(function(){
+  const brandOptions = getCatalogBrandOptions(adminConfig);
+  const categories = Object.keys(brandOptions);
+  const selCategory = discountFormState.category || categories[0] || '';
+  const brandsForSel = brandOptions[selCategory] || [];
+  const selBrand = brandsForSel.includes(discountFormState.brand) ? discountFormState.brand : (brandsForSel[0] || '');
+  const catOptsHtml = categories.map(c=>`<option value="${escAttr(c)}" ${c===selCategory?'selected':''}>${esc(c)}</option>`).join('') || '<option value="">لا توجد فئات</option>';
+  const brandOptsHtml = brandsForSel.map(b=>`<option value="${escAttr(b)}" ${b===selBrand?'selected':''}>${esc(b)}</option>`).join('') || '<option value="">لا توجد ماركات</option>';
+  const rows = (adminConfig.discounts||[]);
+  const rowsHtml = rows.length ? rows.map((d,i)=>`
+    <tr>
+      <td>${esc(d.category)}</td>
+      <td>${esc(d.brand)}</td>
+      <td>${(Number(d.supplierDiscountPct)||0)}%</td>
+      <td>${(Number(d.sellDiscountPct)||0)}%</td>
+      <td>${d.promoActive ? `${(Number(d.promoDiscountPct)||0)}% (شغّال) <button class="btn ghost small" data-disc-clearpromo="${i}" type="button">حذف الترويجي</button>` : `${(Number(d.promoDiscountPct)||0)}% (متوقف)`}</td>
+      <td style="white-space:nowrap">
+        <button class="btn ghost small" data-disc-edit="${i}" type="button">تعديل</button>
+        <button class="btn ghost small" data-disc-del="${i}" type="button">حذف</button>
+      </td>
+    </tr>`).join('') : `<tr><td colspan="6" style="text-align:center;color:var(--muted)">لا توجد خصومات مسجّلة بعد</td></tr>`;
+  return `
+  <div class="card" style="margin-bottom:16px">
+    <h3 style="margin-top:0">🏷️ الخصومات</h3>
+    <p style="color:var(--muted);font-size:14px;line-height:1.9;margin-bottom:16px">
+      الخصم مسجّل على مستوى (الفئة + الماركة) — يعني يغطي كل موديلات نفس الماركة تلقائيًا، من غير ما تحتاج تسجّل كل موديل لوحده.
+      يتحسب على سعر البيع المعروض على الموقع، ويُستخدم بس داخليًا لحساب هامش الربح في عروض أسعار المناديب — مش ظاهر للعميل ولا المندوب أبدًا.
+    </p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <div style="flex:1;min-width:180px">
+        <label>الفئة</label>
+        <select id="disc_category">${catOptsHtml}</select>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <label>الماركة</label>
+        <select id="disc_brand">${brandOptsHtml}</select>
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label>خصم المورد % (تكلفة الشركة)</label>
+        <input type="number" id="disc_supplier" value="${discountFormState.supplierDiscountPct}" step="0.1">
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label>خصم البيع % (للعميل)</label>
+        <input type="number" id="disc_sell" value="${discountFormState.sellDiscountPct}" step="0.1">
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:14px">
+      <div style="flex:1;min-width:200px">
+        <label>خصم ترويجي % (صفحة المنتجات فقط)</label>
+        <input type="number" id="disc_promo" value="${discountFormState.promoDiscountPct}" step="0.1">
+      </div>
+      <div style="flex:1;min-width:160px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+          <input type="checkbox" id="disc_promo_active" ${discountFormState.promoActive?'checked':''}> الترويجي شغّال
+        </label>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <button class="btn" id="disc_save_btn" type="button">💾 حفظ الخصومات</button>
+      ${discountFormState.editKey ? '<button class="btn ghost" id="disc_cancel_edit" type="button">إلغاء التعديل</button>' : ''}
+    </div>
+    <p style="color:var(--muted);font-size:13px;margin-top:14px;line-height:1.9">
+      خصم البيع لازم يكون أقل من أو يساوي خصم المورد دايمًا (عشان الشركة نفسها متبقاش بتخسر) — القاعدة نفسها بترفض أي قيمة مخالفة.
+      الخصم الترويجي مستقل تمامًا ويؤثر بس على السعر الظاهر في صفحة المنتجات لنفس الفئة والماركة المختارة فوق — مبيلمسش خصم المورد ولا سعر عروض أسعار المناديب.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">الخصومات المسجّلة حاليًا</h3>
+    <table class="admtable">
+      <thead><tr><th>الفئة</th><th>الماركة</th><th>خصم المورد</th><th>خصم البيع</th><th>خصم ترويجي</th><th></th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+  </div>
+  `;
+})()}
+  </div>
+  <div class="admsubsec ${currentAdminSubSection.products==='brands'?'active':''}" data-admsub="brands">
+  ${brandsTabHtml()}
+  </div>
   <div class="admsubsec ${currentAdminSubSection.products==='panels'?'active':''}" data-admsub="panels">
   <div class="card">
     <h3>الألواح الشمسية</h3>

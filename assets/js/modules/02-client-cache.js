@@ -127,6 +127,25 @@ function getCatalogBrandOptions(cfg){
   if(panelBrands.size) byCategory['الألواح الشمسية'] = Array.from(panelBrands).sort();
   return byCategory;
 }
+// ---------------------------------------------------------------------------
+// سجل الماركات وشعاراتها (cfg.brands = [{name, logo}]) — مصدر واحد لشعار أي ماركة
+// (ألواح JA / Aiko / Jinko / TW … وانفرترات VEICHI …) بحيث يُستخدم في أي مكان لاحقًا.
+// المطابقة بالاسم بدون حساسية لحالة الأحرف (JA = Ja).
+// ---------------------------------------------------------------------------
+function brandKey(n){ return String(n==null?'':n).trim().toLowerCase(); }
+function getBrandLogo(cfg, name){
+  const k = brandKey(name); if(!k) return '';
+  const b = (cfg.brands||[]).find(x=>brandKey(x && x.name)===k);
+  return (b && b.logo) || '';
+}
+// كل الماركات الموجودة: السجل + ماركات الكتالوج + ماركات الألواح (بدون تكرار)
+function getAllBrandNames(cfg){
+  const m = new Map();
+  const add = n=>{ const t=String(n==null?'':n).trim(); if(!t) return; const k=brandKey(t); if(!m.has(k)) m.set(k,t); };
+  (cfg.brands||[]).forEach(b=>add(b && b.name));
+  Object.values(getCatalogBrandOptions(cfg)).forEach(arr=>arr.forEach(add));
+  return [...m.values()].sort((a,b)=>a.localeCompare(b,'en',{sensitivity:'base'}));
+}
 let currentAdminSubSection = { products:'catalog', calcs:'pump' }; // secondary in-page sidebar for long sections
 let engineError = null;
 let quoteLoading = false;
