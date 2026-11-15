@@ -128,9 +128,10 @@ function renderGuestRegister(){
 let adminAuthed = false;
 
 let adminLoadFailed = false;
+let adminLoadErr = '';
 function renderAdminLogin(){
   if(HoloulAuth.token('admin')){ // الأدمن مسجّل — بيتحمّل في الخلفية
-    return `<div class="card" style="max-width:360px;margin:40px auto;text-align:center"><div class="note">${adminLoadFailed ? 'تعذّر تحميل لوحة التحكم دلوقتي — حدّث الصفحة وحاول تاني.' : 'جارٍ تحميل لوحة التحكم…'}</div></div>`;
+    return `<div class="card" style="max-width:360px;margin:40px auto;text-align:center"><div class="note">${adminLoadFailed ? 'تعذّر تحميل لوحة التحكم دلوقتي — حدّث الصفحة وحاول تاني.' : 'جارٍ تحميل لوحة التحكم…'}${adminLoadFailed && adminLoadErr ? `<div dir="ltr" style="margin-top:8px;font-size:11px;color:#667085;word-break:break-word">${String(adminLoadErr).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</div>` : ''}</div></div>`;
   }
   return `<div class="card" style="max-width:360px;margin:40px auto;text-align:center">
     <h3>لوحة التحكم</h3>
@@ -586,7 +587,9 @@ function wire(){
       });
     }
 
-    document.getElementById('addRepBtn').onclick = async ()=>{
+    /* قسم المناديب اتنقل إلى CRM — العنصر لم يعد موجودًا في لوحة الأدمن */
+    const addRepBtnEl = document.getElementById('addRepBtn');
+    if(addRepBtnEl) addRepBtnEl.onclick = async ()=>{
       const username = document.getElementById('newrep_username').value.trim();
       const displayName = document.getElementById('newrep_displayname').value.trim();
       const password = document.getElementById('newrep_password').value;
@@ -598,7 +601,9 @@ function wire(){
         render();
       }catch(e){ alert('تعذرت الإضافة: '+e.message); }
     };
-    document.getElementById('saveRepsBtn').onclick = async ()=>{
+    /* قسم المناديب اتنقل إلى CRM — العنصر لم يعد موجودًا في لوحة الأدمن */
+    const saveRepsBtnEl = document.getElementById('saveRepsBtn');
+    if(saveRepsBtnEl) saveRepsBtnEl.onclick = async ()=>{
       const rows = {};
       const checkboxFields = ['active','perm_pricing','perm_calcs','perm_products','perm_portfolio','perm_supply'];
       document.querySelectorAll('[data-repid]').forEach(inp=>{
@@ -1772,6 +1777,8 @@ refresh();
     if(fromRememberMe) localStorage.removeItem(ADMIN_REMEMBER_KEY); // token expired/invalidated server-side — stop retrying
     // السيرفر هو الحكم: لو التوكن مرفوض فعلًا بيتمسح، لو بس عطل مؤقت (شبكة/500) الجلسة بتفضل زي ما هي
     adminLoadFailed = true;
+    adminLoadErr = (e && (e.stack ? String(e.message||e)+' @ '+String(e.stack).split('\n').slice(1,3).join(' | ').trim() : (e.message||e))) || String(e);
+    console.error('[admin-load]', e);
     HoloulAuth.refresh().then(()=>{ try{ applyNavByAccess(); render(); }catch(_){} });
   }
 })();
