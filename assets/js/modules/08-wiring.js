@@ -511,7 +511,7 @@ function wire(){
       const main = document.querySelector('.admin-main'); if(main) main.scrollIntoView({behavior:'smooth', block:'start'});
     }
     document.querySelectorAll('.admin-nav-btn').forEach(b=>{ b.onclick = ()=>goToAdminSection(b.dataset.admsec); });
-    document.querySelectorAll('[data-admsec-jump]').forEach(b=>{ b.onclick = ()=>goToAdminSection(b.dataset.admsecJump); });
+    document.querySelectorAll('[data-admsec-jump]').forEach(b=>{ b.onclick = ()=>{ if(b.dataset.admsubJump){ currentAdminSubSection[b.dataset.admsecJump] = b.dataset.admsubJump; render(); } goToAdminSection(b.dataset.admsecJump); }; });
     document.querySelectorAll('.admsub-nav-btn').forEach(b=>{
       b.onclick = ()=>{
         const parent = b.dataset.admsubparent, sub = b.dataset.admsub;

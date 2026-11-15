@@ -2045,7 +2045,6 @@ function renderAdmin(){
     </div>
     <nav class="admin-nav">
       <button class="admin-nav-btn ${currentAdminSection==='overview'?'active':''}" data-admsec="overview" type="button"><span class="ic">📊</span><span class="lbl">نظرة عامة</span></button>
-      <button class="admin-nav-btn ${currentAdminSection==='discounts'?'active':''}" data-admsec="discounts" type="button"><span class="ic">🏷️</span><span class="lbl">الخصومات</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='calcs'?'active':''}" data-admsec="calcs" type="button"><span class="ic">🧮</span><span class="lbl">حاسبات الأنظمة</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='products'?'active':''}" data-admsec="products" type="button"><span class="ic">📦</span><span class="lbl">المنتجات والكتالوج</span></button>
       <button class="admin-nav-btn ${currentAdminSection==='portfolio'?'active':''}" data-admsec="portfolio" type="button"><span class="ic">🖼️</span><span class="lbl">البورتفوليو</span></button>
@@ -2069,7 +2068,7 @@ function renderAdmin(){
     <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.panels.length}</div><div class="l">أنواع الألواح</div></div>
     <div class="stat stat-click" data-admsec-jump="products"><div class="v">${adminConfig.readyOffgridSystems.length}</div><div class="l">منظومات جاهزة</div></div>
     <div class="stat stat-click" data-admsec-jump="leads"><div class="v" id="ovLeadsCount">${overviewStats ? overviewStats.totalCustomers : '…'}</div><div class="l">عملاء مسجّلون</div></div>
-    <div class="stat stat-click" data-admsec-jump="discounts"><div class="v">${adminConfig.discountTiers.length}</div><div class="l">فئات الخصم</div></div>
+    <div class="stat stat-click" data-admsec-jump="products" data-admsub-jump="discounts"><div class="v">${adminConfig.discountTiers.length}</div><div class="l">فئات الخصم</div></div>
   </div>
   <div class="stats" style="margin-bottom:16px">
     <div class="stat stat-click" data-admsec-jump="leads"><div class="v">${overviewStats ? overviewStats.quotesThisMonth : '…'}</div><div class="l">عروض أسعار هذا الشهر</div></div>
@@ -2078,27 +2077,6 @@ function renderAdmin(){
   </div>
 </section>
 
-<section class="admsec ${currentAdminSection==='discounts'?'active':''}" data-admsec="discounts">
-  <div class="card" style="margin-bottom:16px">
-    <p style="color:var(--muted);font-size:14px;line-height:1.9;margin:0">🏷️ خصومات الماركات (المورد / البيع / الترويجي) اتنقلت إلى <b>المنتجات والكتالوج ← الخصومات</b>. هنا فئات الخصم الخاصة بالعملاء فقط.</p>
-  </div>
-
-  <div class="card">
-    <h3>فئات الخصم</h3>
-    <table class="admtable">
-      <thead><tr><th>الاسم</th><th>نسبة من الهامش</th></tr></thead>
-      <tbody>
-        ${adminConfig.discountTiers.map((d,i)=>`
-          <tr><td><input data-d="${i}" data-f="label" value="${d.label}"></td>
-              <td><input data-d="${i}" data-f="factor" type="number" step="0.05" value="${d.factor}"></td></tr>`).join('')}
-      </tbody>
-    </table>
-    <label>فئة الخصم المطبّقة تلقائيًا على كل العروض (غير ظاهرة للعميل)</label>
-    <select id="a_defdisc">
-      ${adminConfig.discountTiers.map((d,i)=>`<option value="${i}" ${i==(adminConfig.defaultDiscountIdx??1)?'selected':''}>${d.label}</option>`).join('')}
-    </select>
-  </div>
-</section>
 
 <section class="admsec ${currentAdminSection==='calcs'?'active':''}" data-admsec="calcs">
 <div class="admsub-shell">
@@ -2316,6 +2294,22 @@ ${(function(){
   </div>
   `;
 })()}
+
+  <div class="card">
+    <h3>فئات الخصم</h3>
+    <table class="admtable">
+      <thead><tr><th>الاسم</th><th>نسبة من الهامش</th></tr></thead>
+      <tbody>
+        ${adminConfig.discountTiers.map((d,i)=>`
+          <tr><td><input data-d="${i}" data-f="label" value="${d.label}"></td>
+              <td><input data-d="${i}" data-f="factor" type="number" step="0.05" value="${d.factor}"></td></tr>`).join('')}
+      </tbody>
+    </table>
+    <label>فئة الخصم المطبّقة تلقائيًا على كل العروض (غير ظاهرة للعميل)</label>
+    <select id="a_defdisc">
+      ${adminConfig.discountTiers.map((d,i)=>`<option value="${i}" ${i==(adminConfig.defaultDiscountIdx??1)?'selected':''}>${d.label}</option>`).join('')}
+    </select>
+  </div>
   </div>
   <div class="admsubsec ${currentAdminSubSection.products==='brands'?'active':''}" data-admsub="brands">
   ${brandsTabHtml()}
