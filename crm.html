@@ -1779,7 +1779,10 @@ function trKpiHtml(l){
       ${Number(S.advance_open)>0?`<div class="stat supC"><div class="v">${finN(S.advance_open)}</div><div class="l">دفعة مقدّمة عنده</div></div>`:''}`;
   }
   if(!P && !S && trOv){
-    h += `<div class="stat supD"><div class="v">${finN(trOv.totalPayable)}</div><div class="l">مستحق للموردين (حالي)</div></div>${Number(trOv.totalAdvances)>0?`<div class="stat supC"><div class="v">${finN(trOv.totalAdvances)}</div><div class="l">دفعات مقدّمة عند الموردين (حالي)</div></div>`:''}`;
+    /* أقل من 1 ريال يُهمل ويظهر صفر: أحمر = علينا للموردين، أخضر = لنا عند الموردين */
+    const supShow = v => Number(v) >= 1 ? v : 0;
+    h += `<div class="stat supD"><div class="v">${finN(supShow(trOv.totalPayable))}</div><div class="l">مستحق للموردين (حالي)</div></div>
+      <div class="stat supC"><div class="v">${finN(supShow(trOv.totalAdvances))}</div><div class="l">دفعات مقدّمة عند الموردين (حالي)</div></div>`;
   }
   return h;
 }
