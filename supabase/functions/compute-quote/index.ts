@@ -397,6 +397,15 @@ function rowBrand(cat: any, rowIdx: number): string {
   const detail = cat.productDetails && cat.productDetails[String(rowIdx)];
   return (detail && detail.brand) || "";
 }
+// شعار الماركة من سجل الماركات (D.brands = [{name, logo}]) — المطابقة بدون حساسية لحالة الأحرف (JA = Ja).
+// يُرجَع للواجهة العامة فقط الاسم/الشعار، لا شيء داخلي.
+function brandLogoFor(D: any, brand: string): string {
+  const k = String(brand == null ? "" : brand).trim().toLowerCase();
+  if (!k) return "";
+  const b = (Array.isArray(D.brands) ? D.brands : [])
+    .find((x: any) => x && String(x.name == null ? "" : x.name).trim().toLowerCase() === k);
+  return (b && b.logo) || "";
+}
 function findDiscount(D: any, category: string, brand: string) {
   return (Array.isArray(D.discounts) ? D.discounts : [])
     .find((d: any) => d.category === category && d.brand === brand) || null;
@@ -1545,7 +1554,12 @@ Deno.serve(async (req: Request) => {
         newRow[priceVatIdx] = String(Math.round(promoPrice * 1.15 * 100) / 100);
         return newRow;
       });
-      return { ...cat, rows };
+      const productDetails: Record<string, any> = {};
+      for (const [k, d] of Object.entries(cat.productDetails || {})) {
+        const dd: any = d || {};
+        productDetails[k] = { ...dd, brandLogo: brandLogoFor(D, dd.brand) };
+      }
+      return { ...cat, rows, productDetails };
     });
     return json({ productCatalog: cats });
   }
@@ -1560,6 +1574,7 @@ Deno.serve(async (req: Request) => {
           : p.priceW;
         return {
           brand: p.brand,
+          brandLogo: brandLogoFor(D, p.brand),
           power: p.power,
           priceExclVat: Math.round(promoPerWatt * p.power),
           image: p.image || "",

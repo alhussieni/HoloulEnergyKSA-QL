@@ -711,3 +711,17 @@ footer.foot{text-align:center;color:var(--muted);font-size:12px;padding:24px;}
 /* وضع النافذة المدمجة (iframe من الـ CRM): نخفي الهيدر والفوتر وأزرار التواصل */
 html.embed-mode header.top, html.embed-mode footer.foot, html.embed-mode .fab-bar{ display:none !important; }
 html.embed-mode body{ padding-top:0; }
+
+
+/* ===== شعار الماركة على صور المنتجات ===== */
+.pcard2-photo{position:relative;}
+.brand-logo-chip{display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--line);
+  border-radius:8px;padding:3px 6px;height:30px;box-shadow:var(--shadow-soft);box-sizing:border-box;}
+.brand-logo-chip>img.brand-logo-img{width:auto;height:100%;max-width:64px;object-fit:contain;display:block;}
+.brand-logo-chip.on-photo{position:absolute;top:8px;inset-inline-end:8px;z-index:2;}
+.brand-logo-chip.small{height:24px;padding:2px 5px;}
+.brand-logo-chip.small>img.brand-logo-img{max-width:48px;}
+.brand-logo-chip.inline{position:static;height:22px;padding:2px 5px;margin-inline-start:6px;vertical-align:middle;box-shadow:none;}
+.brand-logo-chip.inline>img.brand-logo-img{max-width:44px;}
+.detail-brand-line{display:inline-flex;align-items:center;gap:6px;margin-inline-start:8px;font-size:12px;font-weight:800;color:var(--teal-dark);}
+.detail-brand-line .brand-logo-chip.inline{margin:0;height:26px;}

@@ -686,6 +686,13 @@ function extractProductBrand(cat, ri){
   return hit || '';
 }
 
+// شعار الماركة كـ chip صغير فوق/جنب صورة المنتج. الشعار يصل من السيرفر في
+// productDetails[i].brandLogo (يُحسب من سجل الماركات). يرجع '' لو مفيش شعار.
+function brandLogoChip(logo, name, extraCls){
+  if(!logo) return '';
+  return `<span class="brand-logo-chip ${extraCls||''}" title="${escAttr(name||'')}"><img class="brand-logo-img" src="${escAttr(logo)}" alt="${escAttr(name||'')}" loading="lazy"></span>`;
+}
+
 // Builds the two facets shown in the sidebar for the open category: brand
 // (derived above) and a secondary spec facet based on the category's own
 // first spec column (e.g. wattage for panels, current rating for batteries).
@@ -787,7 +794,7 @@ function renderProductCardV2(cat, catIdx, ri){
       <input type="checkbox" data-carttoggle="${catIdx}:${ri}" ${cartHas(catIdx,ri)?'checked':''}>
       <span>🛒 أضف للسلة</span>
     </label>
-    <div class="pcard2-photo">${thumb ? `<img src="${thumb}" alt="${row[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}</div>
+    <div class="pcard2-photo">${thumb ? `<img src="${thumb}" alt="${row[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}${brandLogoChip(detail.brandLogo, brand||detail.brand, 'on-photo')}</div>
     <div class="pcard2-body">
       ${brand ? `<div class="pcard2-brand">${brand}</div>` : ''}
       <div class="pcard2-name">${row[0]}</div>
@@ -853,7 +860,7 @@ function buildCatalogWithPanels(realCatalog){
     categoryImage: panels.find(p=>p.image)?.image || '',
     categoryInfo: '',
     productDetails: Object.fromEntries(panels.map((p,i) => [i, {
-      image: p.image, description: p.description, specs: p.specs, datasheetUrl: p.datasheetUrl, brand: p.brand,
+      image: p.image, description: p.description, specs: p.specs, datasheetUrl: p.datasheetUrl, brand: p.brand, brandLogo: p.brandLogo || '',
     }])),
   };
   return [panelsCat, ...realCatalog];
@@ -876,7 +883,7 @@ function renderSimilarProducts(catalog, catIdx, excludeRowIdx){
         const img = d.image || cat.categoryImage;
         const price = r[nCols-2];
         return `<div class="ready-card" data-similar="${catIdx}:${i}">
-          <div class="visual">${img ? `<img src="${img}" alt="${r[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}</div>
+          <div class="visual">${img ? `<img src="${img}" alt="${r[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}${brandLogoChip(d.brandLogo, d.brand, 'on-photo small')}</div>
           <div class="body">
             <h3 class="name">${r[0]}</h3>
             <div class="price" style="color:var(--teal-dark)">${price} ﷼</div>
@@ -1350,9 +1357,10 @@ function renderProducts(){
       </div>
       <div class="card">
         <div class="detail-split">
-          <div class="photo">${img ? `<img src="${img}" alt="${row[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}</div>
+          <div class="photo">${img ? `<img src="${img}" alt="${row[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}${brandLogoChip(detail.brandLogo, detail.brand, 'on-photo')}</div>
           <div>
             <span class="detail-cat-badge">${cat.category}</span>
+            ${detail.brand ? `<span class="detail-brand-line">${brandLogoChip(detail.brandLogo, detail.brand, 'inline')}<span>${esc(detail.brand)}</span></span>` : ''}
             <div style="display:flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap;margin-top:var(--sp-1)">
               <h2 style="margin:0">${row[0]}</h2>
               ${!available ? `<span class="unavail-chip">غير متاح حاليًا</span>` : `<span class="tag">✓ متوفر</span>`}
@@ -1532,7 +1540,7 @@ function renderProducts(){
           return `<div class="model-card${available?'':' unavailable-row'}">
             ${thumb ? `<img class="thumb" src="${thumb}" alt="${row[0]}" loading="lazy">` : `<div class="thumb-noimg">📦</div>`}
             <div class="body">
-              <div class="name">${row[0]}${!available?' <span class="unavail-chip">غير متاح</span>':''}</div>
+              <div class="name">${row[0]}${brandLogoChip(detail.brandLogo, detail.brand, 'inline')}${!available?' <span class="unavail-chip">غير متاح</span>':''}</div>
               <div class="specs"><span>${cat.category}</span></div>
             </div>
             <div class="side">
