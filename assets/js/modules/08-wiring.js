@@ -28,9 +28,26 @@ let deepLinkReadySystemId = null;
   }
 }
 
-if(window.location.hash === '#admin' && !deepLinkReadySystemId){
-  currentView = 'admin';
-  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === 'admin'));
+/* ---- روابط الهيدر الموحّد (hash) — بتتقرأ بدون حساسية لحالة الحروف:
+       #Calc=SolarPump | #Calc=OffGrid | #Calc=OnGrid | #Feasibility | #Products | #Portfolio | #admin ---- */
+function parseHashRoute(){
+  const h = String(window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
+  if(!h) return null;
+  if(h === 'admin') return {view:'admin'};
+  if(h === 'products') return {view:'products'};
+  if(h === 'portfolio') return {view:'portfolio'};
+  if(h === 'feasibility') return {view:'feas'};
+  const m = h.match(/^calc=(solarpump|offgrid|ongrid)$/);
+  if(m) return {view:'calc', sys:{solarpump:'irrigation', offgrid:'offgrid', ongrid:'ongrid'}[m[1]]};
+  return null;
+}
+{
+  const r = parseHashRoute();
+  if(r && !deepLinkReadySystemId){
+    if(r.sys) state.calcSystem = r.sys;
+    // دراسة الجدوى بتحتاج حسبة اتعملت قبلها — في أول تحميل مفيش، فبنفتح الحاسبة
+    currentView = (r.view === 'feas') ? 'calc' : r.view;
+  }
 }
 
 /* ---- rep login gate — every rep has their own username/password, verified
@@ -123,6 +140,7 @@ function renderAdminLogin(){
 }
 
 function render(){
+  syncHeaderRoute();
   if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail' && currentView!=='irrigation-quick'){ app.innerHTML = renderRepLogin(); wire(); return; }
   if(guestMode && !guestRegistered && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail' && currentView!=='irrigation-quick'){ app.innerHTML = renderGuestRegister(); wire(); return; }
   if(currentView==='calc') app.innerHTML = renderCalc();
@@ -1512,6 +1530,42 @@ function wireOngridCalc(){
   wireAdminInfo(()=>scheduleRefreshOngrid(0));
 }
 
+/* تنقّل الهيدر الموحّد داخل نفس الصفحة: تغيّر الـ hash بيفتح الشاشة المطلوبة من غير إعادة تحميل */
+function applyHashRoute(r){
+  let view = r.view;
+  if(view === 'feas' && !currentQuote()){ view = 'calc'; r = {view:'calc', sys: state.calcSystem}; }
+  if(r.sys){
+    state.calcSystem = r.sys;
+    if(r.sys==='offgrid' && !cachedOffgridQuote && !offgridLoading) refreshOffgrid();
+    if(r.sys==='ongrid' && !cachedOngridQuote && !ongridLoading) refreshOngrid();
+  }
+  if(view==='products'){ cachedProductCatalog = null; productCatalogError = null; selectedProduct = null; productsNav = 'categories'; selectedCategoryIdx = null; }
+  if(view==='portfolio'){ cachedPortfolio = null; portfolioError = null; }
+  currentView = view;
+  render();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+window.addEventListener('hashchange', ()=>{ const r = parseHashRoute(); if(r) applyHashRoute(r); });
+
+/* يخلّي العنصر النشط في الهيدر والـ hash في العنوان مطابقين للشاشة الحالية (بيتنادى من render) */
+function syncHeaderRoute(){
+  let key = null, hash = null;
+  if(currentView==='calc'){
+    const t = {irrigation:['calc:solarpump','#Calc=SolarPump'], offgrid:['calc:offgrid','#Calc=OffGrid'], ongrid:['calc:ongrid','#Calc=OnGrid']}[state.calcSystem] || ['calc:solarpump','#Calc=SolarPump'];
+    key = t[0]; hash = t[1];
+  }
+  else if(currentView==='feas'){ key='feas'; hash='#Feasibility'; }
+  else if(currentView==='products'){ key='products'; hash='#Products'; }
+  else if(currentView==='portfolio'){ key='portfolio'; hash='#Portfolio'; }
+  else if(currentView==='admin'){ key='admin'; hash='#admin'; }
+  try{ if(window.HLHeader) HLHeader.setActive(key); }catch(e){}
+  try{
+    const cur = String(window.location.hash||'');
+    if(hash){ if(cur.toLowerCase() !== hash.toLowerCase()) history.replaceState(null, '', window.location.pathname + window.location.search + hash); }
+    else if(cur){ history.replaceState(null, '', window.location.pathname + window.location.search); }
+  }catch(e){}
+}
+
 document.querySelectorAll('nav.tabs button').forEach(btn=>{
   btn.onclick = ()=>{
     document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
@@ -1529,8 +1583,7 @@ function applyNavByAccess(){
   try{
     const adminBtn = document.querySelector('nav.tabs [data-view="admin"]');
     if(adminBtn) adminBtn.style.display = HoloulAuth.token('admin') ? '' : 'none';
-    const home = document.getElementById('homeLink');
-    if(home) home.style.display = HoloulAuth.read() ? '' : 'none';
+    if(window.HLHeader) HLHeader.refresh();
   }catch(e){}
 }
 function showRepBadge(){

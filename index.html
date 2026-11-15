@@ -12,33 +12,7 @@
 <link rel="stylesheet" href="assets/css/unified-font.css">
 </head>
 <body>
-<header class="top hl-header">
-  <div class="brandrow">
-    <div class="brand">
-      <div class="mark"><img src="assets/logo.png" alt="Holoul Energy logo" width="120" height="120" decoding="async"></div>
-      <div>
-        <div class="name">حلول الطاقة المتجددة والمقاولات</div>
-        <div class="sub">حاسبة عروض أسعار محطات الطاقة الشمسية</div>
-      </div>
-    </div>
-    <div class="hl-mid">
-      <nav class="tabs no-print">
-        <button data-view="calc" class="active">الحاسبة</button>
-        <button data-view="products" id="productsNavBtn">قائمة المنتجات</button>
-        <button data-view="portfolio">البورتفوليو</button>
-        <button data-view="admin">لوحة التحكم</button>
-      </nav>
-    </div>
-    <div class="hl-actions">
-      <a class="hl-btn opt" href="tel:+966561274344">📞 اتصال</a>
-      <a class="hl-btn wa opt" href="https://wa.me/966561274344" target="_blank" rel="noopener">💬 واتساب</a>
-      <a class="hl-btn" href="pump-calculator.html">🚜 حاسبة الضخ</a>
-      <div data-hl-nav hidden></div>
-      <span id="repNameBadge" class="hl-user no-print" style="display:none"></span>
-      <button id="repLogoutBtn" class="hl-btn ghost no-print" type="button" style="display:none">خروج</button>
-    </div>
-  </div>
-</header>
+<header class="top hl-header" data-hl-header data-title="حاسبة عروض أسعار محطات الطاقة الشمسية" data-user-id="repNameBadge" data-logout-id="repLogoutBtn" data-user-hidden></header>
 <main id="app"></main>
 <div class="fab-bar no-print" role="complementary" aria-label="تواصل سريع">
   <button type="button" class="fab fab-quote" onclick="var b=document.querySelector('[data-view=&quot;calc&quot;]'); if(b) b.click(); window.scrollTo({top:0,behavior:'smooth'});" aria-label="احصل على عرض سعر">

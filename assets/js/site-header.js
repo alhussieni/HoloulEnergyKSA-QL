@@ -1,23 +1,25 @@
 /* =======================================================================
    site-header.js — الهيدر الموحّد لكل صفحات حلول الطاقة (مع assets/css/header.css)
 
-   طريقتين للاستخدام:
-   1) رسم كامل (home / PD / pump):
-        <header class="top hl-header" data-hl-header data-title="الرئيسية" data-actions="nav,user,logout"></header>
-        <script src="assets/js/holoul-auth.js"></script>
-        <script src="assets/js/site-header.js"></script>
-      data-title    : اسم الصفحة (السطر الصغير تحت اسم الشركة)
-      data-actions  : قايمة مفصولة بفواصل من: contact (اتصال+واتساب) · nav (قايمة الأقسام) · user · logout
-      data-brand-href: رابط الشعار (الافتراضي home.html)
-      عناصر جوّه الهيدر بـ data-hl-slot="mid" أو "actions" بتتنقل للمكان المناسب (مثلًا: البحث العام / أزرار خاصة بالصفحة).
+   الترتيب (من اليمين لليسار):
+     اللوجو + اسم الشركة (رابط للرئيسية)  ·  الحاسبات ▾  ·  قائمة المنتجات  ·  البورتفوليو  ·  لوحة التحكم (للأدمن)
+     ...........  📞 💬  ·  قايمة المستخدم ▾ (CRM / بوابة الموظف / PD / خروج)
 
-   2) تحسين ماركب موجود (index / crm): الماركب بيفضل زي ما هو بنفس الـ IDs، والسكريبت بيملا بس العناصر دي:
-        [data-hl-nav]    قايمة الأقسام (بتختفي لو مفيش جلسة دخول — يعني الزائر العادي ما يشوفهاش)
-        [data-hl-user]   اسم المستخدم
-        [data-hl-logout] زرار خروج (لو ما كانش ليه handler خاص)
+   الاستخدام:
+     <header class="top hl-header" data-hl-header data-title="سطر صغير تحت اسم الشركة"></header>
+     <script src="assets/js/holoul-auth.js"></script>     (قبل ده)
+     <script src="assets/js/site-header.js"></script>     (بعد الهيدر مباشرة — لازم قبل أي سكريبت بيدوّر على عناصره)
 
-   قايمة الأقسام بتتبني من الصلاحيات اللي السيرفر رجّعها في الجلسة (HoloulAuth.read().modules)،
-   فكل مستخدم يشوف اللي مسموحله بس. (الصلاحيات الفعلية بتتنفّذ في السيرفر دايمًا.)
+   خيارات اختيارية على الـ <header>:
+     data-title="..."        : السطر الصغير تحت اسم الشركة (نص)
+     data-sub-html="..."     : نفس السطر لكن HTML ثابت من الصفحة نفسها (مثلًا span بـ id)
+     data-user-id="..."      : id لزرار اسم المستخدم (الصفحة هي اللي بتكتب اسمه — index و crm)
+     data-logout-id="..."    : id لزرار الخروج (الصفحة هي اللي بتربطه بالـ handler بتاعها)
+     data-user-hidden        : زرار المستخدم يبدأ مخفي (الصفحة بتظهره)
+     عناصر جوّه الهيدر بـ data-hl-slot="start" (قبل اللوجو) أو "actions" (قبل أيقونات التواصل) بتتنقل للمكان ده.
+
+   الروابط في مكان واحد (NAV تحت). روابط index.html بتستخدم hash (#Calc=SolarPump ...) وبتتقرأ بدون حساسية لحالة الحروف.
+   الصلاحيات الفعلية بتتنفّذ في السيرفر دايمًا — الهيدر بيخفي/يعرض بس.
    ======================================================================= */
 (function (w, d) {
   'use strict';
@@ -33,124 +35,227 @@
   var COMPANY = 'حلول الطاقة المتجددة والمقاولات';
   var PHONE = '966561274344';
 
+  // ---------- الروابط (مكان واحد للتعديل) ----------
+  var NAV = {
+    home: 'home.html',
+    calcs: [
+      { key: 'calc:solarpump', icon: '☀️', label: 'حاسبة أنظمة الري الزراعي من خلال الطاقة الشمسية', desc: 'عروض أسعار منظومات الطاقة الشمسية لتشغيل المواتير الغاطسة', url: 'index.html#Calc=SolarPump' },
+      { key: 'calc:offgrid', icon: '🔋', label: 'حاسبة الأوف-جريد', url: 'index.html#Calc=OffGrid' },
+      { key: 'calc:ongrid', icon: '🔌', label: 'حاسبة الأون-جريد', url: 'index.html#Calc=OnGrid' },
+      { key: 'pump', icon: '🚜', label: 'حاسبة الضخ الزراعي', desc: 'حساب احتياج المزرعة من المياه', url: 'pump-calculator.html' },
+      { key: 'feas', icon: '📊', label: 'دراسة الجدوى', url: 'index.html#Feasibility' }
+    ],
+    products: { key: 'products', label: 'قائمة المنتجات', url: 'index.html#Products' },
+    portfolio: { key: 'portfolio', label: 'البورتفوليو', url: 'index.html#Portfolio' },
+    admin: { key: 'admin', label: 'لوحة التحكم', url: 'index.html#admin' },
+    login: 'login.html'
+  };
+  // عناصر قايمة المستخدم (بتظهر حسب modules اللي السيرفر رجّعها في الجلسة)
+  var USER_ITEMS = [
+    { mod: 'crm', icon: '👥', label: 'متابعة العملاء (CRM)', url: 'crm.html' },
+    { mod: 'staff', icon: '📊', label: 'بوابة الموظف', url: 'crm.html?portal=staff' },
+    { mod: '@admin', icon: '📄', label: 'مستندات المشاريع (PD)', url: 'PD/index.html' }
+  ];
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+  function abs(u) { try { return new URL(u, BASE).href; } catch (e) { return u; } }
   function session() {
     try { return (w.HoloulAuth && w.HoloulAuth.read && w.HoloulAuth.read()) || null; } catch (e) { return null; }
   }
-
-  // ---------- عناصر قايمة الأقسام ----------
-  function navItems() {
-    var s = session();
-    if (!s) return [];
-    var list = [{ label: 'الرئيسية', icon: '🏠', url: 'home.html' }];
-    (s.modules || []).forEach(function (m) { list.push({ label: m.label, icon: m.icon, url: m.url }); });
-    // PD بيشتغل بتوكن الأدمن (مش ضمن modules اللي بيرجّعها السيرفر)
-    if (s.tokens && s.tokens.admin) list.push({ label: 'مستندات المشاريع (PD)', icon: '📄', url: 'PD/index.html' });
-    return list;
-  }
-  function isCurrent(url) {
-    try {
-      var u = new URL(url, BASE);
-      if (u.pathname !== w.location.pathname) return false;
-      if (u.hash) return u.hash === w.location.hash;
-      if (u.search) return w.location.search.indexOf(u.search) >= 0;
-      return w.location.hash !== '#admin' && w.location.search.indexOf('portal=staff') < 0;
-    } catch (e) { return false; }
+  function hasAdmin() { var s = session(); return !!(s && s.tokens && s.tokens.admin); }
+  function hasModule(key) {
+    var s = session(); if (!s) return false;
+    return (s.modules || []).some(function (m) { return m.key === key; });
   }
 
-  function fillNav(el) {
-    var items = navItems();
-    if (!items.length) { el.hidden = true; el.innerHTML = ''; return; }
-    el.hidden = false;
-    el.classList.add('hl-nav', 'no-print');
-    var id = 'hlMenu' + Math.random().toString(36).slice(2, 7);
-    el.innerHTML =
-      '<button type="button" class="hl-btn" aria-haspopup="true" aria-expanded="false" aria-controls="' + id + '">🧭 الأقسام</button>' +
-      '<div class="hl-menu" id="' + id + '" role="menu" hidden>' +
-      items.map(function (it) {
-        var cur = isCurrent(it.url);
-        return '<a role="menuitem" href="' + esc(new URL(it.url, BASE).href) + '"' + (cur ? ' aria-current="page"' : '') + '>' +
-          '<span class="hl-ic" aria-hidden="true">' + esc(it.icon || '•') + '</span>' + esc(it.label) + '</a>';
-      }).join('') +
-      '</div>';
-    var btn = el.querySelector('button'), menu = el.querySelector('.hl-menu');
-    function close() { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
-    btn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      var open = menu.hidden;
-      menu.hidden = !open;
-      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  // ---------- أي عنصر في القايمة هو الحالي ----------
+  function keyFromHash() {
+    var h = String(w.location.hash || '').replace(/^#/, '').toLowerCase();
+    if (h === 'calc=solarpump') return 'calc:solarpump';
+    if (h === 'calc=offgrid') return 'calc:offgrid';
+    if (h === 'calc=ongrid') return 'calc:ongrid';
+    if (h === 'feasibility') return 'feas';
+    if (h === 'products') return 'products';
+    if (h === 'portfolio') return 'portfolio';
+    if (h === 'admin') return 'admin';
+    return null;
+  }
+  function initialKey() {
+    var p = w.location.pathname;
+    if (/pump-calculator\.html$/.test(p)) return 'pump';
+    if (/(\/|index\.html)$/.test(p) && !/\/PD\/$/.test(p)) return keyFromHash() || 'calc:solarpump';
+    return null;
+  }
+  function setActive(key) {
+    [].slice.call(d.querySelectorAll('header.hl-header [data-key]')).forEach(function (el) {
+      var on = !!key && el.getAttribute('data-key') === key;
+      el.classList.toggle('active', on);
+      if (on) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
     });
-    d.addEventListener('click', function (e) { if (!el.contains(e.target)) close(); });
-    d.addEventListener('keydown', function (e) { if (e.key === 'Escape') { close(); btn.focus(); } });
+    var inCalcs = !!key && (key.indexOf('calc:') === 0 || key === 'pump' || key === 'feas');
+    [].slice.call(d.querySelectorAll('header.hl-header .hl-dd-calcs > button')).forEach(function (b) {
+      b.classList.toggle('active', inCalcs);
+    });
   }
 
-  function fillUser(el) {
-    var s = session();
-    if (s && s.user && s.user.displayName) { el.hidden = false; el.innerHTML = '👤 <b>' + esc(s.user.displayName) + '</b>'; }
-    else { el.hidden = true; el.textContent = ''; }
+  // ---------- الماركب ----------
+  function ddItem(it) {
+    return '<a class="hl-mi" role="menuitem" data-key="' + esc(it.key) + '" href="' + esc(abs(it.url)) + '">' +
+      '<span class="hl-ic" aria-hidden="true">' + esc(it.icon || '•') + '</span>' +
+      '<span class="hl-mt"><span class="hl-ml">' + esc(it.label) + '</span>' +
+      (it.desc ? '<span class="hl-md">' + esc(it.desc) + '</span>' : '') + '</span></a>';
+  }
+  function navLink(it) {
+    return '<a class="hl-link" data-key="' + esc(it.key) + '" href="' + esc(abs(it.url)) + '">' + esc(it.label) + '</a>';
   }
 
-  function logout() {
-    try { if (w.HoloulAuth && w.HoloulAuth.clear) w.HoloulAuth.clear(); } catch (e) {}
-    w.location.replace(BASE + 'login.html');
-  }
-  function fillLogout(el) {
-    var s = session();
-    el.hidden = !s;
-    if (!el.__hlBound) { el.__hlBound = true; el.addEventListener('click', logout); }
-  }
-
-  // ---------- رسم كامل ----------
   function render(h) {
     var title = h.getAttribute('data-title') || '';
-    var actions = (h.getAttribute('data-actions') || 'nav,user,logout').split(',').map(function (x) { return x.trim(); });
-    var brandHref = h.getAttribute('data-brand-href') || (BASE + 'home.html');
+    var subHtml = h.getAttribute('data-sub-html') || '';
+    var userId = h.getAttribute('data-user-id');
+    var logoutId = h.getAttribute('data-logout-id');
+    var userHidden = h.hasAttribute('data-user-hidden');
     var slots = {};
     [].slice.call(h.querySelectorAll('[data-hl-slot]')).forEach(function (n) {
-      (slots[n.getAttribute('data-hl-slot')] = slots[n.getAttribute('data-hl-slot')] || []).push(n);
+      var k = n.getAttribute('data-hl-slot'); (slots[k] = slots[k] || []).push(n);
     });
 
     h.classList.add('top', 'hl-header');
     h.setAttribute('role', 'banner');
+    h.__managed = !!userId;
+
     h.innerHTML =
       '<div class="brandrow">' +
-      '<a class="brand" href="' + esc(brandHref) + '">' +
+      '<span class="hl-start" data-hl-start></span>' +
+      '<a class="brand" href="' + esc(abs(NAV.home)) + '" title="الرئيسية">' +
       '<div class="mark"><img src="' + esc(BASE + 'assets/logo.png') + '" alt="Holoul Energy" width="44" height="44" ' +
       'onerror="this.parentNode.classList.add(\'fallback\');this.replaceWith(\'☀️\')"></div>' +
-      '<div><div class="name">' + esc(COMPANY) + '</div>' + (title ? '<div class="sub">' + esc(title) + '</div>' : '') + '</div>' +
+      '<div><div class="name">' + esc(COMPANY) + '</div>' +
+      (subHtml ? '<div class="sub">' + subHtml + '</div>' : (title ? '<div class="sub">' + esc(title) + '</div>' : '')) + '</div>' +
       '</a>' +
-      '<div class="hl-mid" data-hl-mid></div>' +
-      '<div class="hl-actions" data-hl-actions></div>' +
-      '</div>';
 
-    var mid = h.querySelector('[data-hl-mid]'), act = h.querySelector('[data-hl-actions]');
-    (slots.mid || []).forEach(function (n) { mid.appendChild(n); });
-    if (!(slots.mid || []).length) mid.remove();
+      '<nav class="hl-main no-print" aria-label="التنقل الرئيسي">' +
+      '<div class="hl-dd hl-dd-calcs">' +
+      '<button type="button" class="hl-link" aria-haspopup="true" aria-expanded="false">الحاسبات</button>' +
+      '<div class="hl-menu" role="menu">' + NAV.calcs.map(ddItem).join('') + '</div>' +
+      '</div>' +
+      navLink(NAV.products) + navLink(NAV.portfolio) +
+      '<a class="hl-link" data-key="admin" data-hl-admin href="' + esc(abs(NAV.admin.url)) + '" hidden>' + esc(NAV.admin.label) + '</a>' +
+      // على الشاشات الصغيرة أيقونتا الاتصال/الواتساب بتنتقل لهنا عشان اسم الشركة ياخد مساحته
+      '<div class="hl-mob-only"><a class="hl-link" href="tel:+' + PHONE + '">📞 اتصال</a>' +
+      '<a class="hl-link" href="https://wa.me/' + PHONE + '" target="_blank" rel="noopener">💬 واتساب</a></div>' +
+      '</nav>' +
+
+      '<div class="hl-actions">' +
+      '<span class="hl-slot-actions" data-hl-slot-actions></span>' +
+      '<a class="hl-icon" href="tel:+' + PHONE + '" title="اتصال" aria-label="اتصال">📞</a>' +
+      '<a class="hl-icon wa" href="https://wa.me/' + PHONE + '" target="_blank" rel="noopener" title="واتساب" aria-label="واتساب">💬</a>' +
+      '<a class="hl-btn ghost no-print" data-hl-login href="' + esc(abs(NAV.login)) + '" hidden>دخول</a>' +
+      '<div class="hl-dd hl-um no-print" data-hl-um>' +
+      '<button type="button" class="hl-btn ghost hl-um-btn"' + (userId ? ' id="' + esc(userId) + '"' : '') +
+      (userHidden || !userId ? ' style="display:none"' : '') + ' aria-haspopup="true" aria-expanded="false"></button>' +
+      '<div class="hl-menu" role="menu">' +
+      '<span data-hl-um-items></span>' +
+      '<button type="button" class="hl-mi hl-mi-out"' + (logoutId ? ' id="' + esc(logoutId) + '"' : '') +
+      (userHidden || !logoutId ? ' style="display:none"' : '') + ' data-hl-logout><span class="hl-ic" aria-hidden="true">🚪</span><span class="hl-mt"><span class="hl-ml">خروج</span></span></button>' +
+      '</div></div>' +
+      '<button type="button" class="hl-btn hl-burger no-print" aria-expanded="false" aria-label="الأقسام">الأقسام</button>' +
+      '</div></div>';
+
+    var start = h.querySelector('[data-hl-start]'), act = h.querySelector('[data-hl-slot-actions]');
+    (slots.start || []).forEach(function (n) { start.appendChild(n); });
+    if (!(slots.start || []).length) start.remove();
     (slots.actions || []).forEach(function (n) { act.appendChild(n); });
+    if (!(slots.actions || []).length) act.remove();
 
-    if (actions.indexOf('contact') >= 0) {
-      act.insertAdjacentHTML('beforeend',
-        '<a class="hl-btn opt" href="tel:+' + PHONE + '">📞 اتصال</a>' +
-        '<a class="hl-btn wa opt" href="https://wa.me/' + PHONE + '" target="_blank" rel="noopener">💬 واتساب</a>');
-    }
-    if (actions.indexOf('nav') >= 0) act.insertAdjacentHTML('beforeend', '<div data-hl-nav hidden></div>');
-    if (actions.indexOf('user') >= 0) act.insertAdjacentHTML('beforeend', '<span class="hl-user no-print" data-hl-user hidden></span>');
-    if (actions.indexOf('logout') >= 0) act.insertAdjacentHTML('beforeend', '<button type="button" class="hl-btn ghost no-print" data-hl-logout hidden>خروج</button>');
+    wire(h);
   }
 
+  // ---------- السلوك ----------
+  function closeAll(except) {
+    [].slice.call(d.querySelectorAll('.hl-dd.open')).forEach(function (dd) {
+      if (dd !== except) { dd.classList.remove('open'); var b = dd.querySelector(':scope > button'); if (b) b.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+  function wire(h) {
+    [].slice.call(h.querySelectorAll('.hl-dd > button')).forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var dd = btn.parentNode, open = !dd.classList.contains('open');
+        closeAll(dd);
+        dd.classList.toggle('open', open);
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    });
+    var burger = h.querySelector('.hl-burger');
+    if (burger) burger.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var open = !h.classList.contains('hl-open');
+      h.classList.toggle('hl-open', open);
+      burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    // أي ضغطة على لينك جوه القايمة بتقفلها (مهم لما اللينك بيغيّر الـ hash في نفس الصفحة)
+    h.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('a.hl-mi, a.hl-link');
+      if (!a) return;
+      closeAll(); h.classList.remove('hl-open');
+      // الماوس لسه واقف على القايمة → الـ :hover كان هيفضّلها مفتوحة: نقفلها لحد ما الماوس يخرج
+      var dd = a.closest('.hl-dd');
+      if (dd) { dd.classList.add('hl-shut'); dd.addEventListener('mouseleave', function once() { dd.classList.remove('hl-shut'); dd.removeEventListener('mouseleave', once); }); }
+    });
+  }
+  d.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('.hl-dd')) closeAll();
+  });
+  d.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAll(); });
 
-  // ---------- هوية المؤسسة (white-label): الاسم المختصر + اللوجو + أرقام التواصل من جدول company_profile ----------
-  // بنخزّنها مؤقتًا في sessionStorage عشان الهيدر ما يرجعش للاسم الافتراضي بين الصفحات.
+  // ---------- المحتوى الديناميكي (حسب الجلسة) ----------
+  function logout() {
+    try { if (w.HoloulAuth && w.HoloulAuth.clear) w.HoloulAuth.clear(); } catch (e) {}
+    w.location.replace(BASE + 'login.html');
+  }
+  function update(h) {
+    var s = session();
+    var admin = h.querySelector('[data-hl-admin]'); if (admin) admin.hidden = !hasAdmin();
+
+    var items = USER_ITEMS.filter(function (it) { return it.mod === '@admin' ? hasAdmin() : hasModule(it.mod); });
+    var slot = h.querySelector('[data-hl-um-items]');
+    if (slot) slot.innerHTML = items.map(function (it) {
+      return '<a class="hl-mi" role="menuitem" href="' + esc(abs(it.url)) + '"><span class="hl-ic" aria-hidden="true">' + esc(it.icon) + '</span>' +
+        '<span class="hl-mt"><span class="hl-ml">' + esc(it.label) + '</span></span></a>';
+    }).join('');
+
+    var login = h.querySelector('[data-hl-login]');
+    if (login) {
+      login.hidden = !!s;
+      if (!s) {
+        var seg = (w.location.pathname.split('/').pop() || 'index.html') + (w.location.search || '') + (w.location.hash || '');
+        if (/^[A-Za-z0-9._-]+\.html([?#][^\s]*)?$/.test(seg)) login.href = abs(NAV.login) + '?next=' + encodeURIComponent(seg);
+      }
+    }
+
+    var um = h.querySelector('[data-hl-um]');
+    if (!h.__managed) {            // الصفحة اللي مش بتتحكم في اسم المستخدم: الهيدر بيعمل ده بنفسه
+      var btn = h.querySelector('.hl-um-btn'), out = h.querySelector('[data-hl-logout]');
+      if (s && s.user && s.user.displayName) {
+        btn.style.display = ''; btn.innerHTML = '👤 ' + esc(s.user.displayName);
+        out.style.display = '';
+      } else { btn.style.display = 'none'; out.style.display = 'none'; }
+      if (um) um.hidden = !s;
+      if (!out.__hlBound) { out.__hlBound = true; out.addEventListener('click', logout); }
+    }
+  }
+
+  // ---------- هوية المؤسسة (white-label): الاسم المختصر + اللوجو + أرقام التواصل من company_profile ----------
   var CO_KEY = 'hl_company_v1';
   var CO_URL = 'https://xhgwvszdatqlvlgqiikj.supabase.co/functions/v1/invoice-api';
   var CO_KEY_PUB = 'sb_publishable_4qWmgl6fWMpoU6F_o__ykg_Z0Xy_aJY';
-
   var CO = null;
+
   function applyCompany(c) {
     if (!c || !c.name) return;
     CO = c;
@@ -179,23 +284,21 @@
   }
 
   // ---------- تشغيل ----------
-  function fillAll(root) {
-    [].slice.call(root.querySelectorAll('[data-hl-nav]')).forEach(fillNav);
-    [].slice.call(root.querySelectorAll('[data-hl-user]')).forEach(fillUser);
-    [].slice.call(root.querySelectorAll('[data-hl-logout]')).forEach(fillLogout);
-  }
+  function headers() { return [].slice.call(d.querySelectorAll('header[data-hl-header], header.hl-header')); }
   function mount(h) {
     if (h.hasAttribute('data-hl-header') && !h.__hlRendered) { h.__hlRendered = true; render(h); }
-    fillAll(h);
+    if (h.__hlRendered) update(h);
   }
   function mountAll() {
-    [].slice.call(d.querySelectorAll('header.hl-header, header[data-hl-header]')).forEach(mount);
+    headers().forEach(mount);
+    var k = initialKey(); if (k && !d.querySelector('header.hl-header .active')) setActive(k);
+    if (CO) applyCompany(CO);
   }
 
-  w.HLHeader = { mount: mount, refresh: mountAll, base: BASE };
+  w.HLHeader = { mount: mount, refresh: mountAll, setActive: setActive, base: BASE };
 
-  // الرسم الكامل لازم يتم فورًا (قبل سكريبتات الصفحة)؛ التعبئة بتتكرر بعد تحميل DOM كمان.
+  // الرسم لازم يتم فورًا (قبل سكريبتات الصفحة اللي بتدوّر على عناصر الهيدر)؛ والتحديث بيتكرر بعد تحميل DOM.
   mountAll();
   loadCompany();
-  if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', function () { mountAll(); if (CO) applyCompany(CO); });
+  if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', mountAll);
 })(window, document);
