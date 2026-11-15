@@ -1,0 +1,144 @@
+/* =======================================================================
+   header.css — الهيدر الموحّد لكل صفحات حلول الطاقة (HoloulEnergy)
+   - مستقل: بيعرّف ألوانه الخاصة (--hl-*) فبيشتغل حتى في صفحة ما بتحمّلش styles.css (زي PD).
+   - الماركب بيتولّد من assets/js/site-header.js. كل الكلاسات تبدأ بـ hl- عشان ما تتعارضش مع كلاسات الصفحات.
+   - ترتيب الهيدر (RTL): اللوجو · الحاسبات ▾ · المنتجات · البورتفوليو · لوحة التحكم ···· 📞 💬 · المستخدم ▾
+   ======================================================================= */
+header.hl-header.top, header.hl-header{
+  --hl-ink:#122436; --hl-night:#0D3452; --hl-night-2:#155E85;
+  --hl-teal:#0FA98D; --hl-teal-dark:#0B7A66; --hl-teal-tint:#E7F8F4;
+  --hl-sun:#E7AC12; --hl-sun-2:#F3CB56;
+  --hl-line:#DEE7E4; --hl-muted:#63736F; --hl-card:#fff;
+  --hl-wa:#25D366;
+  position:sticky; top:0; z-index:50;
+  background:rgba(255,255,255,.95);
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--hl-line);
+  box-shadow:0 1px 6px rgba(13,52,82,.08);
+  padding:8px 24px; color:var(--hl-ink);
+  font-family:'Cairo',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;
+  direction:rtl; overflow:visible; /* القوايم المنسدلة لازم تطلع بره الهيدر */
+}
+.hl-header *{box-sizing:border-box}
+.hl-header .brandrow{
+  display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap;
+  max-width:1360px; margin:0 auto; position:relative;
+}
+.hl-header .hl-start{display:flex; align-items:center}
+
+/* ---------- الشعار + الاسم ---------- */
+.hl-header .brand{display:flex; align-items:center; gap:12px; text-decoration:none; color:inherit; min-width:0}
+.hl-header .brand .mark{
+  flex:none; width:44px; height:44px; border-radius:10px; background:#fff; border:1px solid var(--hl-line);
+  display:flex; align-items:center; justify-content:center; padding:4px; overflow:hidden;
+  box-shadow:0 1px 4px rgba(13,52,82,.08); font-size:19px;
+}
+.hl-header .brand .mark img{width:100%; height:100%; object-fit:contain; display:block}
+.hl-header .brand .mark.fallback{background:linear-gradient(135deg,var(--hl-sun-2),var(--hl-sun)) !important}
+.hl-header .brand .name{margin:0; font-weight:800; font-size:18px; line-height:1.25; color:var(--hl-night); white-space:nowrap}
+.hl-header .brand .sub{margin:1px 0 0; padding:0; font-size:12px; font-weight:400; line-height:1.3; color:var(--hl-muted)}
+.hl-header .brand > div{min-width:0}
+
+/* ---------- التنقل الرئيسي ---------- */
+.hl-header .hl-main{display:flex; align-items:center; gap:2px; margin-inline-start:6px}
+.hl-link{
+  display:inline-flex; align-items:center; gap:6px; padding:8px 13px; border-radius:9px; border:0; background:transparent;
+  color:var(--hl-night); font:700 14px/1.2 'Cairo',system-ui,sans-serif; text-decoration:none; cursor:pointer; white-space:nowrap;
+  transition:background .15s,color .15s;
+}
+.hl-link:hover{background:var(--hl-teal-tint)}
+.hl-link:focus-visible{outline:2px solid var(--hl-teal); outline-offset:2px}
+.hl-link.active{background:var(--hl-sun); color:var(--hl-night)}
+.hl-dd > button.hl-link::after{content:"▾"; font-size:11px; opacity:.7}
+.hl-link[hidden]{display:none !important}
+
+/* ---------- القوايم المنسدلة (hover على الكمبيوتر + ضغط على اللمس) ---------- */
+.hl-dd{position:relative}
+.hl-menu{
+  display:none; position:absolute; top:100%; z-index:60; min-width:250px; padding:6px;
+  background:#fff; border:1px solid var(--hl-line); border-radius:12px; box-shadow:0 10px 28px rgba(13,52,82,.18);
+}
+/* جسر شفاف بين الزرار والقايمة عشان الـ hover ما يتقطعش */
+.hl-menu::before{content:""; position:absolute; inset-inline:0; top:-8px; height:8px}
+.hl-dd-calcs .hl-menu{inset-inline-start:0; min-width:340px}
+.hl-um .hl-menu{inset-inline-end:0; min-width:230px}
+.hl-dd.open > .hl-menu,
+.hl-dd:has(> button:focus-visible) > .hl-menu{display:block}
+@media (hover:hover) and (min-width:861px){
+  .hl-dd:hover > .hl-menu{display:block}
+}
+.hl-dd.hl-shut > .hl-menu{display:none !important}
+.hl-mi{
+  display:flex; align-items:center; gap:10px; width:100%; margin:0; padding:9px 12px; border:0; border-radius:9px;
+  background:transparent; color:var(--hl-ink); text-decoration:none; text-align:start; cursor:pointer;
+  font:600 13.5px/1.3 'Cairo',system-ui,sans-serif; box-shadow:none;
+}
+.hl-mi:hover,.hl-mi:focus-visible{background:var(--hl-teal-tint); outline:none}
+.hl-mi.active{background:var(--hl-teal-tint); color:var(--hl-teal-dark)}
+.hl-mi .hl-ic{flex:none; width:24px; height:auto; background:none; display:inline-block; text-align:center; font-size:17px}
+.hl-mi .hl-mt{display:flex; flex-direction:column; min-width:0}
+.hl-mi .hl-ml{font-weight:700}
+.hl-mi.active .hl-ml{font-weight:800}
+.hl-mi .hl-md{margin-top:1px; font-size:11.5px; font-weight:400; color:var(--hl-muted); line-height:1.4}
+.hl-mi-out{border-top:1px solid var(--hl-line); border-radius:0 0 9px 9px; margin-top:4px; color:#9a2b1d}
+.hl-menu span[data-hl-um-items]:empty{display:none}
+
+/* ---------- الأزرار والأيقونات (أقصى اليسار) ---------- */
+.hl-header .hl-actions{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-inline-start:auto}
+.hl-btn{
+  display:inline-flex; align-items:center; gap:6px; padding:7px 13px; border-radius:9px;
+  font:700 13px/1.2 'Cairo',system-ui,sans-serif; text-decoration:none; cursor:pointer; white-space:nowrap;
+  border:1px solid var(--hl-line); background:#fff; color:var(--hl-night);
+  transition:background .15s,border-color .15s,box-shadow .15s;
+}
+.hl-btn:hover{border-color:var(--hl-teal); background:var(--hl-teal-tint)}
+.hl-btn:focus-visible{outline:2px solid var(--hl-teal); outline-offset:2px}
+.hl-btn.ghost{background:transparent; border-color:var(--hl-teal); color:var(--hl-teal-dark)}
+.hl-btn.ghost:hover{background:var(--hl-teal-tint)}
+.hl-btn[hidden]{display:none !important}
+.hl-um-btn{max-width:190px; overflow:hidden; text-overflow:ellipsis}
+.hl-um-btn::after{content:"▾"; font-size:11px; opacity:.7}
+.hl-icon{
+  display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:50%;
+  border:1px solid var(--hl-line); background:#fff; text-decoration:none; font-size:16px; line-height:1;
+  transition:background .15s,border-color .15s;
+}
+.hl-icon:hover{border-color:var(--hl-teal); background:var(--hl-teal-tint)}
+.hl-icon.wa{background:var(--hl-wa); border-color:var(--hl-wa); color:#fff}
+.hl-icon.wa:hover{filter:brightness(.95); background:var(--hl-wa)}
+.hl-burger{display:none}
+.hl-mob-only{display:none}
+
+/* بحث الـ CRM (بيتحط في الـ actions slot) */
+.hl-header .hl-slot-actions{display:flex; align-items:center; gap:8px}
+.hl-header .hl-slot-actions .gSearchWrap input{width:230px}
+
+/* ---------- موبايل / تابلت ---------- */
+@media (max-width:860px){
+  header.hl-header.top, header.hl-header{padding:8px 12px}
+  .hl-header .brand{flex:1 1 0; gap:8px}
+  .hl-header .brand .mark{width:38px; height:38px}
+  .hl-header .brand .name{font-size:14px; line-height:1.3; white-space:normal}
+  .hl-header .brand .sub{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .hl-burger{display:inline-flex}
+  .hl-header .hl-actions{margin-inline-start:0; gap:6px}
+  .hl-header .hl-slot-actions{order:5; flex-basis:100%}
+  .hl-header .hl-slot-actions .gSearchWrap{width:100%}
+  .hl-header .hl-slot-actions .gSearchWrap input{width:100%}
+  /* القايمة الرئيسية بتبقى صف تحت الهيدر بيتفتح بزرار "الأقسام" */
+  .hl-header .hl-main{display:none; order:9; flex:1 1 100%; flex-direction:column; align-items:stretch; margin:0; padding-top:6px; border-top:1px solid var(--hl-line)}
+  .hl-header.hl-open .hl-main{display:flex}
+  .hl-header .hl-link{justify-content:space-between; padding:11px 12px}
+  .hl-header .hl-menu{position:static; box-shadow:none; border:0; padding:0 8px 4px; min-width:0; background:transparent}
+  .hl-header .hl-menu::before{display:none}
+  .hl-header .hl-dd-calcs .hl-menu{min-width:0}
+  /* قايمة المستخدم فوق المحتوى (مش جوّه صف) */
+  .hl-header .hl-um .hl-menu{position:absolute; inset-inline-end:0; min-width:220px; background:#fff; border:1px solid var(--hl-line); box-shadow:0 10px 28px rgba(13,52,82,.18); padding:6px}
+  .hl-um-btn{max-width:120px}
+}
+@media (max-width:560px){
+  .hl-header .hl-actions .hl-icon{display:none}
+  .hl-header .hl-mob-only{display:flex; flex-direction:column}
+  .hl-um-btn{max-width:96px}
+}
+@media print{ header.hl-header{display:none !important} }

@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/header.css">
 <style>
 :root{
   --ink:#122436; --night:#0D3452; --night-2:#155E85;
@@ -472,11 +473,7 @@ body.printing-cert #certPrintArea{display:block!important;}
 
 <!-- ================= STAFF PORTAL ================= -->
 <div id="staffApp" class="hidden">
-  <header class="top"><div class="brandrow">
-    <div class="brand"><div class="mark"><img src="assets/logo.png" alt="Holoul Energy" onerror="this.parentNode.classList.add('fallback');this.replaceWith('☀️')"></div>
-      <div><div class="name">بوابة الموظف</div><div class="sub"><span id="staffWho"></span></div></div></div>
-    <div class="userChip"><button class="btn ghost small" id="staffLogout" type="button">خروج</button></div>
-  </div></header>
+  <header class="top hl-header" data-hl-header data-title="بوابة الموظف" data-user-id="staffWho" data-logout-id="staffLogout"></header>
   <main style="max-width:1100px;margin:0 auto;padding:16px;">
     <div class="filterBar" id="staffNav"></div>
     <div id="staffBody"><div class="loadingNote">بيحمّل...</div></div>
@@ -485,24 +482,14 @@ body.printing-cert #certPrintArea{display:block!important;}
 
 <!-- ================= APP ================= -->
 <div id="app" class="hidden">
-  <header class="top">
-    <div class="brandrow">
-      <div class="brand">
-        <button class="btn ghost menuBtn" id="menuBtn" type="button" aria-label="القائمة" aria-controls="sidebar" aria-expanded="false">☰</button>
-        <div class="mark"><img src="assets/logo.png" alt="Holoul Energy" onerror="this.parentNode.classList.add('fallback');this.replaceWith('☀️')"></div>
-        <div><div class="name">متابعة العملاء</div><div class="sub"><span id="crmBrandSub">HoloulEnergy</span> CRM</div></div>
-      </div>
-      <div class="userChip">
-        <div class="gSearchWrap">
-          <input type="text" id="globalSearchInput" placeholder="🔍 بحث عام برقم الجوال أو الاسم أو أي رقم مستند...">
-          <div class="gSearchResults hidden" id="globalSearchResults"></div>
-        </div>
-        <span id="repNameChip"></span>
-        <a class="btn ghost small" href="index.html">↩ لوحة التحكم</a>
-        <button class="btn ghost small" id="logoutBtn">خروج</button>
-      </div>
+  <header class="top hl-header" data-hl-header data-sub-html="<span id=&quot;crmBrandSub&quot;>HoloulEnergy</span> CRM · متابعة العملاء" data-user-id="repNameChip" data-logout-id="logoutBtn">
+    <button class="btn ghost menuBtn" id="menuBtn" data-hl-slot="start" type="button" aria-label="القائمة الجانبية" aria-controls="sidebar" aria-expanded="false">☰</button>
+    <div class="gSearchWrap" data-hl-slot="actions">
+      <input type="text" id="globalSearchInput" placeholder="🔍 بحث عام برقم الجوال أو الاسم أو أي رقم مستند...">
+      <div class="gSearchResults hidden" id="globalSearchResults"></div>
     </div>
   </header>
+  <script src="assets/js/site-header.js"></script>
 
   <aside class="sidebar" id="sidebar">
     <nav class="side" id="tabsNav" aria-label="التنقل الرئيسي">

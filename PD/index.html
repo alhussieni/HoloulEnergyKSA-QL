@@ -5,15 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>PD — مستندات المشاريع | حلول الطاقة المتجددة والمقاولات</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/css/header.css">
+<link rel="stylesheet" href="../assets/css/unified-font.css">
 <style>
-  :root{--brand:#c55a11;--ink:#1d2939;--mut:#667085;--line:#d0d5dd;--bg:#f6f7f9;--ok:#067647;--bad:#b42318;--card:#fff}
-  @media (prefers-color-scheme:dark){:root{--ink:#e6e9ef;--mut:#98a2b3;--line:#344054;--bg:#0f1420;--card:#171d2b}}
+  :root{--brand:#0B7A66;--ink:#1d2939;--mut:#667085;--line:#d0d5dd;--bg:#f6f7f9;--ok:#067647;--bad:#b42318;--card:#fff}
   *{box-sizing:border-box}
-  body{margin:0;font-family:"Noto Naskh Arabic","Segoe UI",Tahoma,Arial,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
-  header{background:var(--card);border-bottom:3px solid var(--brand);padding:10px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-  header h1{font-size:18px;margin:0;color:var(--brand)}
-  header .sp{flex:1}
-  a.lnk{color:var(--brand);text-decoration:none;font-size:14px}
+  body{margin:0;font-family:"Cairo",system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;background:var(--bg);color:var(--ink);line-height:1.6}
   main{max-width:1100px;margin:16px auto;padding:0 12px}
   .tabs{display:flex;gap:6px;margin-bottom:12px}
   .tabs button{padding:8px 14px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;cursor:pointer;font:inherit}
@@ -63,13 +61,7 @@
 </section>
 
 <div id="app" class="hide">
-  <header>
-    <h1>PD — مستندات المشاريع</h1>
-    <span class="muted">Projects Documents</span>
-    <span class="sp"></span>
-    <a class="lnk" href="../crm.html">← الرجوع إلى CRM</a>
-    <a class="b" href="../home.html">الرئيسية</a>
-  </header>
+  <header class="top hl-header" data-hl-header data-title="PD — مستندات المشاريع"></header>
   <main>
     <div class="tabs">
       <button id="tab-opps" class="on">الصفقات المقبولة</button>
@@ -96,6 +88,8 @@
   <div class="db"><iframe id="docFrame" sandbox="allow-same-origin allow-modals" title="المستند"></iframe></div>
 </dialog>
 
+<script src="../assets/js/holoul-auth.js"></script>
+<script src="../assets/js/site-header.js"></script>
 <script>
 (function () {
   "use strict";
