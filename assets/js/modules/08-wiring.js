@@ -587,64 +587,6 @@ function wire(){
       });
     }
 
-    /* قسم المناديب اتنقل إلى CRM — العنصر لم يعد موجودًا في لوحة الأدمن */
-    const addRepBtnEl = document.getElementById('addRepBtn');
-    if(addRepBtnEl) addRepBtnEl.onclick = async ()=>{
-      const username = document.getElementById('newrep_username').value.trim();
-      const displayName = document.getElementById('newrep_displayname').value.trim();
-      const password = document.getElementById('newrep_password').value;
-      if(!username || !displayName || !password){ alert('من فضلك أدخل اسم المستخدم والاسم الظاهر وكلمة المرور'); return; }
-      try{
-        await callEngine('admin-save-rep', { adminToken: adminTokenMem, username, displayName, password, active:true });
-        const repsData = await callEngine('admin-list-reps', { adminToken: adminTokenMem });
-        adminReps = repsData.reps || [];
-        render();
-      }catch(e){ alert('تعذرت الإضافة: '+e.message); }
-    };
-    /* قسم المناديب اتنقل إلى CRM — العنصر لم يعد موجودًا في لوحة الأدمن */
-    const saveRepsBtnEl = document.getElementById('saveRepsBtn');
-    if(saveRepsBtnEl) saveRepsBtnEl.onclick = async ()=>{
-      const rows = {};
-      const checkboxFields = ['active','perm_pricing','perm_calcs','perm_products','perm_portfolio','perm_supply'];
-      document.querySelectorAll('[data-repid]').forEach(inp=>{
-        const id = inp.dataset.repid, f = inp.dataset.rf;
-        rows[id] = rows[id] || {};
-        rows[id][f] = checkboxFields.includes(f) ? inp.checked : inp.value;
-      });
-      try{
-        for(const id of Object.keys(rows)){
-          const r = rows[id];
-          const permissions = { pricing:!!r.perm_pricing, calcs:!!r.perm_calcs, products:!!r.perm_products, portfolio:!!r.perm_portfolio };
-          const payload = { adminToken: adminTokenMem, id:+id, username:r.username, displayName:r.displayName, active:r.active, permissions };
-          if(r.password) payload.password = r.password;
-          await callEngine('admin-save-rep', payload);
-          // صلاحية التوريدات بتتحفظ عبر supply-api (compute-quote بيقبل 4 صلاحيات بس) — بنبعتها لو اتغيّرت فقط
-          const orig = (adminReps.find(x=>String(x.id)===String(id))||{}).permissions || {};
-          if(!!r.perm_supply !== !!orig.supply){
-            const sr = await fetch(SUPABASE_URL + '/functions/v1/supply-api', {
-              method:'POST',
-              headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY },
-              body: JSON.stringify({ action:'supply-set-rep-access', adminToken: adminTokenMem, repId:+id, enabled: !!r.perm_supply })
-            });
-            const sd = await sr.json().catch(()=>({}));
-            if(!sr.ok || sd.error) throw new Error(sd.error || 'تعذر حفظ صلاحية التوريدات');
-          }
-        }
-        const repsData = await callEngine('admin-list-reps', { adminToken: adminTokenMem });
-        adminReps = repsData.reps || [];
-        alert('تم حفظ تعديلات المناديب ✔');
-        render();
-      }catch(e){ alert('تعذر الحفظ: '+e.message); }
-    };
-    document.querySelectorAll('[data-delrep]').forEach(b=>b.onclick=async ()=>{
-      if(!confirm('حذف هذا المندوب نهائيًا؟')) return;
-      try{
-        await callEngine('admin-delete-rep', { adminToken: adminTokenMem, id:+b.dataset.delrep });
-        const repsData = await callEngine('admin-list-reps', { adminToken: adminTokenMem });
-        adminReps = repsData.reps || [];
-        render();
-      }catch(e){ alert('تعذر الحذف: '+e.message); }
-    });
     function harvestAdminInputs(){
       document.querySelectorAll('[data-p]').forEach(inp=>{
         const i=+inp.dataset.p, f=inp.dataset.f;
