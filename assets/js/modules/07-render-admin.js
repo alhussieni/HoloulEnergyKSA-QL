@@ -37,6 +37,15 @@ function brdStyleHtml(){ return `<style>
   .brd-logo img{max-width:90%;max-height:72px;object-fit:contain}
   .brd-logo .brd-ph{font-size:22px;font-weight:800;color:var(--muted)}
   .brd-ops{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+  .brd-view{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:8px}
+  .brd-view button{border:0;background:transparent;padding:6px 14px;font:inherit;font-size:13px;cursor:pointer;color:var(--ink);border-inline-start:1px solid var(--line)}
+  .brd-view button:first-child{border-inline-start:0}
+  .brd-view button.on{background:var(--teal);color:#fff}
+  .brd-list{width:100%;border-collapse:collapse;margin:12px 0}
+  .brd-list td,.brd-list th{padding:8px 10px;border-bottom:1px solid var(--line);text-align:start;vertical-align:middle}
+  .brd-list .brd-sm{width:56px;height:40px;display:flex;align-items:center;justify-content:center;background:var(--sand);border-radius:6px}
+  .brd-list .brd-sm img{max-width:90%;max-height:34px;object-fit:contain}
+  .brd-list .brd-sm span{font-weight:800;color:var(--muted);font-size:13px}
   .brd-add{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;border-top:1px solid var(--line);padding-top:12px;margin-top:6px}
 </style>`; }
 
@@ -46,25 +55,42 @@ function brandsTabHtml(){
   const bump = (n,f)=>{ const k=brandKey(n); if(!k) return; (usage[k]=usage[k]||{p:0,c:0})[f]++; };
   (adminConfig.panels||[]).forEach(p=>bump(p.brand,'p'));
   (adminConfig.productCatalog||[]).forEach(cat=>(cat.rows||[]).forEach((r,i)=>bump(cat.productDetails&&cat.productDetails[String(i)]&&cat.productDetails[String(i)].brand,'c')));
-  const cards = names.map(n=>{
+  const info = n=>{
     const logo = getBrandLogo(adminConfig, n);
     const u = usage[brandKey(n)] || {p:0,c:0};
     const inReg = (adminConfig.brands||[]).some(b=>brandKey(b&&b.name)===brandKey(n));
+    const ops = `<label class="btn ghost small" style="cursor:pointer">📷 ${logo?'تغيير الشعار':'رفع الشعار'}<input type="file" accept="image/*" data-brandlogo="${escAttr(n)}" style="display:none"></label>
+        ${logo?`<button type="button" class="btn ghost small" data-brandlogoclear="${escAttr(n)}">إزالة الشعار</button>`:''}
+        ${(inReg && !u.p && !u.c)?`<button type="button" class="btn danger small" data-branddel="${escAttr(n)}">🗑 حذف</button>`:''}`;
+    return { logo, u, ops };
+  };
+  const cards = names.map(n=>{
+    const { logo, u, ops } = info(n);
     return `<div class="brd-card">
       <div class="brd-logo">${logo?`<img src="${escAttr(logo)}" alt="${escAttr(n)}">`:`<span class="brd-ph">${esc(n.slice(0,2).toUpperCase())}</span>`}</div>
       <b>${esc(n)}</b>
       <div class="note" style="margin:0">${u.p} لوح · ${u.c} منتج في الكتالوج</div>
-      <div class="brd-ops">
-        <label class="btn ghost small" style="cursor:pointer">📷 ${logo?'تغيير الشعار':'رفع الشعار'}<input type="file" accept="image/*" data-brandlogo="${escAttr(n)}" style="display:none"></label>
-        ${logo?`<button type="button" class="btn ghost small" data-brandlogoclear="${escAttr(n)}">إزالة الشعار</button>`:''}
-        ${(inReg && !u.p && !u.c)?`<button type="button" class="btn danger small" data-branddel="${escAttr(n)}">🗑 حذف</button>`:''}
-      </div>
+      <div class="brd-ops">${ops}</div>
     </div>`;
   }).join('') || '<div class="note">لا توجد ماركات بعد.</div>';
+  const listRows = names.map(n=>{
+    const { logo, u, ops } = info(n);
+    return `<tr>
+      <td style="width:70px"><div class="brd-sm">${logo?`<img src="${escAttr(logo)}" alt="${escAttr(n)}">`:`<span>${esc(n.slice(0,2).toUpperCase())}</span>`}</div></td>
+      <td><b>${esc(n)}</b></td>
+      <td>${u.p} لوح</td><td>${u.c} منتج</td>
+      <td><div class="brd-ops" style="justify-content:flex-start">${ops}</div></td>
+    </tr>`;
+  }).join('');
+  const body = !names.length ? '<div class="note">لا توجد ماركات بعد.</div>'
+    : (brandsView==='list'
+      ? `<div style="overflow-x:auto"><table class="brd-list"><thead><tr><th>الشعار</th><th>الماركة</th><th>الألواح</th><th>الكتالوج</th><th></th></tr></thead><tbody>${listRows}</tbody></table></div>`
+      : `<div class="brd-grid">${cards}</div>`);
   return `<div class="card no-print">
     <h3>🏷️ الماركات وشعاراتها</h3>
     <div class="note">سجّل شعار كل ماركة مرة واحدة هنا (JA / Aiko / Jinko / TW / VEICHI / SINOBOLY …) وهيتحفظ في الإعدادات ويتاح استخدامه في أي مكان مستقبلًا. الماركات اللي في الألواح والكتالوج بتظهر هنا تلقائيًا (JA وJa نفس الماركة). الشعار بيتحفظ فور رفعه.</div>
-    <div class="brd-grid">${cards}</div>
+    <div class="brd-view" role="group" aria-label="طريقة العرض"><button type="button" data-brandview="cards" class="${brandsView==='cards'?'on':''}">▦ كروت</button><button type="button" data-brandview="list" class="${brandsView==='list'?'on':''}">☰ قائمة</button></div>
+    ${body}
     <div class="brd-add">
       <div style="flex:1;min-width:200px"><label>اسم ماركة جديدة</label><input type="text" id="brandNewName" placeholder="مثال: Huawei"></div>
       <div><label class="btn ghost small" style="cursor:pointer">📷 اختيار الشعار<input type="file" accept="image/*" id="brandNewLogo" style="display:none"></label> <span class="note" id="brandNewFile" style="margin:0"></span></div>

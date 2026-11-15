@@ -146,6 +146,7 @@ function getAllBrandNames(cfg){
   Object.values(getCatalogBrandOptions(cfg)).forEach(arr=>arr.forEach(add));
   return [...m.values()].sort((a,b)=>a.localeCompare(b,'en',{sensitivity:'base'}));
 }
+let brandsView = (function(){ try{ return localStorage.getItem('adm_brands_view')==='list' ? 'list' : 'cards'; }catch(e){ return 'cards'; } })(); // عرض الماركات: cards | list
 let currentAdminSubSection = { products:'catalog', calcs:'pump' }; // secondary in-page sidebar for long sections
 let engineError = null;
 let quoteLoading = false;

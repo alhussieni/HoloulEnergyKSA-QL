@@ -1126,6 +1126,11 @@ function wire(){
       }catch(e){ alert('تعذر رفع الصورة: '+e.message); }
     });
     // --- سجل الماركات وشعاراتها ---
+    document.querySelectorAll('[data-brandview]').forEach(b=>b.onclick = ()=>{
+      brandsView = b.dataset.brandview === 'list' ? 'list' : 'cards';
+      try{ localStorage.setItem('adm_brands_view', brandsView); }catch(e){}
+      render();
+    });
     function brandUpsertLogo(name, logo){
       adminConfig.brands = adminConfig.brands || [];
       const k = brandKey(name);
