@@ -703,6 +703,11 @@ body.printing-cert #certPrintArea{display:block!important;}
         <div class="saveBar"><div></div><div class="right"><button class="btn teal" id="acSaveBtn" type="button">حفظ بيانات الدخول</button></div></div>
       </div>
       <div class="card">
+        <h3><span class="lbl">فحص التشغيل والتسليم</span></h3>
+        <label style="display:flex;gap:10px;align-items:center;cursor:pointer;"><input type="checkbox" id="chkRequiredToggle" style="width:auto;"> إلزامي لاعتماد التشغيل</label>
+        <p class="emptyNote" style="margin-top:8px;">لو مفعّل: لا يمكن نقل المشروع إلى حالة «تم التشغيل والتسليم» قبل اعتماد الفحص. الافتراضي: غير إلزامي.</p>
+      </div>
+      <div class="card">
         <h3><span class="lbl">إعدادات قوائم الـCRM</span></h3>
         <p class="emptyNote" style="margin-bottom:14px;">هنا تقدر تضيف/تعدّل/تحذف الخيارات اللي بتظهر في نموذج متابعة العميل (الحالة، أسباب توقف التنفيذ، رأي العميل في السعر، الأولوية، نوع التواصل) — من غير أي تعديل في الكود.</p>
         <div id="settingsGroups"><div class="loadingNote">بيحمّل الإعدادات...</div></div>
@@ -817,6 +822,7 @@ const UNDO_FN = SUPABASE_URL + '/functions/v1/admin-undo'; // الرجوع عن 
 const UNDO_ACTIONS = new Set(['admin-undo-list','admin-undo-apply']);
 const PROCUREMENT_FN = SUPABASE_URL + '/functions/v1/finance-procurement'; // طلبات عروض الأسعار وكشف حساب المورد (أدمن فقط) — actions بتبدأ بـ proc-
 const PURCHASING_FN = SUPABASE_URL + '/functions/v1/finance-purchasing'; // المشتريات: أوامر الشراء وفواتير الموردين (أدمن فقط) — actions بتبدأ بـ purchasing-
+const CHK_FN = SUPABASE_URL + '/functions/v1/checklist-api'; // فحص التشغيل والتسليم — actions بتبدأ بـ chk-
 const STAFF_FN = SUPABASE_URL + '/functions/v1/staff-api'; // الأدوار والموظفين — actions بتبدأ بـ staff- / roles-
 const EXTRAS_FN = SUPABASE_URL + '/functions/v1/finance-extras'; // أعمال إضافية على المشروع (أمر تغيير) — أدمن فقط — actions بتبدأ بـ extras-
 const ATTACH_FN = SUPABASE_URL + '/functions/v1/finance-attachments'; // مرفقات فواتير الموردين (صور / PDF) — أدمن فقط — actions بتبدأ بـ attach-
@@ -875,7 +881,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch((action.startsWith('identity-')||action==='address-set') ? IDENTITY_FN : COMPANY_ACTIONS.has(action) ? COMPANY_FN : action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : (action.startsWith('staff-')||action.startsWith('roles-')) ? STAFF_FN : action.startsWith('extras-') ? EXTRAS_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
+  const res = await fetch(action.startsWith('chk-') ? CHK_FN : (action.startsWith('identity-')||action==='address-set') ? IDENTITY_FN : COMPANY_ACTIONS.has(action) ? COMPANY_FN : action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : (action.startsWith('staff-')||action.startsWith('roles-')) ? STAFF_FN : action.startsWith('extras-') ? EXTRAS_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -982,7 +988,7 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='projects') loadProjects();
   if(tab==='maintenance') loadMaintenance();
   if(tab==='invoices'){ if(SESSION.role==='admin') loadInvReport(); else loadInvoices(); }
-  if(tab==='settings') loadSettingsScreen();
+  if(tab==='settings'){ loadSettingsScreen(); if(typeof loadChkSetting==='function') loadChkSetting(); }
   if(tab==='roles') loadRolesScreen();
   if(tab==='audit'){ loadUndoPanel(); loadAuditLog(); }
   if(tab==='segments') loadSegments();
@@ -5715,6 +5721,11 @@ async function renderProjectPanel(wrap, opportunityId, opp){
     <div class="saveBar"><div></div><div class="right"><button class="btn" id="saveProjectBtn" type="button">حفظ بيانات المشروع</button></div></div>
 
     <div class="section">
+      <h4>فحص التشغيل والتسليم</h4>
+      <div id="chkBox"><div class="loadingNote">بيحمّل حالة الفحص...</div></div>
+    </div>
+
+    <div class="section">
       <h4>أعمال إضافية متفق عليها</h4>
       <div id="extrasBox"><div class="loadingNote">بيحمّل الأعمال الإضافية...</div></div>
     </div>
@@ -5872,6 +5883,18 @@ async function renderProjectPanel(wrap, opportunityId, opp){
     }catch(err){ toast('خطأ: '+err.message); }
   });
   /* أعمال إضافية: بتزوّد قيمة العقد (نفس دوال الخزنة finance-extras) — بتتسجّل بعد الاتفاق مع العميل على التكلفة والتفاصيل */
+  (async()=>{
+    const box = wrap.querySelector('#chkBox'); if(!box) return;
+    try{
+      const d = await crmApi('chk-status', {projectIds:[p.id]});
+      const c = (d.items||[])[0];
+      const st = c ? c.status : 'none';
+      const L = {none:['لم يبدأ','#93a89c'], draft:['مسودة','#B5720B'], submitted:['مُرسل بانتظار الاعتماد','#155E85'], approved:['معتمد','#1e8e5a']}[st];
+      box.innerHTML = `<span class="tag" style="background:${L[1]}22;color:${L[1]}">${L[0]}</span>
+        <span style="margin-inline:8px;font-size:13px;color:var(--muted);">${d.required?'إلزامي لاعتماد التشغيل':'غير إلزامي'}</span>
+        <a class="btn small" style="text-decoration:none;" target="_blank" rel="noopener" href="commissioning.html?project=${p.id}">${c?'فتح الفحص':'بدء الفحص'}</a>`;
+    }catch(err){ if(/غير مصرّح/.test(err.message)){ box.closest('.section').style.display='none'; return; } box.innerHTML = '<div class="loadingNote">تعذر تحميل حالة الفحص: '+escapeHtml(err.message)+'</div>'; }
+  })();
   const exBox = wrap.querySelector('#extrasBox');
   if(exBox){
     const refreshAfter = () => renderProjectPanel(wrap, opportunityId, opp);
@@ -6598,6 +6621,14 @@ function addOptRow(container, opt, hasColor){
 function slugify(s){
   return (s||'').trim().toLowerCase().replace(/[^a-z0-9\u0600-\u06FF\s_-]/g,'').replace(/\s+/g,'_').slice(0,40) || ('opt_'+Date.now());
 }
+(async()=>{
+  const t = document.getElementById('chkRequiredToggle'); if(!t) return;
+  t.addEventListener('change', async ()=>{
+    try{ await crmApi('chk-settings-set', {required: t.checked}); toast(t.checked?'فحص التشغيل أصبح إلزاميًا ✅':'فحص التشغيل غير إلزامي'); }
+    catch(err){ t.checked = !t.checked; toast('خطأ: '+err.message); }
+  });
+})();
+function loadChkSetting(){ crmApi('chk-settings-get').then(d=>{ const t=document.getElementById('chkRequiredToggle'); if(t) t.checked=!!d.required; }).catch(()=>{}); }
 document.getElementById('saveSettingsBtn').addEventListener('click', async ()=>{
   const wrap = document.getElementById('settingsGroups');
   const newSettings = {};
