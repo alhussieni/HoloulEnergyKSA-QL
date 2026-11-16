@@ -1,0 +1,784 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>فحص التشغيل والتسليم</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="assets/js/holoul-auth.js"></script>
+<style>
+/* Layout: sticky readiness bar over a single column of collapsible sections; each item is a row with rating chips, a measurement line and a note. Built for a phone held on site. */
+:root{
+  --bg:#F2F5F7; --surface:#FFFFFF; --ink:#14232E; --muted:#5A6B77; --line:#D6DEE4;
+  --accent:#0B6E8A; --on-accent:#FFFFFF; --accent-soft:#E0F0F5;
+  --ok:#1B7F52; --ok-bg:#E1F3EA; --warn:#935C00; --warn-bg:#FFF0D2; --bad:#B8322A; --bad-bg:#FBE3E0;
+  --neutral:#4F606C; --neutral-bg:#E8ECEF;
+  --font:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif; --mono:'IBM Plex Mono',ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0E1920; --surface:#16252E; --ink:#E5EDF2; --muted:#94A7B4; --line:#2A3C47;
+  --accent:#55B7D6; --on-accent:#06212B; --accent-soft:#12323D;
+  --ok:#4CC38A; --ok-bg:#12372A; --warn:#E8B34E; --warn-bg:#3A2E10; --bad:#F2796D; --bad-bg:#3D1C19;
+  --neutral:#A3B4BF; --neutral-bg:#213540; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1920; --surface:#16252E; --ink:#E5EDF2; --muted:#94A7B4; --line:#2A3C47;
+  --accent:#55B7D6; --on-accent:#06212B; --accent-soft:#12323D;
+  --ok:#4CC38A; --ok-bg:#12372A; --warn:#E8B34E; --warn-bg:#3A2E10; --bad:#F2796D; --bad-bg:#3D1C19;
+  --neutral:#A3B4BF; --neutral-bg:#213540; color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.55;
+  padding-block:0 48px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px))}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:30}
+.wrap{max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1,h2,h3,p{margin:0}
+.proto{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 12px;font-size:13px;margin-top:14px}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.top h1{font-size:22px;font-weight:700;text-wrap:balance}
+.top .sub{color:var(--muted);font-size:13px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0}
+.card h2{font-size:15px;font-weight:700;margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 12px}
+.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);min-width:0}
+.f .src{font-size:11px;color:var(--accent)}
+input,select,textarea,button{font:inherit;color:inherit}
+input[type=text],input[type=date],input[type=number],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-height:40px;color:var(--ink)}
+textarea{resize:vertical;min-height:40px}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ro{background:var(--neutral-bg);border-radius:8px;padding:8px 10px;min-height:40px;color:var(--ink);font-size:14px;overflow-wrap:anywhere}
+.mono{font-family:var(--mono)}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;cursor:pointer;min-height:40px}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--on-accent);border-color:var(--accent);font-weight:600}
+/* readiness bar */
+.ready{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.ready .row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.bar{height:8px;background:var(--neutral-bg);border-radius:6px;overflow:hidden;flex:1;min-width:120px}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600;background:var(--neutral-bg);color:var(--neutral)}
+.pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.warn{background:var(--warn-bg);color:var(--warn)} .pill.bad{background:var(--bad-bg);color:var(--bad)}
+.blockers{margin:0;padding:0 18px 0 0;font-size:13px;color:var(--muted)}
+.blockers li{margin:1px 0}
+/* sections */
+details.sec{background:var(--surface);border:1px solid var(--line);border-radius:10px;min-width:0}
+details.sec>summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;align-items:center;gap:10px;font-weight:700}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary .letter{width:28px;height:28px;border-radius:7px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-family:var(--mono);font-size:14px}
+details.sec>summary .ttl{flex:1;min-width:0}
+details.sec>summary .cnt{font-weight:500;font-size:12.5px;color:var(--muted)}
+details.sec>summary::after{content:"‹";transition:transform .15s;color:var(--muted);font-size:18px}
+details.sec[open]>summary::after{transform:rotate(-90deg)}
+.items{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.item{padding:12px 14px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line);border-inline-start:4px solid transparent}
+.item:last-child{border-bottom:0}
+.item[data-st=ex],.item[data-st=gd]{border-inline-start-color:var(--ok)}
+.item[data-st=ac]{border-inline-start-color:var(--warn)}
+.item[data-st=po]{border-inline-start-color:var(--bad)}
+.item[data-st=sk]{border-inline-start-color:var(--neutral)}
+.ih{display:flex;gap:10px;align-items:flex-start}
+.code{font-family:var(--mono);font-size:12px;background:var(--neutral-bg);color:var(--neutral);border-radius:5px;padding:2px 6px;flex:none;margin-top:3px}
+.t{font-weight:600}
+.crit{color:var(--muted);font-size:13px}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:3px}
+.tag{font-size:11.5px;border-radius:5px;padding:1px 7px;background:var(--accent-soft);color:var(--accent)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 11px;min-height:38px;cursor:pointer;font-size:13.5px}
+.chips button[aria-checked=true]{font-weight:700}
+.chips button[data-r=ex][aria-checked=true]{background:var(--ok-bg);color:var(--ok);border-color:var(--ok)}
+.chips button[data-r=gd][aria-checked=true]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+.chips button[data-r=ac][aria-checked=true]{background:var(--warn-bg);color:var(--warn);border-color:var(--warn)}
+.chips button[data-r=po][aria-checked=true]{background:var(--bad-bg);color:var(--bad);border-color:var(--bad)}
+.chips button[data-r=sk][aria-checked=true]{background:var(--neutral-bg);color:var(--neutral);border-color:var(--neutral);border-style:dashed}
+.chips button[data-r=na][aria-checked=true]{background:var(--neutral-bg);color:var(--neutral);border-color:var(--neutral)}
+.meas{display:grid;grid-template-columns:minmax(90px,1fr) minmax(90px,1fr) auto;gap:8px;align-items:end}
+.meas .u{padding-bottom:10px;color:var(--muted);font-size:13px;font-family:var(--mono)}
+.meas label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.xtra{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.xtra textarea{flex:1;min-width:180px}
+.photo-btn{border:1px dashed var(--line);background:transparent;border-radius:8px;padding:8px 12px;cursor:pointer;min-height:40px;color:var(--muted);font-size:13px}
+.thumbs{display:flex;gap:6px;flex-wrap:wrap}
+.thumbs div{position:relative}
+.thumbs img{width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block}
+.thumbs button{position:absolute;top:-6px;inset-inline-start:-6px;width:20px;height:20px;border-radius:50%;border:0;background:var(--bad);color:#fff;cursor:pointer;font-size:12px;line-height:20px;padding:0}
+.hint{font-size:12.5px;border-radius:6px;padding:4px 9px}
+.hint.info{background:var(--accent-soft);color:var(--accent)}
+.stop{background:var(--bad-bg);color:var(--bad);border-radius:8px;padding:8px 12px;font-size:13.5px}
+.stop ul{margin:4px 0 0;padding:0 18px 0 0}
+.hint.warn{background:var(--warn-bg);color:var(--warn)} .hint.bad{background:var(--bad-bg);color:var(--bad)}
+/* tables */
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:460px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:start;font-size:14px}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
+td input{min-height:36px;padding:5px 8px}
+.num{font-variant-numeric:tabular-nums}
+.rec{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.rec:last-child{border-bottom:0}
+.rec .rt{font-weight:600}
+.rec .ro2{grid-column:2;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.rec input[type=checkbox]{width:20px;height:20px;margin-top:3px}
+.btn{border:1px solid var(--accent);background:var(--accent);color:var(--on-accent);border-radius:8px;padding:9px 16px;cursor:pointer;font-weight:600;min-height:42px}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.sigs{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+canvas.sig{width:100%;height:130px;background:var(--bg);border:1px dashed var(--muted);border-radius:8px;touch-action:none;display:block}
+.ack{background:var(--bg);border-radius:8px;padding:10px 12px;font-size:14px;margin-bottom:10px}
+.done{background:var(--ok-bg);color:var(--ok);border-radius:10px;padding:12px 14px;font-weight:600}
+.empty{padding:14px;color:var(--muted);font-size:14px}
+/* structured component forms */
+.comp{padding:14px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+.comp:last-child{border-bottom:0}
+.ch{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ch .code{margin:0}
+.ch h3{font-size:15px;font-weight:700;flex:1;min-width:140px}
+.ref{font-size:12.5px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:3px 9px}
+.av{display:flex;gap:6px;flex-wrap:wrap}
+.av button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 16px;min-height:40px;cursor:pointer}
+.av button[aria-pressed=true][data-v=yes]{background:var(--ok-bg);color:var(--ok);border-color:var(--ok);font-weight:700}
+.av button[aria-pressed=true][data-v=no]{background:var(--bad-bg);color:var(--bad);border-color:var(--bad);font-weight:700}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px 12px}
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld.wide{grid-column:1/-1}
+.fld>.lb{font-size:13px;color:var(--muted)}
+.fld>.lb b{color:var(--bad)}
+.inl{display:flex;align-items:center;gap:8px}
+.fld .inl input{max-width:240px}
+.inl .u{color:var(--muted);font-size:13px;font-family:var(--mono);white-space:nowrap}
+.opt{display:flex;gap:6px;flex-wrap:wrap}
+.opt button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 13px;min-height:40px;cursor:pointer;font-size:14px}
+.opt button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent);font-weight:700}
+.rrow{display:grid;grid-template-columns:auto repeat(auto-fit,minmax(110px,1fr));gap:8px;align-items:end;padding:8px;background:var(--bg);border-radius:8px;margin-top:6px}
+.rrow .rl{font-size:13px;font-weight:600;padding-bottom:10px;white-space:nowrap}
+.rrow .rc{display:flex;flex-direction:column;gap:3px;min-width:0;font-size:12px;color:var(--muted)}
+.rrow .opt button{padding:5px 10px;min-height:38px}
+.cstate{font-size:12px;border-radius:999px;padding:2px 10px;font-weight:600}
+.cstate[data-s=done]{background:var(--ok-bg);color:var(--ok)}
+.cstate[data-s=part]{background:var(--warn-bg);color:var(--warn)}
+.cstate[data-s=empty]{background:var(--neutral-bg);color:var(--neutral)}
+.chk{display:flex;flex-direction:column}
+.chkrow{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.chkrow:last-child{border-bottom:0}
+.chkrow span{flex:1;min-width:180px}
+.hints{display:flex;flex-direction:column;gap:5px}
+@media (max-width:480px){.meas{grid-template-columns:1fr 1fr}.meas .u{grid-column:1/-1;padding:0}}
+.locked #sections,.locked #recs,.locked .ack+.grid,.locked .sigs,.locked #approve{pointer-events:none;opacity:.65}
+.toast{position:fixed;inset-inline:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;z-index:50;font-size:14px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head><body>
+<div class="wrap" dir="rtl" lang="ar">
+  <header class="top">
+    <div>
+      <h1>فحص التشغيل والتسليم</h1>
+      <p class="sub" id="reportTypeLine"></p>
+    </div>
+    <span class="pill mono" id="reportNo"></span>
+  </header>
+
+  <section class="card" aria-labelledby="h-proj">
+    <h2 id="h-proj">حالة الفحص</h2>
+    <div id="wf"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-info">
+    <h2 id="h-info">1. معلومات العميل والنظام</h2>
+    <div class="grid" id="infoGrid"></div>
+  </section>
+
+  <section class="card" aria-labelledby="h-rep">
+    <h2 id="h-rep">2. تفاصيل التقرير</h2>
+    <div class="grid">
+      <label class="f">تاريخ الفحص<input type="date" id="rdate"></label>
+      <label class="f">اسم المهندس<input type="text" id="eng" placeholder="اسم المهندس المسؤول"></label>
+      <div class="f">نوع التقرير<div class="ro" id="rtype"></div></div>
+    </div>
+  </section>
+
+  <div class="ready" id="ready" aria-live="polite"></div>
+
+  <div id="sections" class="wrap" style="gap:10px"></div>
+
+  <section class="card" aria-labelledby="h-rec">
+    <h2 id="h-rec">3. ملاحظات وتوصيات</h2>
+    <p class="crit" style="margin-bottom:6px">أي بند مقيَّم «مقبول» أو «ضعيف» وعليه ملاحظة يدخل هنا تلقائيًا، وهذه هي قائمة الملاحظات المتبقية في التسليم.</p>
+    <div id="recs"></div>
+    <div class="xtra" style="margin-top:10px">
+      <input type="text" id="recNew" placeholder="أضف توصية يدوية" style="flex:1;min-width:200px">
+      <button class="btn ghost" id="recAdd" type="button">إضافة</button>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="h-ack">
+    <h2 id="h-ack">4. إقرار العميل وتوقيع المهندس</h2>
+    <div class="ack" id="ackText"></div>
+    <div class="grid" style="margin-bottom:12px">
+      <label class="f">اسم العميل<input type="text" id="cname"></label>
+      <label class="f">تاريخ توقيع العميل<input type="date" id="cdate"></label>
+    </div>
+    <div class="sigs">
+      <div class="f">توقيع العميل<canvas class="sig" id="sigC" aria-label="مساحة توقيع العميل"></canvas>
+        <button class="btn ghost" type="button" data-clear="sigC" style="margin-top:6px;align-self:flex-start">مسح</button></div>
+      <div class="f">توقيع المهندس<canvas class="sig" id="sigE" aria-label="مساحة توقيع المهندس"></canvas>
+        <button class="btn ghost" type="button" data-clear="sigE" style="margin-top:6px;align-self:flex-start">مسح</button></div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn" id="approve" type="button">توقيع وإرسال للاعتماد</button>
+    </div>
+    <div id="approved" style="margin-top:12px"></div>
+  </section>
+</div>
+
+<script>
+/* ---------- data ---------- */
+let PROJECTS=[];
+const SCOPES=[['supply','توريد فقط'],['installation','تركيب فقط'],['lumpsum','توريد وتركيب (مقطوعية)']];
+const SYSTEMS=[['pump','مضخة'],['ongrid','أون-جريد'],['offgrid','أوف-جريد'],['hybrid','هايبرد']];
+const SYSN=Object.fromEntries(SYSTEMS);
+const RATES=[['ex','ممتاز'],['gd','جيد'],['ac','مقبول'],['po','ضعيف'],['sk','لم يُفحص'],['na','لا ينطبق']];
+const RN=Object.fromEntries(RATES);
+const P='pump';
+// [id, text, criterion, supply, install, systems|null, measure|null, optional]
+
+const GEN=[];
+
+/* ---------- structured component forms ---------- */
+const YN=[['yes','نعم'],['no','لا']];
+const OKBAD=[['ok','سليمة'],['bad','غير سليمة']];
+const hasBad=c=>Array.isArray(c)&&c.some(x=>x!=='ok');
+const num=v=>{const n=parseFloat(v);return isFinite(n)?n:null};
+const FORMS=[
+{L:'A',T:'استلام المواد والفحص',intro:'فنّط المواد بالترتيب. لكل مكوّن اختر متاح أو غير متاح، ثم سجّل حالته وبياناته.',comps:[
+ {id:'A1',title:'الألواح الشمسية',av:['متاحة','غير متاحة'],ref:p=>p.panel&&('المطلوب في العرض: '+p.panel),fields:[
+  {k:'total',t:'num',label:'عدد الألواح المستلمة',u:'لوح',req:1},
+  {k:'cond',t:'multi',label:'الحالة الظاهرية',opts:[['ok','سليمة بالكامل',1],['dent','انبعاج في الهيكل'],['glass','كسر في الزجاج']],req:1},
+  {k:'bad',t:'num',label:'عدد الألواح التي بها مشاكل',u:'لوح',req:1,showIf:d=>hasBad(d.cond)},
+  {k:'ser',t:'area',label:'سيريال نمبر الألواح (اختياري، خصوصًا المتضررة)',wide:1},
+  {k:'match',t:'radio',label:'بيانات الألواح مطابقة للموديل المطلوب',opts:YN,req:1},
+  {k:'actual',t:'text',label:'الموديل والقدرة الفعليان',req:1,showIf:d=>d.match==='no'},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  hints:d=>{const h=[];if(num(d.total)!=null&&num(d.bad)>num(d.total))h.push('عدد الألواح المتضررة أكبر من عدد الألواح المستلمة.');return h},
+  recs:d=>{const r=[],L={dent:'انبعاج في الهيكل',glass:'كسر في الزجاج'};
+    if(hasBad(d.cond))r.push(`${d.bad||'؟'} لوح متضرر (${d.cond.filter(x=>x!=='ok').map(x=>L[x]).join(' + ')})`);
+    if(d.match==='no')r.push(`غير مطابقة للموديل المطلوب، الفعلي: ${d.actual||'—'}`);return r}},
+ {id:'A2',title:'الانفرتر',av:['متاح','غير متاح'],ref:p=>p.inv&&('المطلوب في العرض: '+p.inv),fields:[
+  {k:'cond',t:'radio',label:'الحالة الظاهرية',opts:[['ok','سليم بدون أي خدوش'],['scr','به خدوش'],['other','أخرى']],req:1,wide:1},
+  {k:'condNote',t:'area',label:'ملاحظة بحالة الجهاز',wide:1,showIf:d=>d.cond==='scr'||d.cond==='other',req:d=>d.cond==='other'},
+  {k:'cap',t:'num',label:'قدرة الانفرتر الفعلية',u:'kW',req:1},
+  {k:'capMatch',t:'radio',label:'القدرة مطابقة للمطلوب',opts:YN,req:1},
+  {k:'serial',t:'text',label:'سيريال نمبر الانفرتر',req:1},
+  {k:'motorFit',t:'radio',label:'الانفرتر مناسب لقدرة الموتور المتاح بالموقع',opts:YN,req:1,wide:1,showIf:(d,s)=>s.sy==='pump'},
+  {k:'motorKw',t:'num',label:'قدرة الموتور المتاح فعليًا',u:'kW',req:1,showIf:(d,s)=>s.sy==='pump'},
+  {k:'note',t:'area',label:'ملاحظات وأي بيانات أخرى',wide:1}],
+  hints:(d,s)=>{const h=[];if(s.sy==='pump'&&num(d.cap)!=null&&num(d.motorKw)!=null&&num(d.cap)<num(d.motorKw))h.push('قدرة الانفرتر أقل من قدرة الموتور. راجع مناسبته قبل التسليم.');return h},
+  recs:(d,s)=>{const r=[];
+    if(d.cond==='scr')r.push('به خدوش'+(d.condNote?': '+d.condNote:''));
+    if(d.cond==='other')r.push('حالته: '+(d.condNote||'—'));
+    if(d.capMatch==='no')r.push('قدرته غير مطابقة للمطلوب');
+    if(s.sy==='pump'&&d.motorFit==='no')r.push('غير مناسب لقدرة الموتور المتاح');return r}},
+ {id:'A3',title:'كابلات DC',av:['متاحة','غير متاحة'],fields:[
+  {k:'sec',t:'num',label:'مساحة مقطع الكابل',u:'mm²',req:1},
+  {k:'len',t:'num',label:'الطول المتاح (اختياري)',u:'م'},
+  {k:'cond',t:'radio',label:'الحالة',opts:[['ok','سليمة'],['cut','بها قطع']],req:1},
+  {k:'note',t:'area',label:'ملاحظات',wide:1,req:d=>d.cond==='cut',showIf:()=>true}],
+  missTxt:'غير متاحة: يلزم توفير كابلات DC',
+  recs:d=>d.cond==='cut'?['بها قطع: '+(d.note||'—')]:[]},
+ {id:'A4',title:'لوحة الانفرتر',av:['متاحة','غير متاحة'],fields:[
+  {k:'cond',t:'radio',label:'الحالة',opts:OKBAD,req:1},
+  {k:'note',t:'area',label:'اذكر المشكلة',wide:1,showIf:d=>d.cond==='bad',req:1}],
+  recs:d=>d.cond==='bad'?['غير سليمة: '+(d.note||'—')]:[]},
+ {id:'A5',title:'صندوق التجميع (Combiner Box)',av:['متاح','غير متاح'],ref:()=>'يتضمن MCCB DC وSPD وفيوزات بحامل',missTxt:'غير متاح: يلزم توفير صندوق تجميع بـ MCCB DC وSPD وفيوزات بحامل',fields:[
+  {k:'count',t:'num',label:'عدد الصناديق',u:'صندوق',req:1,rows:{k:'boxes',label:'صندوق',cols:[
+    {k:'lines',t:'num',label:'عدد الخطوط',req:1},
+    {k:'mccb',t:'num',label:'حجم MCCB (A)',req:1},
+    {k:'fuse',t:'num',label:'حجم الفيوز (A)'},
+    {k:'cond',t:'radio',label:'الحالة',opts:OKBAD,req:1},
+    {k:'note',t:'text',label:'ملاحظة',req:r=>r.cond==='bad'}]}},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  recs:d=>rowsOf(COMPMAP.A5.fields[0],d).map((b,i)=>b.cond==='bad'?`صندوق ${i+1} غير سليم: ${b.note||'—'}`:null).filter(Boolean)}
+]},
+{L:'B',T:'الأعمال الكهربائية: بيانات الموقع',intro:'بيانات وقراءات الكهرباء الموجودة بالموقع، لتحديد التوصيل وما ينقص.',comps:[
+ {id:'B1',title:'الألواح والسلاسل',sc:'ins',fields:[
+  {k:'pps',t:'num',label:'عدد الألواح في كل سلسلة',u:'لوح',req:1},
+  {k:'numbered',t:'radio',label:'هل السلاسل مرقّمة',opts:YN,req:1},
+  {k:'nstr',t:'num',label:'عدد السلاسل الفعلي المتاح في المنظومة',u:'سلسلة',req:1,rows:{k:'strings',label:'سلسلة',showIf:d=>d.numbered==='yes',cols:[
+    {k:'voc',t:'num',label:'جهد Voc (V)',req:1},{k:'cur',t:'num',label:'التيار (A)',req:1}]}},
+  {k:'sysVoc',t:'num',label:'Voc للسيستم بالكامل',u:'V',req:1,showIf:d=>d.numbered==='no'},
+  {k:'sysVmp',t:'num',label:'Vmp للسيستم بالكامل',u:'V',req:1,showIf:d=>d.numbered==='no'},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  hints:d=>{const h=[];if(d.numbered!=='yes')return h;
+    const rs=rowsOf(COMPMAP.B1.fields[2],d),v=rs.map(r=>num(r.voc)),ok=v.filter(x=>x!=null);
+    if(ok.length>1){const m=ok.reduce((a,b)=>a+b,0)/ok.length;
+      const bad=v.map((x,i)=>x!=null&&Math.abs(x-m)/m>0.05?i+1:null).filter(Boolean);
+      if(bad.length)h.push(`جهد السلاسل ${bad.join('، ')} يختلف عن المتوسط (${m.toFixed(0)} V) بأكثر من 5%. راجع التوصيل أو الظل أو الألواح.`)}
+    return h},
+  recs:d=>[]},
+]}
+];
+const CK=[['yes','نعم'],['no','لا']];
+const maxVoc=()=>{const b=D('B1');if(b.numbered==='yes'){const v=rowsOf(COMPMAP.B1.fields[2],b).map(r=>num(r.voc)).filter(x=>x!=null);return v.length?Math.max(...v):null}return num(b.sysVoc)};
+const vdrop=d=>{const S_=num(d.sec),L=num(d.len),I=num(d.I);if(S_==null||L==null||I==null||S_===0)return null;const v=Math.sqrt(3)*I*L*0.0202/S_;return{v,p:v/380*100}};
+const testOk=g=>!!g.time&&g.sky==='clear'&&g.time>='10:00'&&g.time<='14:00';
+const devPct=(a,b)=>{a=num(a);b=num(b);return a==null||b==null||b===0?null:(a-b)/b*100};
+FORMS.push(
+{L:'C',T:'الأعمال الميكانيكية',intro:'الهيكل المعدني والأساسات وتثبيت الألواح. في التوريد فقط قد يركّب العميل هيكلًا من حديد الورش بلحام بدل المسامير.',comps:[
+ {id:'C1',title:'هيكل التثبيت',sc:'ins',av:['متاح','غير متاح'],fields:[
+  {k:'type',t:'radio',label:'نوع الهيكل',opts:[['bolt','مجلفن بمسامير'],['weld','حديد ورشة بلحام (من العميل)']],req:1,wide:1},
+  {k:'shade',t:'radio',label:'الظل على الألواح',opts:[['none','خالٍ من الظل'],['part','ظل جزئي'],['heavy','ظل كبير']],req:1,wide:1},
+  {k:'tilt',t:'num',label:'ميل الهيكل',u:'°',req:1},
+  {k:'chkB',t:'checks',label:'فحوصات الهيكل المجلفن',req:1,showIf:d=>d.type==='bolt',items:[['found','الأساسات متماسكة بلا ميل أو اهتزاز'],['bolts','براغي التثبيت مشدودة بالعزم المحدد'],['align','كل الصفوف على استقامة واحدة'],['gal','الجلفنة سليمة ولا تلامس بين معدنين مختلفين بدون عزل'],['clamp','الألواح مثبتة بإحكام ولا مشبك يظلل الخلايا']]},
+  {k:'chkW',t:'checks',label:'فحوصات الهيكل الملحوم',req:1,showIf:d=>d.type==='weld',items:[['found','الأساسات متماسكة بلا ميل أو اهتزاز'],['weld','اللحام متماسك بلا شروخ أو فجوات'],['paint','الأجزاء الملحومة مطلية ضد الصدأ'],['sect','مقاطع الحديد مناسبة لحمل الألواح والرياح'],['align','كل الصفوف على استقامة واحدة'],['clamp','الألواح مثبتة بإحكام ولا شيء يظلل الخلايا']]},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  hints:d=>d.type==='weld'?['~هيكل ملحوم من الورش (تجميع بلحام وليس بمسامير): الفحص على جودة اللحام والطلاء.']:[],
+  recs:d=>d.shade==='part'||d.shade==='heavy'?['ظل '+(d.shade==='heavy'?'كبير':'جزئي')+' على الألواح']:[]}
+]},
+{L:'D',T:'التوصيلات والتأريض',intro:'حماية DC (MCCB وSPD وفيوزات بحامل) موجودة داخل صندوق التجميع، وحماية التيار والجهد الزائد والمنخفض يوفرها الانفرتر، لذلك لا تُسجَّل هنا.',comps:[
+ {id:'D3',title:'كابل الغطاس وريأكتور الخرج',sc:'ins',sys:['pump'],ref:()=>'لتقدير الفاقد في الجهد وجدوى الريأكتور',fields:[
+  {k:'sec',t:'num',label:'مساحة مقطع كابل الغطاس',u:'mm²',req:1},
+  {k:'len',t:'num',label:'طول الكابل من الانفرتر إلى المحرك',u:'م',req:1},
+  {k:'I',t:'num',label:'التيار المقنن للمحرك',u:'A',req:1},
+  {k:'reactor',t:'radio',label:'ريأكتور خرج مركّب',opts:YN,req:1},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  hints:d=>{const h=[],r=vdrop(d);
+    if(r){const m=`سقوط الجهد التقريبي في الكابل ${r.v.toFixed(1)} V (${r.p.toFixed(1)}% من 380 V)، نحاس عند 60°م ومقاومة فقط.`;
+      h.push(r.p>5?'!'+m+' مرتفع، كبّر المقطع أو قصّر المسار.':r.p>3?m+' أعلى من 3%، راجع المقطع.':'~'+m+' مقبول.')}
+    if(num(d.len)!=null){if(num(d.len)>50&&d.reactor!=='yes')h.push('يوصى بريأكتور خرج: طول الكابل أكثر من 50 م (مرجع شائع، والحد الفعلي في دليل مصنّع الانفرتر).');
+      else if(num(d.len)<=50&&d.reactor==='yes')h.push('~الريأكتور غير لازم عادةً لهذا الطول، راجع دليل المصنّع.')}
+    return h},
+  recs:d=>{const r=[],v=vdrop(d);if(v&&v.p>5)r.push(`سقوط جهد مرتفع في كابل الغطاس (${v.p.toFixed(1)}%)`);
+    if(num(d.len)>50&&d.reactor==='no')r.push('كابل طويل بدون ريأكتور خرج');return r}},
+ {id:'D4',title:'طريقة توصيل الكابلات',sc:'ins',fields:[
+  {k:'method',t:'radio',label:'طريقة التوصيل',opts:[['mc4','عبر MC4'],['solder','لحام مباشر']],req:1},
+  {k:'chk',t:'checks',label:'فحوصات MC4',req:1,showIf:d=>d.method==='mc4',items:[['same','كلها من نفس النوع والمصنّع'],['crimp','مكبوسة بالأداة الصحيحة ومشدودة'],['tension','لا شد على الكابلات'],['pol','القطبية صحيحة والعلامات واضحة']]},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  hints:d=>d.method==='solder'?['!اللحام المباشر مرفوض ولا يمكن اعتماد التشغيل. استبدله بوصلات MC4.']:[],
+  recs:d=>d.method==='solder'?['توصيل بلحام مباشر: مرفوض ويلزم استبداله بـ MC4']:[]},
+ {id:'D5',title:'مكان الانفرتر',sc:'ins',fields:[
+  {k:'housing',t:'radio',label:'مكان تركيب الانفرتر',opts:[['panel','لوحة خاصة بالانفرتر'],['room','غرفة معزولة'],['none','لا توجد لوحة أو غرفة']],req:1,wide:1},
+  {k:'vent',t:'radio',label:'التهوية',opts:[['nat','طبيعية'],['fan','شفاط'],['ac','مكيف'],['none','غير كافية']],req:1,wide:1,showIf:d=>d.housing&&d.housing!=='none'},
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,showIf:d=>d.housing&&d.housing!=='none',items:[['wall','معلّق على الجدار'],['level','ميزان المياه مضبوط'],['water','معزول ضد المياه'],['clear','المسافات حول الانفرتر كما يوصي المصنّع']]},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  hints:d=>[d.housing==='none'?'!لا توجد لوحة أو غرفة للانفرتر: ممنوع اعتماد التشغيل.':null,d.vent==='none'?'التهوية غير كافية.':null].filter(Boolean),
+  recs:d=>[d.housing==='none'?'لا توجد لوحة أو غرفة خاصة بالانفرتر':null,d.vent==='none'?'تهوية الانفرتر غير كافية':null].filter(Boolean)},
+ {id:'D6',title:'التأريض',sc:'ins',fields:[
+  {k:'choice',t:'radio',label:'التأريض',opts:[['done','منفَّذ'],['declined','بحسب اختيار العميل: بدون تأريض']],req:1,wide:1},
+  {k:'res',t:'num',label:'مقاومة الأرض',u:'Ω',req:1,showIf:d=>d.choice==='done'},
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,showIf:d=>d.choice==='done',items:[['bond','الهياكل والألواح والانفرتر والصناديق والمحرك على تأريض موحد'],['loop','تقليل مساحة الحلقة (تجميع كابلات + و − معًا)']]},
+  {k:'note',t:'area',label:'ملاحظة (إقرار العميل عند عدم التأريض)',wide:1,req:d=>d.choice==='declined'}],
+  recs:d=>d.choice==='declined'?['تأريض غير منفَّذ بحسب اختيار العميل']:[]},
+ {id:'D7',title:'مسارات الكابلات والترقيم',sc:'ins',fields:[
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,items:[['conduit','الكابلات المكشوفة داخل مواسير أو قنوات'],['radius','نصف قطر الانحناء مناسب'],['gland','جلاندات محكمة عند الدخول للصناديق'],['label','ترقيم السلاسل والكابلات والقواطع'],['warn','لافتات تحذير DC'],['single','المخطط الخطي مثبت عند اللوحة']]}]},
+ {id:'D8',title:'البطاريات',sc:'ins',sys:['offgrid','hybrid'],fields:[
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,items:[['vent','تهوية سليمة'],['earth','تأريض سليم'],['brk','قاطع حماية للبطارية'],['bms','اتصال BMS مع الانفرتر'],['lim','حدود الشحن والتفريغ مضبوطة بحسب المصنّع']]},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}]},
+ {id:'D9',title:'الربط بالشبكة',sc:'ins',sys:['ongrid'],fields:[
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,items:[['ok','موافقة جهة الربط قبل التشغيل'],['set','إعدادات حماية الانفرتر مطابقة لاشتراطاتها']]}]}
+]},
+{L:'E',T:'جودة التركيب والتشطيب',intro:'ما يراه العميل ويحكم به على التنفيذ.',comps:[
+ {id:'E1',title:'جودة التشطيب',sc:'ins',fields:[
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,wide:1,items:[['ties','الكابلات مثبتة بربطات مقاومة للأشعة بلا شد أو احتكاك'],['torque','الأطراف مشدودة بالعزم ومعلَّمة'],['seal','فتحات الصناديق والجلاندات محكمة'],['sign','لافتات التحذير وملصق بيانات النظام مثبتة'],['photos','صور الأعمال المغطاة موثّقة (الأساسات، التأريض، مسارات الكابلات)'],['clean','التنظيف وإزالة الأغلفة والمخلفات'],['guard','حماية المعدات من العبث والحيوانات'],['site','لا أضرار بممتلكات العميل والموقع نظيف']]},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}]}
+]},
+{L:'F',T:'الاختبارات قبل التشغيل',intro:'قياسات ما قبل أول تشغيل، بحدود قبول مرجعية. افصل الدوائر واستخدم أجهزة مصنّفة لجهد النظام.',comps:[
+ {id:'F1',title:'التأريض والقطبية',sc:'ins',fields:[
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,wide:1,items:[['cont','استمرارية التأريض والتوصيل المتكافئ مؤكدة'],['pol','القطبية صحيحة لكل سلسلة قبل التوصيل بالانفرتر']]}]},
+ {id:'F2',title:'جهد Voc وتيار Isc لكل سلسلة',sc:'ins',fields:[
+  {k:'irr',t:'num',label:'الإشعاع',u:'W/m²',req:1},
+  {k:'temp',t:'num',label:'حرارة اللوح',u:'°C',req:1},
+  {k:'count',t:'num',label:'عدد السلاسل التي تعمل',u:'سلسلة',req:1,rows:{k:'strs',label:'سلسلة',cols:[{k:'voc',t:'num',label:'Voc (V)',req:1},{k:'isc',t:'num',label:'Isc (A)',req:1}]}},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  hints:d=>{const h=[],rs=rowsOf(COMPMAP.F2.fields[2],d);
+    [['voc','Voc'],['isc','Isc']].forEach(([k,n])=>{const v=rs.map(r=>num(r[k])),ok=v.filter(x=>x!=null);
+      if(ok.length>1){const m=ok.reduce((a,b)=>a+b,0)/ok.length,bad=v.map((x,i)=>x!=null&&Math.abs(x-m)/m>0.05?i+1:null).filter(Boolean);
+        if(bad.length)h.push(`${n} للسلاسل ${bad.join('، ')} يختلف عن المتوسط (${m.toFixed(1)}) بأكثر من 5%.`)}});return h}},
+ {id:'F3',title:'مقاومة العزل',sc:'ins',ref:()=>'الحد الأدنى 1 MΩ',fields:[
+  {k:'tv',t:'radio',label:'جهد الاختبار',opts:[['500','500 V'],['1000','1000 V'],['1500','1500 V']],req:1},
+  {k:'dc',t:'num',label:'عزل دوائر DC',u:'MΩ',req:1},
+  {k:'motor',t:'num',label:'عزل المحرك وكابله',u:'MΩ',req:1,showIf:(d,s)=>s.sy==='pump'},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  hints:d=>{const h=[];if(num(d.dc)!=null&&num(d.dc)<1)h.push('!عزل DC أقل من 1 MΩ.');
+    if(num(d.motor)!=null&&num(d.motor)<1)h.push('عزل المحرك أقل من 1 MΩ، راجع حد مصنّع المحرك.');return h},
+  recs:d=>num(d.dc)!=null&&num(d.dc)<1?['عزل DC أقل من 1 MΩ']:[]},
+ {id:'F4',title:'المحرك والـ VFD',sc:'ins',sys:['pump'],fields:[
+  {k:'rot',t:'radio',label:'اتجاه الدوران',opts:[['ok','الاتجاه صحيح'],['sw','كان معكوسًا وتم تبديل طورين']],req:1},
+  {k:'chk',t:'checks',label:'إعدادات الـ VFD',req:1,items:[['mot','بيانات المحرك مطابقة للوحة البيانات'],['frq','حدّا التردد الأدنى والأقصى مضبوطان'],['acc','زمن التسارع ومعاملات MPPT مضبوطة'],['shot','صورة شاشة المعاملات محفوظة']]},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  recs:d=>[]},
+ {id:'F5',title:'الربط بالشبكة',sc:'ins',sys:['ongrid'],fields:[
+  {k:'gv',t:'num',label:'جهد الشبكة',u:'V',req:1},
+  {k:'gf',t:'num',label:'تردد الشبكة',u:'Hz',req:1},
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,items:[['rng','الجهد والتردد داخل نطاق تشغيل الانفرتر']]}]},
+ {id:'F6',title:'فحوصات اختيارية (حراري وI-V)',sc:'ins',opt:1,av:['أُجريت','لم تُجرَ'],fields:[
+  {k:'th',t:'radio',label:'الفحص الحراري',opts:[['ok','لا نقطة ساخنة'],['hot','توجد نقطة ساخنة']]},
+  {k:'iv',t:'radio',label:'منحنى I-V (عينة)',opts:[['ok','سليم'],['bad','انحناءات شاذة']]},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  recs:d=>[d.th==='hot'?'نقطة ساخنة':null,d.iv==='bad'?'منحنى I-V غير سليم':null].filter(Boolean)}
+]},
+{L:'G',T:'التشغيل التجريبي',intro:'الاختبار بين 10 ص و2 م والسماء صافية والحرارة معتدلة. المستهدف أن يصل الانفرتر بالمحرك إلى 380 V و60 Hz (±1%).',comps:[
+ {id:'G1',title:'أداء الانفرتر مع المحرك',sc:'ins',ref:()=>'المستهدف: 380 V و60 Hz (±1%) بين 10 ص و2 م وسماء صافية',fields:[
+  {k:'time',t:'time',label:'وقت القياس',req:1},
+  {k:'sky',t:'radio',label:'السماء',opts:[['clear','صافية'],['part','غائمة جزئيًا'],['cloud','غائمة']],req:1},
+  {k:'temp',t:'num',label:'درجة الحرارة المحيطة',u:'°C'},
+  {k:'vmp',t:'num',label:'جهد دخل الانفرتر Vmp',u:'V',req:1},
+  {k:'imp',t:'num',label:'تيار دخل الانفرتر Imp',u:'A',req:1},
+  {k:'vac',t:'num',label:'جهد خرج الانفرتر عند التشغيل',u:'V',req:1},
+  {k:'hz',t:'num',label:'التردد عند التشغيل',u:'Hz',req:1},
+  {k:'i1',t:'num',label:'تيار الطور 1',u:'A',req:1,showIf:(d,s)=>s.sy==='pump'},
+  {k:'i2',t:'num',label:'تيار الطور 2',u:'A',req:1,showIf:(d,s)=>s.sy==='pump'},
+  {k:'i3',t:'num',label:'تيار الطور 3',u:'A',req:1,showIf:(d,s)=>s.sy==='pump'},
+  {k:'err',t:'radio',label:'أكواد الخطأ على الشاشة',opts:[['none','لا توجد'],['yes','توجد']],req:1},
+  {k:'errN',t:'area',label:'اذكر الأكواد',wide:1,showIf:d=>d.err==='yes',req:1},
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,items:[['stable','التشغيل مستقر بلا فصل أو تذبذب'],['temp','لا ارتفاع غير طبيعي في حرارة الانفرتر أو الوصلات']]},
+  {k:'note',t:'area',label:'ملاحظات',wide:1}],
+  hints:(d,s)=>{const h=[],I=[d.i1,d.i2,d.i3].map(num),vac=num(d.vac),hz=num(d.hz),ir=num(D('D3').I);
+    if(d.time&&!testOk(d)&&d.sky)h.push('!ظروف الاختبار غير مطابقة (المطلوب بين 10 ص و2 م وسماء صافية). أعد القياس في الوقت المناسب.');
+    else if(d.time&&d.time<'10:00'||d.time>'14:00')h.push('!وقت القياس خارج 10 ص إلى 2 م.');
+    if(vac!=null){if(vac<380*0.98)h.push(`!جهد الخرج ${vac} V أقل من 380 V بأكثر من 2%.`);
+      else if(vac<380*0.99||vac>380*1.01)h.push(`جهد الخرج ${vac} V خارج 380 V ±1% (نطاق ${(380*0.99).toFixed(1)} إلى ${(380*1.01).toFixed(1)}).`)}
+    if(hz!=null&&(hz<60*0.99||hz>60*1.01))h.push(`!التردد ${hz} Hz خارج 60 Hz ±1%.`);
+    if(s.sy==='pump'&&I.every(x=>x!=null)){const mx=Math.max(...I),mn=Math.min(...I);
+      if(ir!=null&&mx>ir)h.push(`!تيار أحد الأطوار أعلى من التيار المقنن للمحرك (${ir} A).`);
+      if(mx>0&&(mx-mn)/mx>0.1)h.push('تباين تيار الأطوار أكبر من 10%.')}return h},
+  recs:(d,s)=>{const r=[],vac=num(d.vac),hz=num(d.hz);
+    if(vac!=null&&vac<380*0.99)r.push(`جهد الخرج ${vac} V أقل من 380 V −1%`);
+    if(hz!=null&&(hz<60*0.99||hz>60*1.01))r.push(`التردد ${hz} Hz خارج 60 Hz ±1%`);
+    if(d.err==='yes')r.push('أكواد خطأ: '+(d.errN||'—'));return r}},
+ {id:'G2',title:'التشغيل المراقب والإعدادات',sc:'ins',fields:[
+  {k:'dur',t:'num',label:'مدة التشغيل المراقب',u:'ساعة',req:1},
+  {k:'alm',t:'radio',label:'الإنذارات',opts:[['none','لا إنذارات'],['yes','ظهرت إنذارات']],req:1},
+  {k:'almN',t:'area',label:'اذكر الإنذارات',wide:1,showIf:d=>d.alm==='yes',req:1},
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,items:[['auto','يبدأ ويتوقف تلقائيًا مع تغيّر الإشعاع'],['temp','لا ارتفاع غير طبيعي في الحرارة'],['remote','المراقبة عن بعد تعمل وبيانات الدخول مسلَّمة'],['set','الإعدادات النهائية محفوظة بصور']]}],
+  recs:d=>d.alm==='yes'?['إنذارات: '+(d.almN||'—')]:[]}
+]},
+{L:'H',T:'مستندات التسليم',intro:'لا يُعدّ المشروع مسلَّمًا إلا بمحضر موقّع ومستندات كاملة.',comps:[
+ {id:'H1',title:'مستندات التسليم',fields:[
+  {k:'chk',t:'checks',label:'المستندات',req:1,wide:1,items:[['single','المخطط الخطي ومخطط التوصيل مسلَّمان'],['ser','قائمة السيريالات النهائية مدوّنة ومربوطة بالمشروع'],['war','شهادات الضمان سارية (ألواح 12 سنة عيوب و30 أداء، انفرتر سنة)'],['man','أدلة التشغيل والكتالوجات مع العميل'],['maint','جدول الصيانة وأرقام الخدمة مسلَّمة'],['punch','قائمة الملاحظات المتبقية متفق على مواعيد إغلاقها']]}]},
+ {id:'H2',title:'تسليم التركيب',sc:'ins',fields:[
+  {k:'chk',t:'checks',label:'الفحوصات',req:1,wide:1,items:[['res','نتائج الاختبارات والتشغيل مرفقة بملف المشروع'],['asb','المخطط كما نُفّذ (As-built) مع تخطيط الألواح والسلاسل'],['trn','تدريب العميل: التشغيل والإيقاف والإنذارات ونظافة الألواح']]},
+  {k:'att',t:'text',label:'الحاضرون في التدريب',wide:1}]},
+ {id:'H4',title:'ضمان التركيب (سنة)',sc:'insOnly',fields:[
+  {k:'chk',t:'checks',label:'الإقرارات والمستندات',req:1,wide:1,items:[['war','شهادة ضمان التركيب لمدة سنة صادرة وتاريخ بدايتها مدوّن'],['excl','استُثنيت أعطال المواد المورَّدة من العميل من الضمان وتم إبلاغه'],['cond','حالة المواد المستلمة من العميل موثّقة (صور وملاحظات) قبل بدء التركيب']]},
+  {k:'note',t:'area',label:'ملاحظات على مواد العميل',wide:1}],
+  recs:d=>[]},
+ {id:'H3',title:'مسؤولية العميل (توريد فقط)',sc:'supOnly',fields:[
+  {k:'chk',t:'checks',label:'الإقرارات',req:1,wide:1,items:[['qty','الكميات والأنواع المتفق عليها سُلّمت بالكامل وفق الفحص أعلاه'],['resp','العميل أقر بأن التركيب والتشغيل وأخطاء التشغيل على مسؤوليته'],['own','مسؤولية الشركة مقتصرة على التوريد']]}]}
+]}
+);
+const COMPS=FORMS.flatMap(f=>f.comps);
+const compOn=c=>{const s=S();if(c.sc==='ins'&&s.sc==='supply')return false;if(c.sc==='supOnly'&&s.sc!=='supply')return false;if(c.sc==='insOnly'&&s.sc!=='installation')return false;if(c.sys&&!c.sys.includes(s.sy))return false;return true};
+const VC=()=>COMPS.filter(compOn);
+const COMPMAP=Object.fromEntries(COMPS.map(c=>[c.id,c]));
+const D=id=>{const f=S().f;return f[id]||(f[id]={})};
+const vis=(f,d)=>!f.showIf||f.showIf(d,S());
+const isReq=(f,d)=>typeof f.req==='function'?f.req(d,S()):!!f.req;
+const isEmpty=v=>v==null||v===''||(Array.isArray(v)&&!v.length);
+function rowsOf(f,d){const n=Math.min(40,Math.max(0,parseInt(d[f.k])||0));const a=d[f.rows.k]||[];return Array.from({length:n},(_,i)=>a[i]||{})}
+function missing(c){const d=D(c.id),m=[];
+  if(c.av){if(!d.av)return['av'];if(d.av==='no')return[]}
+  c.fields.forEach(f=>{if(!vis(f,d))return;
+    if(f.t==='checks'){if(isReq(f,d)&&f.items.some(([ik])=>isEmpty(d[f.k+'_'+ik])))m.push(f.k)}
+    else if(isReq(f,d)&&isEmpty(d[f.k]))m.push(f.k);
+    if(f.rows&&(!f.rows.showIf||f.rows.showIf(d)))rowsOf(f,d).forEach((r,i)=>f.rows.cols.forEach(cl=>{const rq=typeof cl.req==='function'?cl.req(r):cl.req;if(rq&&isEmpty(r[cl.k]))m.push(f.k+i+cl.k)}))});
+  return m}
+function cstat(c){const d=D(c.id);if(c.av&&!d.av)return'empty';
+  if(!missing(c).length)return'done';
+  const any=d.av||Object.keys(d).some(k=>k!=='av'&&!isEmpty(d[k]));return any?'part':'empty'}
+
+function rowsHtml(c,f,d){const id=c.id;
+  return rowsOf(f,d).map((r,i)=>`<div class="rrow"><span class="rl">${f.rows.label} ${i+1}</span>${f.rows.cols.map(cl=>{
+    const rq=(typeof cl.req==='function'?cl.req(r):cl.req)?' *':'';
+    const ctl=cl.t==='radio'
+      ?`<div class="opt">${cl.opts.map(([v,l])=>`<button type="button" data-rr="${id}|${f.rows.k}|${i}|${cl.k}|${v}" aria-pressed="${r[cl.k]===v}">${l}</button>`).join('')}</div>`
+      :`<input type="${cl.t==='num'?'number':'text'}" ${cl.t==='num'?'step="any" inputmode="decimal" class="num"':''} data-rk="${id}|${f.rows.k}|${i}|${cl.k}" value="${esc(r[cl.k]??'')}">`;
+    return `<div class="rc">${cl.label}${rq}${ctl}</div>`}).join('')}</div>`).join('')}
+function fieldHtml(c,f,d){
+  if(!vis(f,d))return'';
+  const id=c.id,lb=`<span class="lb">${f.label}${isReq(f,d)?' <b>*</b>':''}</span>`;let ctl='';
+  if(f.t==='num')ctl=`<div class="inl"><input type="number" step="any" inputmode="decimal" class="num" data-fk="${id}|${f.k}" value="${esc(d[f.k]??'')}">${f.u?`<span class="u">${f.u}</span>`:''}</div>`;
+  else if(f.t==='time')ctl=`<input type="time" data-fk="${id}|${f.k}" value="${esc(d[f.k]??'')}">`;
+  else if(f.t==='text')ctl=`<input type="text" data-fk="${id}|${f.k}" value="${esc(d[f.k]??'')}">`;
+  else if(f.t==='area')ctl=`<textarea rows="2" data-fk="${id}|${f.k}">${esc(d[f.k]||'')}</textarea>`;
+  else if(f.t==='radio')ctl=`<div class="opt" role="radiogroup">${f.opts.map(([v,l])=>`<button type="button" data-fr="${id}|${f.k}|${v}" aria-pressed="${d[f.k]===v}">${l}</button>`).join('')}</div>`;
+  else if(f.t==='checks')ctl=`<div class="chk">${f.items.map(([ik,l])=>`<div class="chkrow"><span>${l}</span><div class="opt">${CK.map(([v,t])=>`<button type="button" data-fr="${id}|${f.k}_${ik}|${v}" aria-pressed="${d[f.k+'_'+ik]===v}">${t}</button>`).join('')}</div></div>`).join('')}</div>`;
+  else if(f.t==='multi')ctl=`<div class="opt">${f.opts.map(([v,l])=>`<button type="button" data-fm="${id}|${f.k}|${v}" aria-pressed="${(d[f.k]||[]).includes(v)}">${l}</button>`).join('')}</div>`;
+  const rw=f.rows&&(!f.rows.showIf||f.rows.showIf(d))?`<div id="rows-${id}-${f.rows.k}">${rowsHtml(c,f,d)}</div>`:'';
+  const wide=f.wide||f.rows||(f.t==='radio'&&f.opts.length>2)||f.t==='multi'||f.t==='checks';
+  return `<div class="fld ${wide?'wide':''}">${lb}${ctl}${rw}</div>`}
+function cardHtml(c){
+  const p=PROJECTS.find(x=>x.id===curId),d=D(c.id),ref=c.ref&&c.ref(p),open=!c.av||d.av==='yes';
+  const avh=c.av?`<div class="av" role="radiogroup" aria-label="${c.title}">${[['yes',c.av[0]],['no',c.av[1]]].map(([v,l])=>`<button type="button" data-av="${c.id}|${v}" data-v="${v}" aria-pressed="${d.av===v}">${l}</button>`).join('')}</div>`:'';
+  return `<div class="comp" id="card-${c.id}"><div class="ch"><span class="code">${c.id}</span><h3>${c.title}</h3>${ref?`<span class="ref">${esc(ref)}</span>`:''}<span class="cstate" id="cs-${c.id}"></span></div>
+  ${avh}${open?`<div class="fields">${c.fields.map(f=>fieldHtml(c,f,d)).join('')}</div>
+  <div class="xtra"><button type="button" class="photo-btn" data-photo="${c.id}">+ صورة</button><input type="file" accept="image/*" multiple hidden data-file="${c.id}"></div><div class="thumbs" id="th-${c.id}"></div>`:''}
+  <div class="hints" id="hh-${c.id}"></div></div>`}
+function renderCard(id){const el=$('#card-'+id);if(!el)return;el.outerHTML=cardHtml(COMPMAP[id]);renderThumbs(id)}
+function cardMeta(c){const st=cstat(c),el=$('#cs-'+c.id);
+  if(el){el.dataset.s=st;el.textContent=st==='done'?'مكتمل':st==='part'?'ناقص':'لم يبدأ'}
+  const h=$('#hh-'+c.id);if(h){const d=D(c.id);const a=(c.av&&d.av!=='yes')||!c.hints?[]:c.hints(d,S());h.innerHTML=a.map(t=>t[0]==='!'?`<p class="hint bad">${t.slice(1)}</p>`:t[0]==='~'?`<p class="hint info">${t.slice(1)}</p>`:`<p class="hint warn">${t}</p>`).join('')}}
+function rowSet(id,k,i,col,v){const d=D(id),a=d[k]||(d[k]=[]);while(a.length<=i)a.push({});a[i][col]=v}
+
+/* ---------- state ---------- */
+let DB={};
+const PH={}; // photos: memory only
+let curId=null;let blkOpen=false;
+const today=()=>new Date().toISOString().slice(0,10);
+function blank(p){return{sc:p.scope,sy:p.sys,date:today(),eng:'',f:{},r:{},n:{},m:{},rd:{},rec:{},recs:[],cname:'',cdate:'',sigC:'',sigE:'',ok:false}}
+function S(){const p=PROJECTS.find(x=>x.id===curId);if(!DB[curId])DB[curId]=blank(p);return DB[curId]}
+let tmr;function save(){if(LOCKED)return;setSaveState('dirty');clearTimeout(tmr);tmr=setTimeout(()=>doSave(),1200)}
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function items(){
+  const s=S(),out=[];
+  GEN.forEach(([L,T,list])=>{
+    const rows=list.filter(it=>{
+      const[,, ,sup,ins,sys]=it;
+      const inScope=s.sc==='supply'?sup:s.sc==='installation'?ins:(sup||ins);
+      return inScope&&(!sys||sys.includes(s.sy));
+    });
+    if(rows.length)out.push({L,T,rows});
+  });
+  return out;
+}
+
+/* ---------- render ---------- */
+function renderTop(){
+  const s=S(),p=PROJECTS.find(x=>x.id===curId);
+  const info=[['اسم العميل',p.client||'—','بيانات العميل'],['رقم المشروع',p.no,'project_number'],
+    ['نوع النظام',SYSN[s.sy]||'—','id_system_type'],['نطاق العمل',RN2(s.sc)||'—','scope_type'],['الألواح',p.panel||'—','مواصفات المشروع'],['الانفرتر',p.inv||'—','مواصفات المشروع']];
+  $('#infoGrid').innerHTML=info.map(([a,b,c])=>`<div class="f">${a} <span class="src">${c}</span><div class="ro ${c==='project_number'?'mono':''}">${esc(b)}</div></div>`).join('');
+  $('#rdate').value=s.date;$('#eng').value=s.eng;$('#cname').value=s.cname;$('#cdate').value=s.cdate;
+  $('#rtype').textContent=s.sc==='supply'?'فحص استلام (توريد)':'فحص تشغيل وتسليم';
+  $('#reportTypeLine').textContent=(s.sc==='supply'?'فحص استلام':'فحص تشغيل وتسليم')+' · '+RN2(s.sc)+' · '+SYSN[s.sy];
+  const d=(s.date||today()).replaceAll('-','').slice(2);
+  $('#reportNo').textContent='HC-'+d+'-'+String(curId).padStart(4,'0');
+  $('#ackText').innerHTML='أقر أنا الموقّع أدناه بأنه قد تم إجراء الفحص المذكور أعلاه للمحطة الخاصة بي، وأنني اطلعت على الملاحظات والتوصيات.'+(s.sc==='supply'?'<br><b>وأقر بأن التركيب والتشغيل على مسؤوليتي، وأن الأقسام الفنية سُلّمت لي كمرجع.</b>':'');
+}
+function RN2(v){return(SCOPES.find(x=>x[0]===v)||[])[1]}
+
+function renderSections(){
+  const s=S();
+  const open=new Set([...document.querySelectorAll('details.sec[open]')].map(d=>d.dataset.l));
+  const had=new Set([...document.querySelectorAll('details.sec')].map(d=>d.dataset.l));
+  const forms=FORMS.filter(f=>f.comps.some(compOn)).map(f=>({L:f.L,T:f.T,html:`<p class="crit" style="padding:10px 14px 0">${f.intro}</p>`+f.comps.filter(compOn).map(cardHtml).join('')}));
+  const gens=items().map(({L,T,rows:rs})=>({L,T,html:rs.map(itemHtml).join('')}));
+  $('#sections').innerHTML=[...forms,...gens].map(({L,T,html})=>`
+   <details class="sec" data-l="${L}" ${!had.has(L)||open.has(L)?'open':''}>
+    <summary><span class="letter">${L}</span><span class="ttl">${T}</span><span class="cnt" id="cnt-${L}"></span></summary>
+    <div class="items">${html}</div></details>`).join('');
+  rows().forEach(it=>{renderThumbs(it[0]);});
+  VC().forEach(c=>renderThumbs(c.id));
+  sigSetup();
+  refresh();
+}
+function rows(){return items().flatMap(g=>g.rows)}
+
+function itemHtml(it){
+  const[id,text,crit,sup,ins,sys,meas,opt]=it,s=S(),r=s.r[id]||'';
+  const tags=[];
+  if(opt)tags.push('اختياري');
+  if(sys)tags.push(sys.map(x=>SYSN[x]).join(' / '));
+  const m=s.m[id]||{};
+  const mh=meas?`<div class="meas">
+     <label>${meas.label}<input type="number" step="any" inputmode="decimal" data-mv="${id}" value="${esc(m.v??'')}" class="num"></label>
+     ${meas.noExp?`<label>الحد الأدنى / المرجع<input type="text" disabled value="${meas.min!=null?'≥ '+meas.min:'حسب التصميم'}"></label>`
+       :`<label>المتوقع<input type="number" step="any" inputmode="decimal" data-me="${id}" value="${esc(m.e??'')}" class="num"></label>`}
+     <span class="u">${meas.u}</span></div>`:'';
+  return `<article class="item" data-id="${id}" data-st="${r}">
+    <div class="ih"><span class="code">${id}</span><div><p class="t">${text}</p><p class="crit">${crit}</p>${tags.length?`<div class="tags">${tags.map(t=>`<span class="tag">${t}</span>`).join('')}</div>`:''}</div></div>
+    <div class="chips" role="radiogroup" aria-label="تقييم البند ${id}">${RATES.map(([k,l])=>`<button type="button" role="radio" data-r="${k}" aria-checked="${r===k}">${l}</button>`).join('')}</div>
+    ${mh}
+    <div class="xtra"><textarea rows="1" data-note="${id}" placeholder="ملاحظة">${esc(s.n[id]||'')}</textarea>
+      <button type="button" class="photo-btn" data-photo="${id}">+ صورة</button><input type="file" accept="image/*" multiple hidden data-file="${id}"></div>
+    <div class="thumbs" id="th-${id}"></div>
+    <p class="hint" hidden id="hn-${id}"></p></article>`;
+}
+
+function dev(v,e){v=parseFloat(v);e=parseFloat(e);if(!isFinite(v)||!isFinite(e)||e===0)return null;return(v-e)/e*100}
+function renderThumbs(id){
+  const el=$('#th-'+id);if(!el)return;const a=PH[curId+id]||[];
+  el.innerHTML=a.map((u,i)=>`<div><img src="${u}" alt="صورة ${id}"><button type="button" data-rm="${id}:${i}" aria-label="حذف الصورة">×</button></div>`).join('');
+}
+
+/* ---------- derived ---------- */
+function prohib(){const s=S();if(s.sc==='supply')return[];const o=[];
+  const a2=D('A2'),d5=D('D5'),d4=D('D4'),b1=D('B1'),f2=D('F2'),g1=D('G1');
+  if(s.sy==='pump'&&a2.av==='yes'&&((num(a2.cap)!=null&&num(a2.motorKw)!=null&&num(a2.cap)<num(a2.motorKw))||a2.motorFit==='no'))o.push('الانفرتر أقل من قدرة الموتور أو غير مناسب له');
+  if(d5.housing==='none')o.push('لا توجد غرفة أو لوحة خاصة بالانفرتر');
+  const av=num(b1.nstr),wk=num(f2.count);if(av!=null&&wk!=null&&wk<av)o.push(`السلاسل العاملة (${wk}) أقل من العدد المتاح (${av})`);
+  if(d4.method==='solder')o.push('توصيل الكابلات بلحام مباشر');
+  if(g1.time&&g1.sky){if(!testOk(g1))o.push('ظروف اختبار الأداء غير مطابقة (10 ص إلى 2 م وسماء صافية): أعد القياس');
+    else if(num(g1.vac)!=null&&num(g1.vac)<380*0.98)o.push(`جهد الخرج ${g1.vac} V أقل من 380 V −2%`)}
+  return o}
+function status(){
+  const s=S(),all=rows(),req=all.filter(it=>!it[7]);
+  const unrated=req.filter(it=>!s.r[it[0]]);
+  const poor=all.filter(it=>s.r[it[0]]==='po');
+  const needNote=all.filter(it=>['sk','po'].includes(s.r[it[0]])&&!(s.n[it[0]]||'').trim());
+  const RC=VC().filter(c=>!c.opt),cdone=RC.filter(c=>cstat(c)==='done').length,cmiss=RC.filter(c=>cstat(c)!=='done').map(c=>c.id);
+  const rated=req.length-unrated.length+cdone,total=req.length+RC.length;
+  const counts={};RATES.forEach(([k])=>counts[k]=0);all.forEach(it=>{if(s.r[it[0]])counts[s.r[it[0]]]++});
+  const blk=[];
+  if(cmiss.length)blk.push(`${cmiss.length} نموذج بيانات غير مكتمل (${cmiss.join('، ')})`);
+  if(unrated.length)blk.push(`${unrated.length} بند بلا تقييم`);
+  if(poor.length)blk.push(`${poor.length} بند «ضعيف» يمنع التسليم حتى يُصلَح ويُعاد تقييمه`);
+  if(needNote.length)blk.push(`${needNote.length} بند يحتاج سببًا في الملاحظة (${needNote.map(x=>x[0]).join('، ')})`);
+  if(!s.eng.trim())blk.push('اسم المهندس غير مكتوب');
+  if(!s.sigE)blk.push('توقيع المهندس مفقود');
+  if(!s.sigC||!s.cname.trim())blk.push('اسم العميل أو توقيعه مفقود');
+  const openRecs=allRecs().filter(r=>!(s.rec[r.id]||{}).done).length;
+  const stops=prohib();
+  return{all,req,rated,total,counts,blk,stops,openRecs,ready:blk.length===0&&stops.length===0};
+}
+function allRecs(){
+  const s=S(),out=[];
+  rows().forEach(it=>{const r=s.r[it[0]];if((r==='ac'||r==='po')&&(s.n[it[0]]||'').trim())out.push({id:'a-'+it[0],t:`${it[0]} · ${it[1]}: ${s.n[it[0]].trim()}`,auto:1,sev:r})});
+  VC().forEach(c=>{const d=D(c.id);
+    if(c.av&&d.av==='no'&&!c.opt)out.push({id:'c-'+c.id+'-m',t:`${c.title}: ${c.missTxt||'غير متاحة'}`,auto:1,lab:'ناقص'});
+    else if(!c.av||d.av==='yes'){
+      c.fields.filter(f=>f.t==='checks').forEach(f=>f.items.forEach(([ik,l])=>{if(d[f.k+'_'+ik]==='no')out.push({id:`c-${c.id}-${f.k}_${ik}`,t:`${c.title}: غير منجز، ${l}`,auto:1,lab:'غير منجز'})}));
+      if(c.recs)c.recs(d,s).forEach((t,i)=>out.push({id:`c-${c.id}-${i}`,t:`${c.title}: ${t}`,auto:1,lab:'ملاحظة'}))}});
+  s.recs.forEach(x=>out.push({id:x.id,t:x.t,auto:0}));
+  return out;
+}
+
+function refresh(){
+  const s=S(),st=status();
+  const pct=st.total?Math.round(st.rated/st.total*100):0;
+  $('#ready').innerHTML=`<div class="row"><b>${st.rated} من ${st.total} مكتمل</b>
+    <span class="pill ${st.ready?'ok':st.blk.length>2?'warn':'warn'}">${st.ready?'جاهز للاعتماد':'غير جاهز'}</span></div>
+    <div class="row"><div class="bar"><i style="width:${pct}%"></i></div><span class="num" style="font-size:13px;color:var(--muted)">${pct}%</span></div>
+    <div class="row" style="gap:6px;justify-content:flex-start">${RATES.map(([k,l])=>st.counts[k]?`<span class="pill ${k==='po'?'bad':k==='ac'||k==='sk'?'warn':k==='ex'||k==='gd'?'ok':''}">${l} ${st.counts[k]}</span>`:'').join('')}</div>
+    ${st.stops.length?`<div class="stop"><b>ممنوع اعتماد التشغيل:</b><ul>${st.stops.map(b=>`<li>${b}</li>`).join('')}</ul></div>`:''}
+    ${st.blk.length?`<details id="blkd" ${blkOpen?'open':''}><summary style="cursor:pointer;font-size:13px;color:var(--muted)">المتطلبات قبل الاعتماد (${st.blk.length})</summary><ul class="blockers">${st.blk.map(b=>`<li>${b}</li>`).join('')}</ul></details>`:''}`;
+  const bd=$('#blkd');if(bd)bd.ontoggle=()=>{blkOpen=bd.open};
+  // per-section counts + per-item state
+  items().forEach(({L,rows:rs})=>{const d=rs.filter(it=>s.r[it[0]]).length;const c=$('#cnt-'+L);if(c)c.textContent=d+' / '+rs.length});
+  rows().forEach(it=>itemState(it));
+  VC().forEach(cardMeta);
+  FORMS.forEach(f=>{const el=$('#cnt-'+f.L),vc=f.comps.filter(compOn);if(el)el.textContent=vc.filter(c=>cstat(c)==='done').length+' / '+vc.length});
+  recsRender();
+  $('#approve').disabled=!st.ready;
+  $('#approved').innerHTML=s.ok?'<div class="done">تم اعتماد التقرير (نموذج تجريبي: لم يُحفظ في النظام ولم تتغير حالة المشروع)</div>':'';
+}
+function itemState(it){
+  const[id,,,,,,meas]=it,s=S(),el=document.querySelector(`.item[data-id="${id}"]`);if(!el)return;
+  el.dataset.st=s.r[id]||'';
+  el.querySelectorAll('.chips button').forEach(b=>b.setAttribute('aria-checked',String(b.dataset.r===s.r[id])));
+  const hn=$('#hn-'+id);let msg='',cls='warn';const r=s.r[id];
+  if((r==='sk'||r==='po')&&!(s.n[id]||'').trim()){msg=r==='sk'?'اكتب سبب عدم الفحص.':'اكتب وصف العيب.';cls=r==='po'?'bad':'warn'}
+  if(meas){const m=s.m[id]||{},v=parseFloat(m.v);
+    if(meas.min!=null&&isFinite(v)&&v<meas.min){msg=`القيمة ${meas.minTxt}، وهي أقل من الحد المقبول.`;cls='bad'}
+    else if(!meas.noExp){const d=dev(m.v,m.e);if(d!=null&&Math.abs(d)>5){msg=`الفرق عن المتوقع ${d>0?'+':''}${d.toFixed(1)}% (المرجع ±5%).`;cls='warn'}}}
+  hn.hidden=!msg;hn.textContent=msg;hn.className='hint '+cls;
+}
+function recsRender(){
+  const s=S(),rs=allRecs();
+  $('#recs').innerHTML=rs.length?rs.map(r=>{const m=s.rec[r.id]||{};
+    return `<div class="rec"><input type="checkbox" data-rdone="${r.id}" ${m.done?'checked':''} aria-label="تم الإغلاق">
+     <div><p class="rt" style="${m.done?'text-decoration:line-through;color:var(--muted)':''}">${esc(r.t)} ${r.auto?`<span class="pill ${r.sev==='po'?'bad':'warn'}">${r.lab||RN[r.sev]}</span>`:''}</p></div>
+     <div class="ro2"><input type="text" placeholder="المسؤول" data-rown="${r.id}" value="${esc(m.own||'')}"><input type="date" data-rdue="${r.id}" value="${esc(m.due||'')}">
+     ${r.auto?'':`<button type="button" class="btn ghost" data-rdel="${r.id}">حذف</button>`}</div></div>`}).join('')
+   :'<p class="empty">لا توصيات بعد. تظهر هنا البنود «المقبولة» و«الضعيفة» التي عليها ملاحظة.</p>';
+}
+
+/* ---------- signatures ---------- */
+function sigSetup(){
+  [['sigC','sigC'],['sigE','sigE']].forEach(([cid,key])=>{
+    const c=document.getElementById(cid),ctx=c.getContext('2d'),dpr=window.devicePixelRatio||1;
+    const w=c.clientWidth||300,h=c.clientHeight||130;c.width=w*dpr;c.height=h*dpr;ctx.scale(dpr,dpr);
+    ctx.lineWidth=2.2;ctx.lineCap='round';ctx.lineJoin='round';
+    const ink=getComputedStyle(document.body).color;ctx.strokeStyle=ink;
+    const saved=S()[key];if(saved){const im=new Image();im.onload=()=>ctx.drawImage(im,0,0,w,h);im.src=saved}
+    let down=false;
+    const pos=e=>{const r=c.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+    c.onpointerdown=e=>{down=true;c.setPointerCapture(e.pointerId);const[x,y]=pos(e);ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+.1,y+.1);ctx.stroke()};
+    c.onpointermove=e=>{if(!down)return;const[x,y]=pos(e);ctx.lineTo(x,y);ctx.stroke()};
+    const up=()=>{if(!down)return;down=false;S()[key]=c.toDataURL('image/png');S().ok=false;save();refresh()};
+    c.onpointerup=up;c.onpointercancel=up;
+  });
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('button');if(!t)return;const s=S();
+  const touch=()=>{s.ok=false;save()};
+  if(t.dataset.av){const[id,v]=t.dataset.av.split('|');D(id).av=v;touch();renderCard(id);refresh();return}
+  if(t.dataset.fr){const[id,k,v]=t.dataset.fr.split('|');D(id)[k]=v;touch();renderCard(id);refresh();return}
+  if(t.dataset.fm){const[id,k,v]=t.dataset.fm.split('|');const f=COMPMAP[id].fields.find(x=>x.k===k),ex=f.opts.find(o=>o[2]);
+    let a=D(id)[k]||[];
+    if(a.includes(v))a=a.filter(x=>x!==v);else a=(ex&&ex[0]===v)?[v]:a.filter(x=>!(ex&&x===ex[0])).concat(v);
+    D(id)[k]=a;touch();renderCard(id);refresh();return}
+  if(t.dataset.rr){const[id,k,i,col,v]=t.dataset.rr.split('|');rowSet(id,k,+i,col,v);touch();renderCard(id);refresh();return}
+  if(t.dataset.r){const id=t.closest('.item').dataset.id;s.r[id]=s.r[id]===t.dataset.r?'':t.dataset.r;s.ok=false;save();refresh();return}
+  if(t.dataset.photo){document.querySelector(`[data-file="${t.dataset.photo}"]`).click();return}
+  if(t.dataset.rm){const[id,i]=t.dataset.rm.split(':');(PH[curId+id]||[]).splice(+i,1);renderThumbs(id);return}
+  if(t.dataset.clear){const c=document.getElementById(t.dataset.clear);S()[t.dataset.clear]='';c.getContext('2d').clearRect(0,0,c.width,c.height);s.ok=false;save();refresh();return}
+  if(t.dataset.rdel){s.recs=s.recs.filter(x=>x.id!==t.dataset.rdel);save();refresh();return}
+  if(t.id==='recAdd'){const v=$('#recNew').value.trim();if(v){s.recs.push({id:'m-'+Date.now(),t:v});$('#recNew').value='';save();refresh()}return}
+  if(t.id==='approve'&&status().ready&&!LOCKED){s.ok=true;submitNow();return}
+});
+document.addEventListener('input',e=>{
+  const t=e.target,s=S(),d=t.dataset;let touched=true;
+  if(d.fk!==undefined){const[id,k]=d.fk.split('|'),c=COMPMAP[id];D(id)[k]=t.value;
+    const f=c.fields.find(x=>x.k===k);if(f&&f.rows){const box=$('#rows-'+id+'-'+f.rows.k);if(box)box.innerHTML=rowsHtml(c,f,D(id))}
+    s.ok=false;save();refresh();return}
+  if(d.rk!==undefined){const[id,k,i,col]=d.rk.split('|');rowSet(id,k,+i,col,t.value);s.ok=false;save();refresh();return}
+  if(t.id==='eng')s.eng=t.value;
+  else if(t.id==='rdate'){s.date=t.value;renderTop()}
+  else if(t.id==='cname')s.cname=t.value;
+  else if(t.id==='cdate')s.cdate=t.value;
+  else if(d.note!==undefined)s.n[d.note]=t.value;
+  else if(d.mv!==undefined){(s.m[d.mv]=s.m[d.mv]||{}).v=t.value}
+  else if(d.me!==undefined){(s.m[d.me]=s.m[d.me]||{}).e=t.value}
+  else if(d.rown!==undefined){(s.rec[d.rown]=s.rec[d.rown]||{}).own=t.value}
+  else if(d.rdue!==undefined){(s.rec[d.rdue]=s.rec[d.rdue]||{}).due=t.value}
+  else touched=false;
+  if(!touched)return;s.ok=false;save();
+  if(d.rown===undefined&&d.rdue===undefined)refreshKeepRecs(t);
+});
+function refreshKeepRecs(){refresh()}
+document.addEventListener('change',e=>{
+  const t=e.target,d=t.dataset,s=S();
+  if(d.rdone!==undefined){(s.rec[d.rdone]=s.rec[d.rdone]||{}).done=t.checked;save();refresh();return}
+  if(d.file!==undefined){const id=d.file;[...t.files].forEach(f=>{const fr=new FileReader();fr.onload=()=>{const im=new Image();im.onload=()=>{
+    const k=Math.min(1,800/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*k;c.height=im.height*k;
+    c.getContext('2d').drawImage(im,0,0,c.width,c.height);(PH[curId+id]=PH[curId+id]||[]).push(c.toDataURL('image/jpeg',.7));renderThumbs(id)};im.src=fr.result};fr.readAsDataURL(f)});t.value=''}
+});
+
+/* ---------- server wiring ---------- */
+const SB='https://xhgwvszdatqlvlgqiikj.supabase.co',ANON='sb_publishable_4qWmgl6fWMpoU6F_o__ykg_Z0Xy_aJY';
+let LOCKED=false,CHK=null,REQUIRED=false,IS_ADMIN=false,PID=null;
+function authBody(){const a=HoloulAuth.token('admin');if(a)return{adminToken:a};const t=HoloulAuth.token('staff');return t?{token:t}:null}
+async function api(action,extra){const ab=authBody();if(!ab){HoloulAuth.goLogin();throw new Error('سجّل الدخول أولًا')}
+  const r=await fetch(SB+'/functions/v1/checklist-api',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+ANON,apikey:ANON},body:JSON.stringify(Object.assign({action},ab,extra||{}))});
+  let d;try{d=await r.json()}catch(e){throw new Error('رد غير متوقع من السيرفر')}
+  if(d.error){if(r.status===401){HoloulAuth.goLogin();}throw new Error(d.error)}return d}
+function setSaveState(k){const el=$('#savest');if(el)el.textContent=k==='dirty'?'تغييرات لم تُحفظ بعد':k==='saving'?'جاري الحفظ…':k==='err'?'تعذر الحفظ، سيعاد المحاولة':'تم الحفظ'}
+async function doSave(){if(LOCKED||!PID)return;setSaveState('saving');
+  try{const st=status();await api('chk-save',{projectId:PID,state:S(),ready:st.ready,stops:st.stops});if(CHK&&CHK.status!=='draft'){CHK.status='draft'}setSaveState('ok');renderWf()}
+  catch(e){setSaveState('err');toast(e.message);tmr=setTimeout(doSave,8000)}}
+async function submitNow(){clearTimeout(tmr);try{await doSave();await api('chk-submit',{projectId:PID});CHK=Object.assign(CHK||{},{status:'submitted'});toast('تم إرسال الفحص للاعتماد');renderWf();refresh()}catch(e){toast(e.message)}}
+function toast(m){let t=$('#toast');if(!t){t=document.createElement('div');t.id='toast';t.className='toast';document.body.appendChild(t)}t.textContent=m;t.hidden=false;clearTimeout(t._t);t._t=setTimeout(()=>t.hidden=true,4500)}
+function renderWf(){const st=CHK?CHK.status:'draft';LOCKED=st==='approved';document.body.classList.toggle('locked',LOCKED);
+  const lab={draft:'مسودة',submitted:'مُرسل بانتظار الاعتماد',approved:'معتمد'}[st];
+  let h=`<p style="margin:0 0 8px"><span class="pill">${lab}</span> <span class="src" id="savest">${LOCKED?'مقفول':'تم الحفظ'}</span></p>
+   <p class="crit" style="margin:0">${REQUIRED?'<b>هذا الفحص إلزامي</b>: لا يمكن نقل المشروع إلى «تم التشغيل والتسليم» قبل اعتماد الأدمن له.':'هذا الفحص غير إلزامي حاليًا لاعتماد التشغيل، ويمكن للأدمن جعله إلزاميًا من الإعدادات.'}</p>`;
+  if(IS_ADMIN&&st==='submitted')h+='<div style="margin-top:10px"><button class="btn" id="wfApprove" type="button">اعتماد التشغيل</button> <button class="btn ghost" id="wfReopen" type="button">إعادته للمهندس</button></div>';
+  if(IS_ADMIN&&st==='approved')h+='<div style="margin-top:10px"><button class="btn ghost" id="wfReopen" type="button">إعادة فتح الفحص</button></div>';
+  $('#wf').innerHTML=h}
+document.addEventListener('click',async e=>{const id=e.target.id;
+  if(id==='wfApprove'){try{await api('chk-approve',{projectId:PID});CHK.status='approved';renderWf();toast('تم اعتماد التشغيل')}catch(x){toast(x.message)}}
+  if(id==='wfReopen'){try{await api('chk-reopen',{projectId:PID});CHK.status='draft';renderWf()}catch(x){toast(x.message)}}});
+async function boot(){
+  if(!HoloulAuth.read()){HoloulAuth.goLogin();return}
+  PID=Number(new URLSearchParams(location.search).get('project'));
+  if(!PID){$('#sections').innerHTML='<p class="card">افتح هذه الصفحة من مشروع داخل النظام.</p>';return}
+  try{const d=await api('chk-get',{projectId:PID});const p=d.project;REQUIRED=d.required;IS_ADMIN=d.isAdmin;CHK=d.checklist;
+    PROJECTS=[{id:PID,no:p.project_number,scope:p.scope_type,sys:p.id_system_type,client:p.customer_name,panel:p.panel_spec,inv:p.inverter_spec}];curId=PID;
+    if(!p.scope_type||!p.id_system_type){$('#sections').innerHTML='<p class="card">حدّد نطاق المشروع ونوع النظام في بيانات المشروع أولًا.</p>';$('#wf').innerHTML='';return}
+    DB[PID]=CHK&&CHK.state&&CHK.state.f?CHK.state:blank(PROJECTS[0]);DB[PID].sc=p.scope_type;DB[PID].sy=p.id_system_type;
+    renderTop();renderSections();renderWf()}
+  catch(e){$('#sections').innerHTML='<p class="card">تعذر التحميل: '+esc(e.message)+'</p>'}}
+boot();
+</script>
+</body></html>
