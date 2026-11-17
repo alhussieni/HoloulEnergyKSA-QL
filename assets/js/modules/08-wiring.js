@@ -927,6 +927,25 @@ function wire(){
     }
     const pmClose = ()=>{ pmOverlay.style.display='none'; pmEditIdx=null; };
     document.getElementById('addPanel').onclick = ()=>pmOpen(null);
+    /* تسجيل الحد الأقصى لعدد الألواح في السلسلة لكل الألواح مرة واحدة */
+    const bulkBtn = document.getElementById('bulkMaxPpsApply');
+    if(bulkBtn) bulkBtn.onclick = async ()=>{
+      const raw = document.getElementById('bulkMaxPps').value.trim();
+      const val = raw==='' ? 0 : +raw;
+      if(raw!=='' && (!isFinite(val) || val<1 || Math.floor(val)!==val)) return alert('اكتب رقم صحيح (1 أو أكثر)، أو سيبه فاضي لإلغاء الحد');
+      const n = (adminConfig.panels||[]).length; if(!n) return;
+      if(!confirm(val ? `تسجيل أقصى ${val} لوح في السلسلة لكل الألواح (${n} لوح)؟` : `إلغاء حد عدد الألواح في السلسلة من كل الألواح (${n} لوح)؟`)) return;
+      harvestAdminInputs();
+      adminConfig.panels.forEach(p=>{ if(val) p.maxPanelsPerString = val; else delete p.maxPanelsPerString; });
+      bulkBtn.disabled = true;
+      try{
+        await callEngine('update-config', { adminToken: adminTokenMem, config: adminConfig });
+        alert('تم الحفظ ✔');
+        try{ await refreshQuote(); }catch(_){}
+      }catch(e){ alert('تعذر الحفظ: '+e.message); }
+      bulkBtn.disabled = false;
+      render();
+    };
     document.querySelectorAll('[data-editpanel]').forEach(b=>b.onclick=()=>pmOpen(+b.dataset.editpanel));
     document.getElementById('pm_cancel').onclick = pmClose;
     pmOverlay.onclick = e=>{ if(e.target===pmOverlay) pmClose(); };
