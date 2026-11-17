@@ -2352,6 +2352,16 @@ ${(function(){
   <div class="admsubsec ${currentAdminSubSection.products==='panels'?'active':''}" data-admsub="panels">
   <div class="card">
     <h3>الألواح الشمسية</h3>
+    ${(()=>{
+      const caps = (adminConfig.panels||[]).map(p=>Number(p.maxPanelsPerString)>0 ? Number(p.maxPanelsPerString) : 0);
+      const common = caps.length && caps.every(c=>c===caps[0]) && caps[0] ? caps[0] : '';
+      return `<div class="no-print" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--sand);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+        <b>⚡ أقصى عدد ألواح في السلسلة (لكل الألواح)</b>
+        <input type="number" id="bulkMaxPps" min="1" step="1" inputmode="numeric" placeholder="${common===''?'مختلف':''}" value="${common}" style="width:90px" aria-label="أقصى عدد ألواح في السلسلة لكل الألواح">
+        <button class="btn small" id="bulkMaxPpsApply" type="button">تطبيق على كل الألواح</button>
+        <span class="note" style="margin:0">الحاسبة بتاخد الأصغر بين الحد ده والحد الكهربائي للّوح (جهد السلسلة ÷ Vimp). تقدر تخصص رقم مختلف للوح معيّن من نافذة تعديله. سيبه فاضي وطبّق لإلغاء الحد.</span>
+      </div>`;
+    })()}
     ${pfRenderPanels()}
     <button class="btn ghost small" id="addPanel">+ إضافة لوح</button>
     <div class="note" style="margin-top:8px">الألواح مجمّعة حسب البراند (JA وJa نفس البراند) ومرتّبة بالقدرة. استخدم الفلاتر لتضييق القائمة، واضغط على عنوان أي براند لطيّه أو فتحه (اختيارك بيتحفظ على جهازك). التعديل والإضافة بيتموا من نافذة منفصلة وبيتحفظوا فورًا — الجدول نفسه للعرض فقط عشان ما يتغيّرش أي رقم بالغلط، ما عدا سويتش "ظاهر للعميل" فبيحفظ فورًا.</div>
