@@ -909,8 +909,10 @@ function wire(){
     const PM_FIELDS = [
       ['brand','البراند','text'], ['power','القدرة (W)','number','1'], ['vimp','Vimp (فولت)','number','0.01'], ['voc','Voc (فولت)','number','0.01'],
       ['iimp','Iimp (أمبير)','number','0.01'], ['isc','Isc (أمبير)','number','0.01'], ['priceW','السعر $/W (بدون ضريبة)','number','0.001'],
-      ['model','الموديل (اختياري — مثال: GRH78DW)','text']
+      ['model','الموديل (اختياري — مثال: GRH78DW)','text'],
+      ['maxPanelsPerString','أقصى عدد ألواح في السلسلة (اختياري — فاضي = حسب الجهد فقط، مثال: 16 بسبب الشاسيه)','number','1']
     ];
+    const PM_OPTIONAL = ['maxPanelsPerString'];   // حقول رقمية مسموح تفضل فاضية
     function pmOpen(idx){
       pmEditIdx = idx;
       const p = idx==null ? {brand:'',power:'',vimp:'',voc:'',iimp:'',isc:'',priceW:'',model:'',visible:true} : adminConfig.panels[idx];
@@ -936,7 +938,13 @@ function wire(){
       if(!brand) return showErr('اكتب اسم البراند');
       const n = {};
       for(const [k,l,t] of PM_FIELDS){ if(t!=='number') continue;
-        const x = v(k); if(x==='' || !isFinite(+x)) return showErr(`${l}: اكتب رقم صحيح`);
+        const x = v(k);
+        if(PM_OPTIONAL.includes(k)){
+          if(x==='') continue;
+          if(!isFinite(+x) || +x<1 || Math.floor(+x)!==+x) return showErr('أقصى عدد ألواح في السلسلة: اكتب رقم صحيح (1 أو أكثر) أو سيبه فاضي');
+          n[k] = +x; continue;
+        }
+        if(x==='' || !isFinite(+x)) return showErr(`${l}: اكتب رقم صحيح`);
         n[k] = +x; if(k!=='priceW' && n[k]<=0) return showErr(`${l}: لازم يكون أكبر من صفر`); if(k==='priceW' && n[k]<0) return showErr(`${l}: مينفعش يكون سالب`);
       }
       const key = `${brand}|${n.power}`;
@@ -950,8 +958,12 @@ function wire(){
       }
       harvestAdminInputs();
       const rec = { brand, power:n.power, vimp:n.vimp, voc:n.voc, iimp:n.iimp, isc:n.isc, priceW:n.priceW, model:v('model'), visible:document.getElementById('pm_visible').checked };
+      if(n.maxPanelsPerString) rec.maxPanelsPerString = n.maxPanelsPerString;
       if(pmEditIdx==null) adminConfig.panels.push(rec);
-      else Object.assign(adminConfig.panels[pmEditIdx], rec);   // بيحافظ على باقي بيانات اللوح (داتا شيت/صورة...)
+      else{
+        Object.assign(adminConfig.panels[pmEditIdx], rec);   // بيحافظ على باقي بيانات اللوح (داتا شيت/صورة...)
+        if(!n.maxPanelsPerString) delete adminConfig.panels[pmEditIdx].maxPanelsPerString;   // فاضي = شيل الحد
+      }
       if(wantDefault) adminConfig.defaultPanelKey = key;
       else if(oldKey && adminConfig.defaultPanelKey===oldKey) adminConfig.defaultPanelKey = key;   // لو كان هو الافتراضي واتغيّر اسمه
       const btn = document.getElementById('pm_save'); btn.disabled = true;

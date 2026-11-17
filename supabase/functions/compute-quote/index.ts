@@ -81,10 +81,18 @@ function pickCombiner(minInputs: number, boxes: number[][], headroom: number, mi
   return boxes[boxes.length - 1];
 }
 
+// أقصى عدد ألواح بالتوالي في السلسلة = min(الحد الكهربائي، panel.maxPanelsPerString لو مسجّل ورقم موجب).
+function panelMaxPerString(panel: any, electricalMax: number): number {
+  const cap = Math.floor(Number(panel && panel.maxPanelsPerString));
+  return cap > 0 ? Math.min(electricalMax, cap) : electricalMax;
+}
+
 function computeQuote(D: any, inp: any) {
   const panel = inp.panel, hp = inp.hp;
 
-  const panelsPerString = Math.floor(D.maxStringVoltage / panel.vimp) - (inp.panelsPerStringAdjust ?? D.panelsPerStringAdjust);
+  // الحد الأقصى لعدد الألواح في السلسلة: الأصغر بين الحد الكهربائي (جهد السلسلة ÷ Vimp) والحد الفعلي
+  // المسجّل للوح (panel.maxPanelsPerString — مثلًا قيد الشاسيه الحديد في الموقع). الحقل اختياري وقابل للتعديل من لوحة التحكم.
+  const panelsPerString = panelMaxPerString(panel, Math.floor(D.maxStringVoltage / panel.vimp)) - (inp.panelsPerStringAdjust ?? D.panelsPerStringAdjust);
   const arrays = Math.round(hp * 1000 * D.hpCapacityRatio / (panelsPerString * panel.power)) - (inp.stringsAdjust ?? D.stringsAdjust);
   const totalPanels = panelsPerString * arrays;
   const calcKW = panel.power * totalPanels / 1000;
@@ -583,7 +591,7 @@ function pickPanelStringConfig(panel: any, mppt: { min: number; max: number } | 
       warning: `⚠️ لا توجد بيانات "مدى جهد MPPT" لهذا الموديل داخل الكتالوج — لم يتم التحقق من توافق فولت سلسلة الألواح تلقائيًا، يرجى مراجعة توصيل الألواح يدويًا قبل التنفيذ.`,
     };
   }
-  const maxPerStringByVoc = Math.max(1, Math.floor(mppt.max / panel.voc));
+  const maxPerStringByVoc = Math.max(1, panelMaxPerString(panel, Math.floor(mppt.max / panel.voc)));
   const minPerStringByVimp = Math.max(1, Math.ceil(mppt.min / panel.vimp));
   let panelsPerString: number, warning: string | null = null;
   if (minPerStringByVimp > maxPerStringByVoc) {

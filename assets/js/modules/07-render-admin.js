@@ -134,8 +134,8 @@ function pfRenderPanels(){
       </button>
       <div class="pf-gbody">
         <table class="admtable pf-tbl">
-          <colgroup><col style="width:5%"><col style="width:8%"><col style="width:11%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:10%"><col style="width:14%"><col style="width:8%"><col style="width:13%"></colgroup>
-          <thead><tr><th>افتراضي</th><th>البراند</th><th>الموديل</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W</th><th>الحالة</th><th>ظاهر للعميل</th><th></th></tr></thead>
+          <colgroup><col style="width:5%"><col style="width:7%"><col style="width:10%"><col style="width:7%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:5%"><col style="width:8%"><col style="width:7%"><col style="width:13%"><col style="width:8%"><col style="width:15%"></colgroup>
+          <thead><tr><th>افتراضي</th><th>البراند</th><th>الموديل</th><th>القدرة W</th><th>Vimp</th><th>Voc</th><th>Iimp</th><th>Isc</th><th>السعر $/W</th><th title="أقصى عدد ألواح في السلسلة">أقصى/سلسلة</th><th>الحالة</th><th>ظاهر للعميل</th><th></th></tr></thead>
           <tbody>
           ${g.rows.map(({p,i})=>{
             const isDef = `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||'');
@@ -150,6 +150,7 @@ function pfRenderPanels(){
               <td>${pnlEsc(p.iimp)}</td>
               <td>${pnlEsc(p.isc)}</td>
               <td>${pnlEsc(p.priceW)}</td>
+              <td>${Number(p.maxPanelsPerString)>0 ? pnlEsc(p.maxPanelsPerString) : '<span style="color:var(--muted)">—</span>'}</td>
               <td data-pfstate>${pfBadges(vis, priced)}</td>
               <td style="text-align:center"><label class="pf-sw" title="إظهار / إخفاء اللوح للعميل"><input type="checkbox" data-pfvis="${i}" ${vis?'checked':''} aria-label="ظاهر للعميل: ${pnlEsc(p.brand)} ${pnlEsc(p.power)}W"><span></span></label></td>
               <td class="op" style="white-space:nowrap"><button class="btn ghost small" data-editpanel="${i}">✏️ تعديل</button> <button class="btn danger small" data-delpanel="${i}">✕</button></td>
