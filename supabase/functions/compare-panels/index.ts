@@ -6,9 +6,12 @@
 // discount tier, special discount). It contains NO pricing logic of its own,
 // so the numbers always match what the calculator would quote.
 //
-// - No adminToken  -> public view: sell prices only (no cost, no margin).
-// - With adminToken -> compute-quote's own `admin-view` (token is validated
-//   there): adds cost basis, profit and margin %. Never sent to reps.
+// STAFF ONLY (customers/guests are rejected with 401):
+// - Rep session token (`token`)  -> validated by compute-quote's own checkRepToken
+//   (via its `rep-config` action). Sees sell prices only (no cost, no margin).
+// - Admin session token (`adminToken`) -> validated by compute-quote's `admin-view`.
+//   Sees cost basis, profit and margin % unless `showCosts` is false.
+// - No valid token -> 401, before any pricing work is done.
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -51,9 +54,25 @@ function scopeSummary(q: any, admin: boolean) {
   return out;
 }
 
-export async function buildComparison(callEngine: CallEngine, input: any, adminToken?: string) {
-  const admin = !!adminToken;
+export interface CompareAuth { adminToken?: string; repToken?: string; showCosts?: boolean }
+
+const UNAUTH = { status: 401, body: { error: "هذه الخاصية لموظفي الشركة فقط — الرجاء تسجيل الدخول" } };
+
+export async function buildComparison(callEngine: CallEngine, input: any, auth: CompareAuth) {
+  // 0) AUTH GATE — nothing is computed for anyone who is not company staff.
+  let admin = false;
   const baseInput = { ...input, toggles: SCOPE_TOGGLES.materials };
+  if (auth.adminToken) {
+    const a = await callEngine("admin-view", { adminToken: auth.adminToken, input: baseInput });
+    if (a.status !== 200) return UNAUTH;
+    admin = auth.showCosts !== false; // admin may still ask for a cost-free view
+  } else if (auth.repToken) {
+    const r = await callEngine("rep-config", { token: auth.repToken });
+    if (r.status !== 200) return UNAUTH;
+  } else {
+    return UNAUTH;
+  }
+  const adminToken = auth.adminToken;
 
   // 1) available panels = same list the calculator dropdown shows (visible + priced)
   const base = await callEngine("quote", { input: baseInput });
@@ -73,7 +92,7 @@ export async function buildComparison(callEngine: CallEngine, input: any, adminT
 
   const rows: Record<number, any> = {};
   for (const { opt, scope, r } of results) {
-    if (r.status === 401) return { status: 401, body: { error: r.data?.error || "admin session expired" } };
+    if (r.status === 401) return UNAUTH;
     if (r.status !== 200 || !r.data?.quote) continue; // skip a panel the engine can't price
     const q = r.data.quote;
     const row = rows[opt.idx] || (rows[opt.idx] = {
@@ -115,7 +134,11 @@ if (import.meta.main !== false && typeof Deno !== "undefined") {
     };
 
     try {
-      const out = await buildComparison(callEngine, body.input, body.adminToken || undefined);
+      const out = await buildComparison(callEngine, body.input, {
+        adminToken: body.adminToken || undefined,
+        repToken: body.token || undefined,
+        showCosts: body.showCosts,
+      });
       return json(out.body, out.status);
     } catch (e) {
       return json({ error: (e as Error).message || "compare failed" }, 500);

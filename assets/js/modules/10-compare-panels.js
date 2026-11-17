@@ -6,15 +6,32 @@
 const COMPARE_FN = SUPABASE_URL + '/functions/v1/compare-panels';
 let cmpData = null, cmpScope = 'materials', cmpLoading = false, cmpError = null, cmpSort = 'price';
 
-async function cmpFetch(){
-  const adminMode = !!(adminInfoUnlocked && adminTokenMem);
+/* موظفو الشركة فقط: مندوب مسجّل الدخول أو أدمن. العميل (guest) مفيش عنده توكن → مفيش مقارنة.
+   السيرفر بيتحقق من التوكن بنفسه (compare-panels بيرفض أي طلب من غير توكن صالح)، والإخفاء هنا للشكل بس. */
+function cmpAuth(){
+  const embed = (typeof embedAdminToken !== 'undefined' && embedAdminToken) ? embedAdminToken : null;
+  if(adminTokenMem && adminInfoUnlocked) return { adminToken: adminTokenMem, showCosts: true };   // أدمن فاتح «معلومات إضافية»
+  if(typeof repTokenMem !== 'undefined' && repTokenMem) return { token: repTokenMem };             // مندوب: أسعار بدون تكلفة
+  if(embed) return { adminToken: embed, showCosts: false };                                        // أدمن من داخل الـ CRM
+  if(adminTokenMem) return { adminToken: adminTokenMem, showCosts: false };
+  return null;
+}
+function cmpIsStaff(){ return !!cmpAuth(); }
+
+async function cmpFetch(retried){
+  const auth = cmpAuth();
+  if(!auth) throw new Error('المقارنة متاحة لموظفي الشركة فقط — سجّل الدخول كمندوب أو أدمن.');
   const res = await fetch(COMPARE_FN, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY, 'apikey': SUPABASE_ANON_KEY },
-    body: JSON.stringify({ input: buildEngineInput(), adminToken: adminMode ? adminTokenMem : undefined })
+    body: JSON.stringify({ input: buildEngineInput(), ...auth })
   });
   let d; try{ d = await res.json(); }catch(e){ throw new Error('استجابة غير صالحة من الخادم'); }
-  if(res.status === 401 && adminMode){ adminInfoUnlocked = false; adminTokenMem = null; return cmpFetch(); } // انتهت جلسة الأدمن → نعرض بدون تكلفة
+  if(res.status === 401){
+    // انتهت جلسة الأدمن → نرجع لجلسة المندوب (لو موجودة) من غير تكلفة، مرة واحدة بس
+    if(auth.adminToken && adminTokenMem && !retried){ adminInfoUnlocked = false; adminTokenMem = null; return cmpFetch(true); }
+    throw new Error(d.error || 'الجلسة منتهية، الرجاء تسجيل الدخول مجددًا');
+  }
   if(!res.ok) throw new Error(d.error || 'خطأ في الخادم');
   return d;
 }
@@ -22,6 +39,7 @@ async function cmpFetch(){
 function cmpClose(){ const o = document.getElementById('cmpOverlay'); if(o) o.remove(); document.body.style.overflow = ''; }
 
 async function openPanelCompare(){
+  if(!cmpIsStaff()){ alert('المقارنة متاحة لموظفي الشركة فقط.'); return; }
   cmpClose();
   cmpLoading = true; cmpError = null; cmpData = null;
   cmpDraw();
