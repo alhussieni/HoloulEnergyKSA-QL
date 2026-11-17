@@ -451,6 +451,7 @@ function wire(){
     document.getElementById('hp_confirm').onclick = confirmHp;
     document.getElementById('in_hp').onkeydown = e=>{ if(e.key==='Enter') confirmHp(); };
     document.getElementById('in_panel').onchange = e=>{state.panelIdx=+e.target.value; scheduleRefresh();};
+    const cmpBtn = document.getElementById('cmp_open'); if(cmpBtn) cmpBtn.onclick = ()=>openPanelCompare();
     const confirmAdv = ()=>{
       state.panelsPerStringAdjust = +document.getElementById('in_pps').value || 0;
       state.stringsAdjust = +document.getElementById('in_str').value || 0;

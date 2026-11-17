@@ -59,6 +59,7 @@ function renderIrrigationCalc(){
         <select id="in_panel">
           ${sortedPanelOptions().map(p=>`<option value="${p.idx}" ${p.idx==state.panelIdx?'selected':''}>${p.brand} ${p.power}W</option>`).join('')}
         </select>
+        <button class="btn ghost small" id="cmp_open" type="button" style="margin-top:6px;width:100%">⚖️ قارن بين الألواح (السعر والبيانات الكهربائية)</button>
 
         <details class="adv">
           <summary>إعدادات متقدمة</summary>
