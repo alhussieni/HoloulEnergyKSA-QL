@@ -136,7 +136,7 @@ function computeQuote(D: any, inp: any) {
   // is registered for that (category, brand) in الخصومات. reactorMarkupPct
   // stays only as the fallback markup if no discount row is registered yet.
   const reactorRow = findExactCatalogRow(D, "الريأكتور", `VEICHI Reactor ${reactorModel}A`);
-  const reactorPricing = resolveCatalogPricing(D, reactorRow.category, reactorRow.brand, reactorRow.listPrice, D.reactorMarkupPct || 0, reactorRow.model);
+  const reactorPricing = resolveCatalogPricing(D, reactorRow.category, reactorRow.brand, reactorRow.listPrice, D.reactorMarkupPct || 0);
   const reactorPrice = reactorRow.listPrice;
   const cbSize = pickLadder(D.cbLadder, IscCalc);
   const combiner = inp.combinerOverride || pickCombiner(arrays, D.combinerBoxes, D.combinerHeadroom, D.combinerMinSpareStrings);
@@ -245,14 +245,8 @@ function computeQuote(D: any, inp: any) {
     discountTotal += discount;
   }
   discountTotal = Math.round(discountTotal / 10) * 10;
-  // حد أدنى صلب: السعر بعد كل الخصومات (قبل الضريبة) لا يقل عن التكلفة الفعلية للبنود المفعّلة — مهما كان المدخل.
-  const floorCost = items.reduce((s: number, it: any) => (it.on ? s + it.costBasis : s), 0);
-  discountTotal = Math.min(discountTotal, Math.max(0, sellTotal - floorCost));
   const netAfterDiscount = sellTotal - discountTotal;
-  const maxManual = Math.max(0, Math.floor((netAfterDiscount - floorCost) * 100) / 100);
-  const requestedManual = inp.specialDiscountAmt || 0;
-  const manualDiscountAmt = Math.min(maxManual, requestedManual);   // الرقم السالب (زيادة سعر) بيعدّي زي ما هو
-  const manualDiscountCapped = requestedManual > maxManual + 0.005;
+  const manualDiscountAmt = Math.min(netAfterDiscount, inp.specialDiscountAmt || 0);
   const netAfterManual = netAfterDiscount - manualDiscountAmt;
   const vat = netAfterManual * D.vat;
   const finalTotal = netAfterManual + vat;
@@ -297,7 +291,7 @@ function computeQuote(D: any, inp: any) {
     invBrandName: inv.brand,
     inverterCalcKW, invKW, invMaxSolarKw: invMaxSolarKw ?? null, inverterOversizeWarning, inverterAutoUpsizedFromKW,
     reactorModel, reactorPrice, cbSize, combiner,
-    items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt, manualDiscountCapped,
+    items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt,
     netAfterManual, vat, finalTotal, sarPerKW: finalTotal / calcKW,
     supplyOnlyTotal, supplyPlusInstallTotal,
   };
@@ -424,14 +418,10 @@ function findDiscount(D: any, category: string, brand: string) {
 }
 function resolveCatalogPricing(
   D: any, category: string, brand: string, listPrice: number, fallbackMarkupPct: number,
-  itemName?: string,
 ): { costBasis: number; sell: number } {
   const d = findDiscount(D, category, brand);
   if (d) {
-    // Product-level importer discount (products.supplier_discount_pct, keyed by catalog_name) wins over
-    // the (category, brand) supplierDiscountPct. Internal only; loaded per request, never serialized.
-    const itemPct = itemName != null && D.__supplierOverrides ? D.__supplierOverrides[itemName] : undefined;
-    const supplierPct = itemPct != null ? itemPct : (Number(d.supplierDiscountPct) || 0);
+    const supplierPct = Number(d.supplierDiscountPct) || 0;
     const sellPct = Number(d.sellDiscountPct) || 0;
     return {
       costBasis: listPrice * (1 - supplierPct / 100),
@@ -753,18 +743,12 @@ function finalizeQuote(items: any[], discountFactor: number, D: any, manualDisco
     discountTotal += discount;
   }
   discountTotal = Math.round(discountTotal / 10) * 10;
-  // حد أدنى صلب: السعر بعد كل الخصومات (قبل الضريبة) لا يقل عن التكلفة الفعلية للبنود المفعّلة.
-  const floorCost = items.reduce((s: number, it: any) => (it.on ? s + it.costBasis : s), 0);
-  discountTotal = Math.min(discountTotal, Math.max(0, sellTotal - floorCost));
   const netAfterDiscount = sellTotal - discountTotal;
-  const maxManual = Math.max(0, Math.floor((netAfterDiscount - floorCost) * 100) / 100);
-  const requestedManual = manualDiscountAmt || 0;
-  const manualDiscount = Math.min(maxManual, requestedManual);
-  const manualDiscountCapped = requestedManual > maxManual + 0.005;
+  const manualDiscount = Math.min(netAfterDiscount, manualDiscountAmt || 0);
   const netAfterManual = netAfterDiscount - manualDiscount;
   const vat = netAfterManual * D.vat;
   const finalTotal = netAfterManual + vat;
-  return { sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt: manualDiscount, manualDiscountCapped, netAfterManual, vat, finalTotal };
+  return { sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt: manualDiscount, netAfterManual, vat, finalTotal };
 }
 
 function computeOffgridQuote(D: any, inp: any) {
@@ -1110,13 +1094,6 @@ Deno.serve(async (req: Request) => {
     .from("pricing_config").select("data").eq("id", 1).single();
   if (cfgErr || !cfgRow) return json({ error: "pricing config not found" }, 500);
   const D = cfgRow.data;
-  {
-    const { data: ovRows } = await supabase.from("products")
-      .select("catalog_name, supplier_discount_pct").not("supplier_discount_pct", "is", null).not("catalog_name", "is", null);
-    const overrides: Record<string, number> = {};
-    for (const r of ovRows || []) overrides[r.catalog_name] = Number(r.supplier_discount_pct);
-    Object.defineProperty(D, "__supplierOverrides", { value: overrides, enumerable: false, configurable: true });
-  }
 
   // Internal, server-to-server ONLY (never reachable from a browser): lets
   // invoice-api turn a customer's raw calculator quote back into real,
@@ -1408,12 +1385,6 @@ Deno.serve(async (req: Request) => {
             totalPanels: qF.totalPanels, calcKW: qF.calcKW, hp: inpF.hp,
           },
         };
-        // حماية: لو إجمالي المتصفح مختلف عن إعادة الحساب من الـ snapshot، نعلّم العرض (بدون ما نمنع الحفظ)
-        const sent = Math.round(Number(body.finalTotal) || 0);
-        if (sent && Math.abs(sent - Math.round(qF.finalTotal)) > 1) {
-          snapshotToSave.priceMismatch = { browserTotal: sent, serverTotal: Math.round(qF.finalTotal) };
-          console.warn("save-quote price mismatch", sent, Math.round(qF.finalTotal));
-        }
       }
     } catch (_e) { /* keep the original snapshot */ }
 
