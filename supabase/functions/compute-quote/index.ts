@@ -98,7 +98,11 @@ function computeQuote(D: any, inp: any) {
   const expectedVAC = Vimp * 0.88 / Math.SQRT2;
 
   const inverterCalcKW = Math.ceil(hp * 0.8) + (inp.inverterPowerIncrease ?? D.inverterPowerIncrease);
-  const pumpPick = pickPumpInverter(D, inverterCalcKW);
+  // اختيار الانفرتر تلقائيًا: أول موديل يكفي قدرة الموتور، وبعدها لو قدرة الألواح أكبر من أقصى قدرة ألواح
+  // يتحملها الانفرتر ننتقل لأول موديل أكبر يتحملها (الموديلات بدون سعر مسجل بتتجاهل).
+  const motorPick = pickPumpInverter(D, inverterCalcKW);
+  const pumpPick = pickPumpInverter(D, inverterCalcKW, calcKW);
+  const inverterAutoUpsizedFromKW: number | null = pumpPick.idx > motorPick.idx ? motorPick.picked.kw : null;
   const inv = pumpPick.picked;
   const invKW = inv.kw;
   const invPricing = resolveCatalogPricing(D, inv.category, inv.brand, inv.listPrice, 0);
@@ -283,7 +287,7 @@ function computeQuote(D: any, inp: any) {
     panelsPerString, arrays, totalPanels, calcKW, efficiencyRatio,
     Iimp, Vimp, Voc, Isc, IscCalc, expectedVAC,
     invBrandName: inv.brand,
-    inverterCalcKW, invKW, invMaxSolarKw: invMaxSolarKw ?? null, inverterOversizeWarning,
+    inverterCalcKW, invKW, invMaxSolarKw: invMaxSolarKw ?? null, inverterOversizeWarning, inverterAutoUpsizedFromKW,
     reactorModel, reactorPrice, cbSize, combiner,
     items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt, manualDiscountCapped,
     netAfterManual, vat, finalTotal, sarPerKW: finalTotal / calcKW,
@@ -482,11 +486,15 @@ function getPumpInverterCatalogRows(D: any) {
     .filter((r: any) => r.kw > 0 && isFinite(r.listPrice))
     .sort((a: any, b: any) => a.kw - b.kw);
 }
-function pickPumpInverter(D: any, kwNeeded: number) {
+function pickPumpInverter(D: any, kwNeeded: number, solarKw?: number) {
   const rows = getPumpInverterCatalogRows(D);
   if (!rows.length) throw new Error('لا يوجد أي موديل انفرتر مضخات بسعر مسجل داخل كتالوج "انفرتر مضخات VEICHI"');
   let idx = rows.findIndex((r: any) => r.kw >= kwNeeded);
   if (idx === -1) idx = rows.length - 1;
+  // لو اتمرّرت قدرة الألواح: نرفع الاختيار لأول انفرتر يتحمل قدرة الألواح دي (لو مفيش، يفضل آخر موديل ويظهر التحذير)
+  if (solarKw != null) {
+    while (idx < rows.length - 1 && rows[idx].maxSolarKw != null && solarKw > rows[idx].maxSolarKw) idx++;
+  }
   return { picked: rows[idx], idx, rows };
 }
 function pickCatalogInverter(D: any, kwNeeded: number) {
