@@ -56,7 +56,9 @@ function cmpDraw(){
     o.addEventListener('click', e=>{ if(e.target === o) cmpClose(); });
     document.body.appendChild(o); document.body.style.overflow = 'hidden';
   }
-  o.innerHTML = `<div class="card" style="width:100%;max-width:1100px;background:#fff;position:relative">${cmpBody()}</div>`;
+  /* ستايل table.bom بيثبّت الهيدر sticky بـ top:74px (لهيدر الصفحة) — جوه النافذة ده كان بينزّله على الصفوف، فبنلغيه هنا */
+  const cmpCss = `<style>#cmpOverlay table.bom th{position:static !important;top:auto !important;background:#F6F3EA;white-space:nowrap}#cmpOverlay table.bom td,#cmpOverlay table.bom th{vertical-align:middle}</style>`;
+  o.innerHTML = cmpCss + `<div class="card" style="width:100%;max-width:1100px;background:#fff;position:relative">${cmpBody()}</div>`;
   const q = s=>o.querySelector(s);
   q('#cmpX').onclick = cmpClose;
   o.querySelectorAll('[data-cmpscope]').forEach(b=>b.onclick = ()=>{ cmpScope = b.dataset.cmpscope; cmpDraw(); });
