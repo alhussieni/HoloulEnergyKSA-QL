@@ -766,6 +766,7 @@ body.printing-cert #certPrintArea{display:block!important;}
 </div>
 
 <div class="overlay" id="custOverlay"><div class="modal" id="custModal"></div></div>
+<div class="overlay" id="mergeOverlay"><div class="modal" id="mergeModal" style="max-width:560px;"></div></div>
 
 <div class="overlay" id="newOverlay">
   <div class="modal" style="max-width:420px;">
@@ -3104,6 +3105,84 @@ async function loadCustomers(){
 /* ============ CUSTOMER MODAL ============ */
 const custOverlay = document.getElementById('custOverlay');
 custOverlay.addEventListener('click', (e)=>{ if(e.target===custOverlay) closeCustomer(); });
+/* ===== دمج العملاء (للأدمن فقط) =====
+   دمج ناعم: العميل المدموج بيختفي من القايمة وكل عروضه/صفقاته/مزارعه بتتنقل للعميل الأساسي،
+   ورقمه واسمه بيتحفظوا كجهة اتصال. ممكن فك الدمج من صفحة العميل الأساسي. */
+let CUST_MERGED_FROM = [];
+const MERGE_LABELS = {quotes:'عروض أسعار (الحاسبة)', opportunities:'صفقات', sites:'مزارع / مواقع', contacts:'جهات اتصال', quotations:'عروض أسعار رسمية', service_tickets:'تذاكر صيانة', crm_interactions:'سجل تواصل', activities:'أنشطة', site_surveys:'معاينات'};
+function closeMerge(){ document.getElementById('mergeOverlay').classList.remove('show'); }
+function mergeShell(inner){ document.getElementById('mergeModal').innerHTML = inner; document.getElementById('mergeOverlay').classList.add('show'); }
+function mergePersonLine(p){ return '<b>'+escapeHtml(p.name||'بدون اسم')+'</b> <span style="color:var(--muted);direction:ltr;display:inline-block;">'+escapeHtml(p.phone||'')+'</span>'; }
+function openMergeDialog(c){
+  let timer = null;
+  const head = (t)=>'<div class="mhead"><div><h2>'+t+'</h2></div><button class="closeX" id="mgClose" type="button">×</button></div>';
+  const stepSearch = ()=>{
+    mergeShell(head('🔗 دمج مع عميل آخر')+
+      '<div class="emptyNote" style="margin-bottom:8px;">دوّر على العميل التاني (بالاسم أو الرقم). العميل الحالي '+mergePersonLine(c)+' هيفضل هو الأساسي، وتقدر تعكس الاختيار في الخطوة الجاية.</div>'+
+      '<input type="text" id="mgSearch" placeholder="اسم أو رقم العميل المراد دمجه...">'+
+      '<div id="mgResults" style="margin-top:10px;max-height:300px;overflow:auto;"></div>');
+    const m = document.getElementById('mergeModal');
+    m.querySelector('#mgClose').onclick = closeMerge;
+    const inp = m.querySelector('#mgSearch'); inp.focus();
+    inp.addEventListener('input', ()=>{
+      clearTimeout(timer);
+      const term = inp.value.trim();
+      const box = m.querySelector('#mgResults');
+      if(term.length < 2){ box.innerHTML = ''; return; }
+      timer = setTimeout(async ()=>{
+        box.innerHTML = '<div class="emptyNote">بيدوّر...</div>';
+        try{
+          const d = await crmApi('admin-crm-list-customers', {search: term});
+          const list = (d.customers||[]).filter(x=>x.id!==c.id).slice(0,12);
+          if(!list.length){ box.innerHTML = '<div class="emptyNote">مفيش نتايج</div>'; return; }
+          box.innerHTML = list.map(x=>'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--line);">'+
+            '<div>'+mergePersonLine(x)+'<div class="emptyNote" style="padding:0;">عروض: '+(x.quotes_count||0)+'</div></div>'+
+            '<button class="btn small" type="button" data-pick="'+x.id+'">اختار</button></div>').join('');
+          box.querySelectorAll('[data-pick]').forEach(b=>b.addEventListener('click', ()=>{
+            const x = list.find(y=>String(y.id)===b.getAttribute('data-pick'));
+            stepPreview({id:c.id,name:c.name,phone:c.phone}, {id:x.id,name:x.name,phone:x.phone});
+          }));
+        }catch(err){ box.innerHTML = '<div class="emptyNote">خطأ: '+escapeHtml(err.message)+'</div>'; }
+      }, 300);
+    });
+  };
+  const stepPreview = async (primary, source)=>{
+    mergeShell(head('تأكيد الدمج')+'<div class="loadingNote">بيجهّز المعاينة...</div>');
+    const m = document.getElementById('mergeModal');
+    m.querySelector('#mgClose').onclick = closeMerge;
+    let pv;
+    try{ pv = (await crmApi('admin-crm-merge-preview', {primaryId: primary.id, sourceId: source.id})).preview; }
+    catch(err){ mergeShell(head('تعذر المعاينة')+'<div class="emptyNote">'+escapeHtml(err.message)+'</div><button class="btn ghost small" id="mgBack" type="button">رجوع</button>'); m.querySelector('#mgClose').onclick = closeMerge; m.querySelector('#mgBack').onclick = stepSearch; return; }
+    const counts = Object.entries(pv.counts||{}).filter(([k,n])=>n>0).map(([k,n])=>'<span class="tag" style="background:#E7F3EF;color:var(--teal-dark);margin:3px;">'+(MERGE_LABELS[k]||k)+': '+n+'</span>').join('') || '<span class="emptyNote">مفيش بيانات مرتبطة هتتنقل (هيتحفظ الاسم والرقم كجهة اتصال بس)</span>';
+    const blockers = pv.blockers||[];
+    mergeShell(head('تأكيد الدمج')+
+      '<div class="section" style="margin-top:0;border-top:0;padding-top:0;">'+
+        '<div class="emptyNote">العميل الأساسي (هيفضل):</div><div style="margin-bottom:10px;">'+mergePersonLine(pv.primary)+'</div>'+
+        '<div class="emptyNote">هيتدمج فيه (هيختفي من القايمة):</div><div style="margin-bottom:10px;">'+mergePersonLine(pv.source)+'</div>'+
+        '<button class="btn ghost small" id="mgSwap" type="button">🔄 اعكس: خلّي التاني هو الأساسي</button>'+
+      '</div>'+
+      '<div class="section"><h4>اللي هيتنقل للعميل الأساسي</h4><div>'+counts+'</div></div>'+
+      (blockers.length ? '<div class="section" style="color:var(--bad);font-weight:700;">⛔ مينفعش الدمج: '+blockers.map(escapeHtml).join('، ')+'</div>' :
+        '<div class="emptyNote" style="margin-top:10px;">رقم واسم العميل المدموج بيتحفظوا كجهة اتصال عند الأساسي، وأي عرض سعر جديد على رقمه القديم هيروح للأساسي تلقائيًا. تقدر تفك الدمج بعدين من صفحة العميل الأساسي.</div>')+
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">'+
+        '<button class="btn ghost small" id="mgBack" type="button">رجوع</button>'+
+        '<button class="btn teal small" id="mgConfirm" type="button"'+(blockers.length?' disabled style="opacity:.5;cursor:not-allowed;"':'')+'>تأكيد الدمج</button></div>');
+    m.querySelector('#mgClose').onclick = closeMerge;
+    m.querySelector('#mgBack').onclick = stepSearch;
+    m.querySelector('#mgSwap').onclick = ()=>stepPreview(source, primary);
+    const ok = m.querySelector('#mgConfirm');
+    if(!blockers.length) ok.onclick = async ()=>{
+      ok.disabled = true; ok.textContent = 'بيدمج...';
+      try{
+        await crmApi('admin-crm-merge-customers', {primaryId: primary.id, sourceId: source.id});
+        toast('اتدمج العميل ✅');
+        closeMerge(); closeCustomer(); loadCustomers(); loadDashboard(); openCustomer(primary.id);
+      }catch(err){ ok.disabled = false; ok.textContent = 'تأكيد الدمج'; toast('خطأ: '+err.message); }
+    };
+  };
+  stepSearch();
+}
+
 function closeCustomer(){ custOverlay.classList.remove('show'); }
 
 async function openCustomer(id){
@@ -3111,6 +3190,7 @@ async function openCustomer(id){
   document.getElementById('custModal').innerHTML = '<div class="loadingNote">بيحمّل بيانات العميل...</div>';
   try{
     const d = await crmApi('admin-crm-customer-detail', {customerId:id});
+    CUST_MERGED_FROM = d.merged_from || [];
     renderCustomerModal(d.customer, d.quotes, d.interactions, d.contacts||[], d.sites||[], d.opportunities||[], d.assets||[]);
   }catch(err){ document.getElementById('custModal').innerHTML = '<div class="loadingNote">تعذر التحميل: '+err.message+'</div>'; }
 }
@@ -3556,6 +3636,12 @@ function openQuoteDetail(q, c, all){
 function renderCustomerModal(c, quotes, interactions, contacts, sites, opportunities, assets){
   const m = document.getElementById('custModal');
   const canDelete = SESSION.role === 'admin';
+  const canMerge = SESSION.role === 'admin';
+  const mergedHtml = (CUST_MERGED_FROM && CUST_MERGED_FROM.length) ? `
+    <div class="section" style="margin-top:14px;padding-top:12px;">
+      <h4>🔗 عملاء اتدمجوا في العميل ده</h4>
+      ${CUST_MERGED_FROM.map(x=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:6px 0;"><div>${escapeHtml(x.name||'بدون اسم')} <span style="color:var(--muted);direction:ltr;display:inline-block;">${escapeHtml(x.phone||'')}</span></div>${(canMerge && x.merge_id) ? `<button class="btn ghost small" type="button" data-unmerge="${x.merge_id}">↩️ فك الدمج</button>` : ''}</div>`).join('')}
+    </div>` : '';
   const hasOpps = opportunities.length > 0;
   const oppCounts = {};
   opportunities.forEach(o=>{ oppCounts[o.stage] = (oppCounts[o.stage]||0)+1; });
@@ -3568,6 +3654,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       <div style="display:flex;gap:8px;align-items:center;">
         <button class="btn small" id="custNewQuoteBtn" type="button">➕ عرض سعر جديد</button>
         <button class="btn teal small" id="custInvoiceBtn" type="button">🧾 فاتورة جديدة</button>
+        ${canMerge ? '<button class="btn ghost small" id="custMergeBtn" type="button">🔗 دمج مع عميل آخر</button>' : ''}
         <button class="closeX" data-close>×</button>
       </div>
     </div>
@@ -3581,6 +3668,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       <div><label>مصدر العميل</label><select id="f_lead_source">${optHtml(SETTINGS.leadSources, c.lead_source)}</select></div>
       <div><label>المندوب المسؤول</label><input type="text" id="f_rep" value="${c.assigned_rep||''}"></div>
     </div>
+    ${mergedHtml}
 
     ${hasOpps ? `
     <div class="section" style="margin-top:14px;padding-top:14px;">
@@ -3817,6 +3905,16 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       closeCustomer(); loadCustomers(); loadDashboard();
     }catch(err){ toast('خطأ: '+err.message); }
   });
+  const mergeBtn = m.querySelector('#custMergeBtn');
+  if(mergeBtn) mergeBtn.addEventListener('click', ()=>openMergeDialog(c));
+  m.querySelectorAll('[data-unmerge]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(!confirm('فك الدمج؟ العروض والصفقات والمزارع اللي اتنقلت وقت الدمج هترجع للعميل القديم ويظهر تاني في القايمة.')) return;
+    try{
+      await crmApi('admin-crm-unmerge-customers', {mergeId: Number(b.getAttribute('data-unmerge'))});
+      toast('اتفك الدمج ✅');
+      loadCustomers(); loadDashboard(); openCustomer(c.id);
+    }catch(err){ toast('خطأ: '+err.message); }
+  }));
   const addIntBtn = m.querySelector('#addIntBtn');
   if(addIntBtn) addIntBtn.addEventListener('click', async ()=>{
     const note = m.querySelector('#i_note').value.trim();
