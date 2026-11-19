@@ -245,8 +245,14 @@ function computeQuote(D: any, inp: any) {
     discountTotal += discount;
   }
   discountTotal = Math.round(discountTotal / 10) * 10;
+  // حد أدنى صلب: السعر بعد كل الخصومات (قبل الضريبة) لا يقل عن التكلفة الفعلية للبنود المفعّلة — مهما كان المدخل.
+  const floorCost = items.reduce((s: number, it: any) => (it.on ? s + it.costBasis : s), 0);
+  discountTotal = Math.min(discountTotal, Math.max(0, sellTotal - floorCost));
   const netAfterDiscount = sellTotal - discountTotal;
-  const manualDiscountAmt = Math.min(netAfterDiscount, inp.specialDiscountAmt || 0);
+  const maxManual = Math.max(0, Math.floor((netAfterDiscount - floorCost) * 100) / 100);
+  const requestedManual = inp.specialDiscountAmt || 0;
+  const manualDiscountAmt = Math.min(maxManual, requestedManual);   // الرقم السالب (زيادة سعر) بيعدّي زي ما هو
+  const manualDiscountCapped = requestedManual > maxManual + 0.005;
   const netAfterManual = netAfterDiscount - manualDiscountAmt;
   const vat = netAfterManual * D.vat;
   const finalTotal = netAfterManual + vat;
@@ -291,7 +297,7 @@ function computeQuote(D: any, inp: any) {
     invBrandName: inv.brand,
     inverterCalcKW, invKW, invMaxSolarKw: invMaxSolarKw ?? null, inverterOversizeWarning, inverterAutoUpsizedFromKW,
     reactorModel, reactorPrice, cbSize, combiner,
-    items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt,
+    items, sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt, manualDiscountCapped,
     netAfterManual, vat, finalTotal, sarPerKW: finalTotal / calcKW,
     supplyOnlyTotal, supplyPlusInstallTotal,
   };
@@ -368,6 +374,72 @@ function cartFinancials(D: any, snap: any) {
     note: "هامش البنود محسوب على أصناف السلة فقط؛ التركيب والنقل (الإضافات) غير مُدرجة في التكلفة.",
   };
 }
+// ===== Product-cart guard (server-side price + cost-floor enforcement) =====
+// The browser used to be the only place that checked cart unit prices and the
+// special discount. These helpers re-derive the sell price (catalog price after
+// the active promo — exactly what get-product-catalog serves) and the cost
+// (supplier discount, incl. the per-product override) for every cart line.
+function cartRound2(n: number): number { return Math.round(n * 100) / 100; }
+function cartCatalogLine(D: any, it: any): { sell: number; cost: number } | null {
+  const cat = (D.productCatalog || []).find((c: any) => c.category === it.category);
+  const idx = cat ? (cat.rows || []).findIndex((r: any) => r[0] === it.name) : -1;
+  if (!cat || idx < 0) return null;
+  const r = cat.rows[idx];
+  const list = parseFloat(r[r.length - 2]);
+  if (!isFinite(list)) return null;
+  const brand = rowBrand(cat, idx);
+  const d = findDiscount(D, cat.category, brand);
+  const promoOn = !!(d && d.promoActive && d.promoDiscountPct);
+  const sell = promoOn ? cartRound2(list * (1 - (Number(d.promoDiscountPct) || 0) / 100)) : list;
+  const cost = resolveCatalogPricing(D, cat.category, brand, list, 0).costBasis;
+  return { sell, cost };
+}
+// Max discount that keeps the net price at or above the cost of the items.
+// Installation / transport extras have no cost model yet, so they are treated
+// as zero-margin (the discount can never eat into them).
+function cartLimits(D: any, items: any[]) {
+  let itemsSell = 0, itemsCost = 0;
+  const changed: any[] = [];
+  const uncatalogued: string[] = [];
+  for (const it of (Array.isArray(items) ? items : [])) {
+    const qty = Math.max(1, Math.round(Number(it && it.qty) || 1));
+    const line = it ? cartCatalogLine(D, it) : null;
+    const clientPrice = Number(String((it && it.price) == null ? "" : it.price).replace(/,/g, ""));
+    if (!line) {
+      // Item not in the catalog (custom line / renamed product): its price can't be
+      // verified and its cost is unknown, so it is counted at zero margin
+      // (cost = price). A discount can therefore never eat into it.
+      const amt = Math.max(0, isFinite(clientPrice) ? clientPrice : 0) * qty;
+      itemsSell += amt;
+      itemsCost += amt;
+      uncatalogued.push(String(it && it.name));
+      continue;
+    }
+    if (!isFinite(clientPrice) || Math.abs(clientPrice - line.sell) > 0.011) {
+      changed.push({ name: it.name, clientPrice: isFinite(clientPrice) ? clientPrice : null, serverPrice: line.sell });
+    }
+    itemsSell += line.sell * qty;
+    itemsCost += line.cost * qty;
+  }
+  const maxDiscount = Math.max(0, Math.floor((itemsSell - itemsCost) * 100) / 100);
+  return { itemsSell: cartRound2(itemsSell), itemsCost: cartRound2(itemsCost), maxDiscount, changed, uncatalogued };
+}
+function guardCartSnapshot(D: any, snap: any, discountAuthorized: boolean): any {
+  if (!Array.isArray(snap.items) || !snap.items.length) return { code: "empty-cart", error: "السلة فاضية." };
+  const lim: any = cartLimits(D, snap.items);
+  if (lim.changed.length) {
+    return { code: "prices-changed", error: "أسعار بعض الأصناف اتغيّرت — حدّث الصفحة وراجع العرض قبل الحفظ.", changed: lim.changed };
+  }
+  const adj = Number(String(snap.specialDiscountAmt == null ? 0 : snap.specialDiscountAmt).replace(/,/g, "")) || 0;
+  if (adj !== 0 && !discountAuthorized) {
+    return { code: "discount-locked", error: "الخصم/الزيادة محتاجين فك القفل بكلمة سر الأدمن." };
+  }
+  if (adj > lim.maxDiscount + 0.011) {
+    return { code: "discount-below-cost", error: `الخصم أكبر من الحد المسموح (${lim.maxDiscount} ر.س) — السعر ما ينفعش ينزل تحت التكلفة.`, maxDiscount: lim.maxDiscount };
+  }
+  return { ok: true, ...lim };
+}
+
 function computeFinancialsFromSnapshot(D: any, snap: any): any | null {
   if (!snap) return null;
   try {
@@ -743,12 +815,18 @@ function finalizeQuote(items: any[], discountFactor: number, D: any, manualDisco
     discountTotal += discount;
   }
   discountTotal = Math.round(discountTotal / 10) * 10;
+  // حد أدنى صلب: السعر بعد كل الخصومات (قبل الضريبة) لا يقل عن التكلفة الفعلية للبنود المفعّلة.
+  const floorCost = items.reduce((s: number, it: any) => (it.on ? s + it.costBasis : s), 0);
+  discountTotal = Math.min(discountTotal, Math.max(0, sellTotal - floorCost));
   const netAfterDiscount = sellTotal - discountTotal;
-  const manualDiscount = Math.min(netAfterDiscount, manualDiscountAmt || 0);
+  const maxManual = Math.max(0, Math.floor((netAfterDiscount - floorCost) * 100) / 100);
+  const requestedManual = manualDiscountAmt || 0;
+  const manualDiscount = Math.min(maxManual, requestedManual);
+  const manualDiscountCapped = requestedManual > maxManual + 0.005;
   const netAfterManual = netAfterDiscount - manualDiscount;
   const vat = netAfterManual * D.vat;
   const finalTotal = netAfterManual + vat;
-  return { sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt: manualDiscount, netAfterManual, vat, finalTotal };
+  return { sellTotal, discountTotal, netAfterDiscount, manualDiscountAmt: manualDiscount, manualDiscountCapped, netAfterManual, vat, finalTotal };
 }
 
 function computeOffgridQuote(D: any, inp: any) {
@@ -1227,6 +1305,17 @@ Deno.serve(async (req: Request) => {
     return json({ config: D, quote: adminView(q) });
   }
 
+  if (body.action === "cart-admin-view") {
+    if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
+    const items = Array.isArray(body.items) ? body.items : [];
+    const limits: any = cartLimits(D, items);
+    const fin = cartFinancials(D, {
+      items, extras: Array.isArray(body.extras) ? body.extras : [],
+      specialDiscountAmt: body.specialDiscountAmt, subtotal: body.subtotal, vat: body.vat, total: body.total,
+    });
+    return json({ fin, limits: { itemsSell: limits.itemsSell, itemsCost: limits.itemsCost, maxDiscount: limits.maxDiscount, uncatalogued: limits.uncatalogued } });
+  }
+
   if (body.action === "offgrid-admin-view") {
     if (!(await checkAdminToken(body.adminToken))) return json({ error: "admin session expired" }, 401);
     let inp: any;
@@ -1353,6 +1442,18 @@ Deno.serve(async (req: Request) => {
       if (!rep) return json({ error: "الجلسة منتهية، الرجاء تسجيل الدخول مجددًا" }, 401);
       repUsername = rep.username; repDisplayName = rep.displayName;
     }
+    // Product-cart quotes: never trust the browser's unit prices or discount.
+    // Rejects (409/403) instead of silently changing a price; the client shows
+    // the message and keeps the quote unsaved.
+    if (body.snapshot && body.snapshot.type === "product-cart") {
+      const discountAuthorized = !body.guest && (!!body.adminToken || await checkAdminToken(body.discountAdminToken));
+      const g = guardCartSnapshot(D, body.snapshot, discountAuthorized);
+      if (g.error) {
+        console.warn("cart guard rejected:", g.code);
+        return json({ error: g.error, code: g.code, maxDiscount: g.maxDiscount, changed: g.changed }, g.code === "discount-locked" ? 403 : 409);
+      }
+    }
+
     const phone = phoneKey(body.clientPhone);
     const customerId = await upsertCustomer(body.clientName || "", phone, repUsername);
 
@@ -1385,6 +1486,12 @@ Deno.serve(async (req: Request) => {
             totalPanels: qF.totalPanels, calcKW: qF.calcKW, hp: inpF.hp,
           },
         };
+        // حماية: لو إجمالي المتصفح مختلف عن إعادة الحساب من الـ snapshot، نعلّم العرض (بدون ما نمنع الحفظ)
+        const sent = Math.round(Number(body.finalTotal) || 0);
+        if (sent && Math.abs(sent - Math.round(qF.finalTotal)) > 1) {
+          snapshotToSave.priceMismatch = { browserTotal: sent, serverTotal: Math.round(qF.finalTotal) };
+          console.warn("save-quote price mismatch", sent, Math.round(qF.finalTotal));
+        }
       }
     } catch (_e) { /* keep the original snapshot */ }
 

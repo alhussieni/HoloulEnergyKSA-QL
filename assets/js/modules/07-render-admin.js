@@ -540,6 +540,21 @@ let cartQuoteView = false;
 let cartClientName = '';
 let cartClientPhone = '';
 const CART_VAT_RATE = 0.15;
+// معلومات الأدمن للسلة (تكلفة/هامش/أقصى خصم مسموح) — بتتحمّل بعد فك القفل فقط، من السيرفر.
+let cartAdminInfo = null; // {fin, limits:{itemsSell, itemsCost, maxDiscount}}
+async function loadCartAdminInfo(){
+  if(!adminTokenMem || !discountUnlocked || !productCart.length){ cartAdminInfo = null; return cartAdminInfo; }
+  const t = cartTotals();
+  try{
+    cartAdminInfo = await callEngine('cart-admin-view', {
+      adminToken: adminTokenMem,
+      items: productCart.map(c=>({name:c.name, category:c.category, price:c.price, qty:c.qty})),
+      extras: cartExtraLines().map(l=>({amount:l.amount})),
+      specialDiscountAmt: cartRound2(t.adj), subtotal: cartRound2(t.subtotal), vat: cartRound2(t.vat), total: cartRound2(t.total)
+    });
+  }catch(e){ cartAdminInfo = null; }
+  return cartAdminInfo;
+}
 // ---- Rep-prepared cart quote: display mode + revisions (same R1/R2 scheme as the calculator) ----
 let cartDisplayMode = 'detailed';   // 'detailed' = unit + line prices | 'summary' = items only, totals before/after VAT
 let cartSavedInfo = null;           // {sig, ref} — last saved version of exactly this document
@@ -954,11 +969,27 @@ async function saveCartQuote(){
   let res = null;
   try{
     res = await callEngine('save-quote', asRep
-      ? { token: repTokenMem, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot }
+      ? { token: repTokenMem, discountAdminToken: (adj !== 0 && discountUnlocked) ? adminTokenMem : undefined, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot }
       : asEmbedAdmin
       ? { adminToken: embedAdminToken, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot }
       : { guest: true, clientName: cartClientName, clientPhone: cartClientPhone, hp: null, finalTotal: Math.round(total), snapshot });
-  }catch(e){ res = null; }
+  }catch(e){
+    res = null;
+    const dbm = /\[CART_([A-Z_]+)(?:\|([^\]]*))?\]/.exec(String((e && e.message) || ''));
+    if(dbm){
+      if(dbm[1] === 'DISCOUNT_BELOW_COST' && dbm[2] != null && isFinite(+dbm[2])){ cartSpecialAmt = +dbm[2]; }
+      alert(String(e.message).replace(/\s*\[CART_[^\]]*\]\s*$/, ''));
+      render();
+      return 'stale';
+    }
+    const d = e && e.data;
+    if(d && ['prices-changed','discount-below-cost','discount-locked','item-not-in-catalog','empty-cart'].includes(d.code)){
+      if(d.code === 'discount-below-cost' && d.maxDiscount != null){ cartSpecialAmt = d.maxDiscount; }
+      alert(d.error + (d.code === 'prices-changed' && Array.isArray(d.changed) ? '\n' + d.changed.map(c=>`• ${c.name}: ${c.clientPrice} ← ${c.serverPrice}`).join('\n') : ''));
+      render();
+      return 'stale';
+    }
+  }
   if(res && res.ok){
     cartSavedInfo = { sig, ref: res.refCode || null };
     if(res.refCode) cartRevisionParent = { ref: res.refCode, phone: phoneT, explicit: false, sig };
@@ -1123,7 +1154,24 @@ function renderCartAdjustCard(){
         <input type="number" id="cartSpecialAmtInput" value="${cartSpecialAmt}" step="50" style="flex:1">
         <button class="btn small" id="cartSpecialAmtBtn" type="button">تأكيد</button>
       </div>
-      <div class="note" style="margin-top:6px;font-size:11px">مبلغ صريح بالريال يُخصم من إجمالي البنود قبل الضريبة — استخدم رقمًا سالبًا مثل ‎-1000 لزيادة السعر بدلًا من خصمه.</div>` : `
+      <div class="note" style="margin-top:6px;font-size:11px">مبلغ صريح بالريال يُخصم من إجمالي البنود قبل الضريبة — استخدم رقمًا سالبًا مثل ‎-1000 لزيادة السعر بدلًا من خصمه. الخصم لا يتجاوز هامش الأصناف (لا بيع تحت التكلفة).</div>
+      ${cartAdminInfo ? (()=>{
+        const f = cartAdminInfo.fin || {}, L = cartAdminInfo.limits || {};
+        const pct = +f.profitPct || 0;
+        const tone = pct >= 8 ? ['#1F7A4D','#EAF6EF','#B9DFC9'] : pct >= 3 ? ['#9A6A00','#FFF7E0','#EBD393'] : ['#B0432C','#FBEFEC','#E0B3A8'];
+        const cell = (lbl,val,extra='')=>`<div style="flex:1;min-width:120px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px"><div style="font-size:11px;color:var(--muted)">${lbl}</div><div style="font-weight:700;font-size:15px;${extra}">${val}</div></div>`;
+        return `<div class="no-print" style="margin-top:10px;background:${tone[1]};border:1px solid ${tone[2]};border-radius:12px;padding:10px 12px">
+          <div style="font-weight:700;margin-bottom:8px;color:${tone[0]}">🔒 معلومات إضافية (للأدمن فقط)</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            ${cell('تكلفة الأصناف', fmt(f.totalCost||0)+' ر.س')}
+            ${cell('هامش الأصناف', fmt(f.profit||0)+' ر.س <span style="font-size:12px">('+pct.toFixed(1)+'%)</span>', 'color:'+tone[0])}
+            ${cell('أقصى خصم مسموح', fmt(L.maxDiscount||0)+' ر.س', 'color:'+tone[0])}
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7">
+            ${f.unknownCostItems ? '⚠️ '+f.unknownCostItems+' صنف بدون تكلفة معروفة (بيتحسب بدون هامش) — ' : ''}التركيب والنقل غير داخلين في التكلفة، فمعتبرين بدون هامش. السعر لا ينزل تحت التكلفة نهائيًا.
+          </div>
+        </div>`;
+      })() : `<div class="note" style="margin-top:8px;font-size:11px">تعذّر تحميل حد التكلفة — الخصم الموجب متوقف لحد ما يتحمّل.</div>`}` : `
       <button class="btn ghost small" id="cartUnlockDiscountBtn" type="button">فك القفل</button>
       <div class="note" style="margin-top:6px;font-size:11px">الخصم والزيادة مقفولين بكلمة سر الأدمن.</div>`}
   </div>`;

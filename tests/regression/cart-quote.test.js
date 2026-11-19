@@ -41,7 +41,7 @@ const sandbox = {
   esc: (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"),
   fmt: (n) => Math.round(n).toLocaleString("en-US"),
   LOGO_SRC: "", escAttr: (s) => s, companyShort: () => "Co", companyBrand: () => "Brand", companyContactHtml: () => "",
-  COMPANY: {}, SUPABASE_URL: "https://x.supabase.co", discountUnlocked: true, __nextCfg: null,
+  COMPANY: {}, SUPABASE_URL: "https://x.supabase.co", discountUnlocked: true, adminTokenMem: "adm", __nextCfg: null,
   renderPriceAdjustLine: (a) => `<div class="adj">${a < 0 ? "زيادة" : "الخصم"} ${Math.abs(a)}</div>`,
   callEngine: async (action, body) => {
     calls.push({ action, body });
@@ -185,6 +185,7 @@ const api = sandbox.api;
   assert.strictEqual(calls.length, 1);
   const sn = calls[0].body.snapshot;
   assert.strictEqual(sn.specialDiscountAmt, 500);
+  assert.strictEqual(calls[0].body.discountAdminToken, "adm"); // unlocked adjustment is proven to the server
   sameJSON(sn.extras.map((e) => e.key), ["civil", "elec", "transport"]);
   assert.strictEqual(sn.extrasSubtotal, 3120); assert.strictEqual(sn.subtotal, 14020);
   assert.strictEqual(calls[0].body.finalTotal, Math.round(14020 * 1.15));

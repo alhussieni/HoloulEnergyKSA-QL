@@ -1,0 +1,2 @@
+-- يرجّع finance_apply_discount لتعريف 0032 (من غير حد التكلفة): أعد تشغيل الدالة من
+-- supabase/migrations/0032_project_discounts.sql

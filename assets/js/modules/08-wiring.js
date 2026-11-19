@@ -374,8 +374,18 @@ function wire(){
     const cxRetry = document.getElementById('cartExtrasRetryBtn');
     if(cxRetry) cxRetry.onclick = ()=>{ cartExtrasError = ''; cartExtrasCfg = null; render(); };
     const cartUnlockDiscountBtn = document.getElementById('cartUnlockDiscountBtn');
-    if(cartUnlockDiscountBtn) cartUnlockDiscountBtn.onclick = ()=>adminPasswordGate(()=>{ discountUnlocked = true; render(); });
-    const applyCartSpecial = ()=>{ const el = document.getElementById('cartSpecialAmtInput'); if(!el) return; cartSpecialAmt = +el.value || 0; render(); };
+    if(cartUnlockDiscountBtn) cartUnlockDiscountBtn.onclick = ()=>adminPasswordGate(async()=>{ discountUnlocked = true; await loadCartAdminInfo(); render(); });
+    const applyCartSpecial = async ()=>{
+      const el = document.getElementById('cartSpecialAmtInput'); if(!el) return;
+      let v = +el.value || 0;
+      const info = await loadCartAdminInfo();
+      if(v > 0){
+        if(!info){ alert('تعذّر التحقق من حد التكلفة — حاول مرة أخرى.'); return; }
+        const max = info.limits.maxDiscount;
+        if(v > max){ v = max; alert('الخصم اتخفّض للحد المسموح (' + fmt(max) + ' ر.س) عشان السعر ما ينزلش تحت التكلفة.'); }
+      }
+      cartSpecialAmt = v; await loadCartAdminInfo(); render();
+    };
     const cartSpecialAmtBtn = document.getElementById('cartSpecialAmtBtn');
     if(cartSpecialAmtBtn) cartSpecialAmtBtn.onclick = applyCartSpecial;
     const cartSpecialAmtInput = document.getElementById('cartSpecialAmtInput');

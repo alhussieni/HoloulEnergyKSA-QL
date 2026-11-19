@@ -89,7 +89,7 @@ async function callEngine(action, payload){
   });
   let data;
   try{ data = await res.json(); }catch(e){ throw new Error('استجابة غير صالحة من الخادم'); }
-  if(!res.ok) throw new Error(data.error || 'خطأ في الخادم');
+  if(!res.ok){ const err = new Error(data.error || 'خطأ في الخادم'); err.data = data; throw err; }
   return data;
 }
 
