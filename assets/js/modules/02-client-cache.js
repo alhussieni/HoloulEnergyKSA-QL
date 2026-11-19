@@ -244,7 +244,7 @@ async function refreshOffgridQuote(){
     const input = buildOffgridInput();
     const quotePromise = callEngine('offgrid-quote', { input });
     const adminPromise = ((adminInfoUnlocked || discountUnlocked) && adminTokenMem)
-      ? callEngine('offgrid-admin-view', { adminToken: adminTokenMem, input }).catch(()=>null)
+      ? callEngine('offgrid-admin-view', { adminToken: adminTokenMem, input }).catch(e=>{ if(/admin session expired/i.test((e&&e.message)||'')) adminInfoUnlocked = false; return null; })   // جلسة الأدمن خلصت → يرجّع القفل ويطلب الباسورد (زي حاسبة الري)
       : Promise.resolve(null);
     const [data, adminData] = await Promise.all([quotePromise, adminPromise]);
     cachedOffgridQuote = data.quote;
@@ -325,7 +325,7 @@ async function refreshOngridQuote(){
     const input = buildOngridInput();
     const quotePromise = callEngine('ongrid-quote', { input });
     const adminPromise = ((adminInfoUnlocked || discountUnlocked) && adminTokenMem)
-      ? callEngine('ongrid-admin-view', { adminToken: adminTokenMem, input }).catch(()=>null)
+      ? callEngine('ongrid-admin-view', { adminToken: adminTokenMem, input }).catch(e=>{ if(/admin session expired/i.test((e&&e.message)||'')) adminInfoUnlocked = false; return null; })   // جلسة الأدمن خلصت → يرجّع القفل ويطلب الباسورد (زي حاسبة الري)
       : Promise.resolve(null);
     const [data, adminData] = await Promise.all([quotePromise, adminPromise]);
     cachedOngridQuote = data.quote;
