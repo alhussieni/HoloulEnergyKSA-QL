@@ -41,9 +41,12 @@ const sandbox = {
   esc: (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"),
   fmt: (n) => Math.round(n).toLocaleString("en-US"),
   LOGO_SRC: "", escAttr: (s) => s, companyShort: () => "Co", companyBrand: () => "Brand", companyContactHtml: () => "",
-  COMPANY: {}, SUPABASE_URL: "https://x.supabase.co", discountUnlocked: true, adminTokenMem: "adm", __nextCfg: null,
+  COMPANY: {}, SUPABASE_URL: "https://x.supabase.co", discountUnlocked: true, adminTokenMem: "adm", adminInfoUnlocked: false, adminInfoCollapsed: false,
+    adminInfoCardHtml: () => '<h3 id="adminInfoTrigger">معلومات إضافية</h3>', __nextCfg: null,
   renderPriceAdjustLine: (a) => `<div class="adj">${a < 0 ? "زيادة" : "الخصم"} ${Math.abs(a)}</div>`,
   callEngine: async (action, body) => {
+    // الحاسبة المساعدة لمعلومات الأدمن (قراءة فقط) مش جزء من مسار الحفظ المختبَر هنا
+    if (action === 'cart-admin-view') return { fin: { items: [] }, limits: { maxDiscount: 1e9 } };
     calls.push({ action, body });
     // mimic quotes_stamp_codes
     const parent = body.snapshot && body.snapshot.revisionOf;

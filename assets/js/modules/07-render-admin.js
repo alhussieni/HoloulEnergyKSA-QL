@@ -540,11 +540,20 @@ let cartQuoteView = false;
 let cartClientName = '';
 let cartClientPhone = '';
 const CART_VAT_RATE = 0.15;
-// معلومات الأدمن للسلة (تكلفة/هامش/أقصى خصم مسموح) — بتتحمّل بعد فك القفل فقط، من السيرفر.
-let cartAdminInfo = null; // {fin, limits:{itemsSell, itemsCost, maxDiscount}}
-async function loadCartAdminInfo(){
-  if(!adminTokenMem || !discountUnlocked || !productCart.length){ cartAdminInfo = null; return cartAdminInfo; }
+// معلومات الأدمن للسلة (تكلفة/هامش/أقصى خصم مسموح) — من السيرفر (cart-admin-view) بعد التحقق من توكن الأدمن،
+// وبنفس سلوك حاسبات الأنظمة: بتتفتح بباسورد الأدمن (adminInfoUnlocked مشترك)، وبتتقفل لو الجلسة خلصت.
+let cartAdminInfo = null;          // {fin, limits:{itemsSell, itemsCost, maxDiscount}}
+let cartAdminInfoError = false;
+let cartAdminInfoSig = '';
+let cartAdminInfoLoading = false;
+function cartInfoSig(){
   const t = cartTotals();
+  return JSON.stringify([productCart.map(c=>[c.name, c.price, c.qty]), cartExtraLines().map(l=>l.amount), cartRound2(t.adj)]);
+}
+async function loadCartAdminInfo(){
+  if(!adminTokenMem || !(adminInfoUnlocked || discountUnlocked) || !productCart.length){ cartAdminInfo = null; cartAdminInfoError = false; return null; }
+  const t = cartTotals();
+  cartAdminInfoSig = cartInfoSig();
   try{
     cartAdminInfo = await callEngine('cart-admin-view', {
       adminToken: adminTokenMem,
@@ -552,8 +561,88 @@ async function loadCartAdminInfo(){
       extras: cartExtraLines().map(l=>({amount:l.amount})),
       specialDiscountAmt: cartRound2(t.adj), subtotal: cartRound2(t.subtotal), vat: cartRound2(t.vat), total: cartRound2(t.total)
     });
-  }catch(e){ cartAdminInfo = null; }
+    cartAdminInfoError = false;
+  }catch(e){
+    cartAdminInfo = null; cartAdminInfoError = true;
+    // جلسة الأدمن خلصت → يرجّع القفل ويطلب الباسورد (زي الحاسبات)؛ وكمان يقفل فك خصم السلة
+    if(/admin session expired/i.test((e && e.message) || '')){ adminInfoUnlocked = false; discountUnlocked = false; }
+  }
   return cartAdminInfo;
+}
+// يحدّث المعلومات تلقائيًا لما بنود السلة/الكميات/التركيب/الخصم تتغيّر (بدون إعادة رسم الصفحة عشان مايضيعش التركيز)
+function maybeRefreshCartAdminInfo(){
+  if(!repAuthed || !(adminInfoUnlocked || discountUnlocked) || !adminTokenMem || !productCart.length || cartAdminInfoLoading) return;
+  if(cartInfoSig() === cartAdminInfoSig) return;
+  cartAdminInfoLoading = true;
+  loadCartAdminInfo().then(()=>{
+    cartAdminInfoLoading = false;
+    if(!cartQuoteView) return;
+    if(!adminInfoUnlocked && !discountUnlocked){ render(); return; }
+    const body = document.getElementById('adminInfoBody');
+    if(body && adminInfoUnlocked){ body.innerHTML = renderCartAdminFinancials(cartAdminInfo || {__error:true}); wireAdminInfo(async()=>{ await loadCartAdminInfo(); render(); }); }
+    const ml = document.getElementById('cartMaxDiscLine'); if(ml) ml.innerHTML = cartMaxDiscText();
+  });
+}
+function cartMaxDiscText(){
+  if(cartAdminInfo && cartAdminInfo.limits) return `أقصى خصم مسموح: <b>${fmt(cartAdminInfo.limits.maxDiscount||0)}</b> ر.س — التكلفة والهامش في «معلومات إضافية».`;
+  return cartAdminInfoError ? 'تعذّر تحميل حد التكلفة — الخصم الموجب متوقف لحد ما يتحمّل.' : 'جارِ تحميل حد التكلفة...';
+}
+function renderCartAdminFinancials(info){
+  const btns = `<div style="display:flex;gap:8px;margin-top:14px"><button class="btn ghost small" id="collapseAdminInfo" type="button">▲ طيّ</button><button class="btn ghost small" id="lockAdminInfo" type="button">🔒 قفل (يطلب الباسورد)</button></div>`;
+  if(!info || info.__error) return `<div class="note" style="border-color:#E0B3A8;background:#FBEFEC;color:#B0432C">تعذّر تحميل معلومات الأدمن — الجلسة انتهت أو السيرفر محتاج تحديث. اقفل وافتح تاني.</div>${btns}`;
+  const f = info.fin || {}, L = info.limits || {};
+  const items = f.items || [];
+  const itemsSell = +f.sellTotal || 0, extras = +f.extrasTotal || 0, adj = +f.manualDiscountAmt || 0;
+  const unknownSell = items.reduce((s,it)=> it.costBasis == null ? s + (+it.sell||0) : s, 0);   // خارج الكتالوج: بدون هامش (cost = sell)
+  const cost = (+f.totalCost || 0) + unknownSell + extras;                                       // التركيب والنقل: بدون هامش
+  const sellBase = +f.netAfterManual || 0;
+  const profit = sellBase - cost;
+  const profitPct = sellBase ? (profit / sellBase * 100) : 0;
+  const vatRate = sellBase ? ((+f.vat || 0) / sellBase) : CART_VAT_RATE;
+  const costVat = cost * vatRate, profitVat = profit * vatRate;
+  const drift = items.filter(it=> it.curUnitSell != null && Math.abs((+it.curUnitSell) - (+it.unitSell)) > 0.011);
+  return `
+    <table class="admtable">
+      <thead><tr><th>البند</th><th>سعر التكلفة</th><th>سعر البيع</th><th>الهامش</th></tr></thead>
+      <tbody>
+        ${items.map(it=>`<tr><td>${esc(it.label)}${it.qty>1?' × '+it.qty:''}</td><td class="num">${it.costBasis==null?'—':fmt(it.costBasis)}</td><td class="num">${fmt(it.sell)}</td><td class="num">${it.costBasis==null?'—':fmt(it.sell-it.costBasis)}</td></tr>`).join('')}
+        ${extras ? `<tr><td>التركيب والنقل</td><td class="num">${fmt(extras)}</td><td class="num">${fmt(extras)}</td><td class="num">0</td></tr>` : ''}
+      </tbody>
+    </table>
+    ${f.unknownCostItems ? `<div class="note" style="margin-bottom:10px">⚠ ${f.unknownCostItems} صنف بدون تكلفة معروفة (خارج الكتالوج) — اتحسب بدون هامش.</div>` : ''}
+    ${drift.length ? `<div class="note" style="margin-bottom:10px;border-color:#E0B3A8;background:#FBEFEC;color:#B0432C">⚠ سعر بعض الأصناف مختلف عن سعر الكتالوج الحالي: ${drift.map(it=>esc(it.label)).join('، ')} — السيرفر هيرفض الحفظ لحد ما السلة تتحدّث.</div>` : ''}
+    ${adj ? `<div class="note" style="margin-bottom:10px">إجمالي الأصناف قبل الخصم: ${fmt(itemsSell)} ﷼ · ${adj>0 ? 'الخصم الخاص: '+fmt(adj) : 'الزيادة الخاصة: '+fmt(Math.abs(adj))} ﷼ · أقصى خصم مسموح: ${fmt(L.maxDiscount||0)} ﷼</div>` : `<div class="note" style="margin-bottom:10px">أقصى خصم مسموح: ${fmt(L.maxDiscount||0)} ﷼ (السعر لا ينزل تحت تكلفة الأصناف)</div>`}
+
+    <div class="fin-groups">
+      <div class="fin-group fin-group-sell">
+        <div class="fin-group-title">التسعير <span class="tag">البيع</span></div>
+        <div class="fin-row"><span class="l">إجمالي سعر البيع</span><span class="v">${fmt(sellBase)} ﷼</span></div>
+        <div class="fin-row"><span class="l">الضريبة</span><span class="v">${fmt(f.vat||0)} ﷼</span></div>
+        <div class="fin-row total"><span class="l">السعر شامل الضريبة</span><span class="v">${fmt(f.finalTotal||0)} ﷼</span></div>
+      </div>
+      <div class="fin-group fin-group-cost">
+        <div class="fin-group-title">التكلفة <span class="tag">Cost</span></div>
+        <div class="fin-row"><span class="l">إجمالي التكلفة الفعلية</span><span class="v">${fmt(cost)} ﷼</span></div>
+        <div class="fin-row"><span class="l">ضريبة التكاليف</span><span class="v">${fmt(costVat)} ﷼</span></div>
+        <div class="fin-row total"><span class="l">إجمالي التكلفة شاملة الضريبة</span><span class="v">${fmt(cost+costVat)} ﷼</span></div>
+      </div>
+      <div class="fin-group fin-group-profit">
+        <div class="fin-group-title">الربح <span class="tag">${profitPct.toFixed(1)}%</span></div>
+        <div class="fin-row"><span class="l">صافي الربح المتوقع</span><span class="v">${fmt(profit)} ﷼</span></div>
+        <div class="fin-row"><span class="l">ضريبة الربح</span><span class="v">${fmt(profitVat)} ﷼</span></div>
+        <div class="fin-row total"><span class="l">الربح شامل الضريبة</span><span class="v">${fmt(profit+profitVat)} ﷼</span></div>
+      </div>
+    </div>
+
+    ${buildFinancialsDonut(cost, Math.max(0, profit), +f.vat || 0)}
+    <div class="note" style="margin-top:10px;font-size:11px">التركيب والنقل مالهمش نموذج تكلفة، فمعتبرين بدون هامش.</div>
+    ${btns}`;
+}
+// نفس بطاقة «معلومات إضافية» بتاعة الحاسبات (عنوان → باسورد الأدمن → طيّ/قفل)
+function renderCartAdminInfoCard(){
+  if(!repAuthed) return '';
+  const fin = cartAdminInfo || (adminInfoUnlocked && cartAdminInfoError ? {__error:true} : null);
+  return `<div class="card no-print">${adminInfoCardHtml(fin, renderCartAdminFinancials)}</div>`;
 }
 // ---- Rep-prepared cart quote: display mode + revisions (same R1/R2 scheme as the calculator) ----
 let cartDisplayMode = 'detailed';   // 'detailed' = unit + line prices | 'summary' = items only, totals before/after VAT
@@ -1155,23 +1244,7 @@ function renderCartAdjustCard(){
         <button class="btn small" id="cartSpecialAmtBtn" type="button">تأكيد</button>
       </div>
       <div class="note" style="margin-top:6px;font-size:11px">مبلغ صريح بالريال يُخصم من إجمالي البنود قبل الضريبة — استخدم رقمًا سالبًا مثل ‎-1000 لزيادة السعر بدلًا من خصمه. الخصم لا يتجاوز هامش الأصناف (لا بيع تحت التكلفة).</div>
-      ${cartAdminInfo ? (()=>{
-        const f = cartAdminInfo.fin || {}, L = cartAdminInfo.limits || {};
-        const pct = +f.profitPct || 0;
-        const tone = pct >= 8 ? ['#1F7A4D','#EAF6EF','#B9DFC9'] : pct >= 3 ? ['#9A6A00','#FFF7E0','#EBD393'] : ['#B0432C','#FBEFEC','#E0B3A8'];
-        const cell = (lbl,val,extra='')=>`<div style="flex:1;min-width:120px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px"><div style="font-size:11px;color:var(--muted)">${lbl}</div><div style="font-weight:700;font-size:15px;${extra}">${val}</div></div>`;
-        return `<div class="no-print" style="margin-top:10px;background:${tone[1]};border:1px solid ${tone[2]};border-radius:12px;padding:10px 12px">
-          <div style="font-weight:700;margin-bottom:8px;color:${tone[0]}">🔒 معلومات إضافية (للأدمن فقط)</div>
-          <div style="display:flex;flex-wrap:wrap;gap:8px">
-            ${cell('تكلفة الأصناف', fmt(f.totalCost||0)+' ر.س')}
-            ${cell('هامش الأصناف', fmt(f.profit||0)+' ر.س <span style="font-size:12px">('+pct.toFixed(1)+'%)</span>', 'color:'+tone[0])}
-            ${cell('أقصى خصم مسموح', fmt(L.maxDiscount||0)+' ر.س', 'color:'+tone[0])}
-          </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.7">
-            ${f.unknownCostItems ? '⚠️ '+f.unknownCostItems+' صنف بدون تكلفة معروفة (بيتحسب بدون هامش) — ' : ''}التركيب والنقل غير داخلين في التكلفة، فمعتبرين بدون هامش. السعر لا ينزل تحت التكلفة نهائيًا.
-          </div>
-        </div>`;
-      })() : `<div class="note" style="margin-top:8px;font-size:11px">تعذّر تحميل حد التكلفة — الخصم الموجب متوقف لحد ما يتحمّل.</div>`}` : `
+      <div id="cartMaxDiscLine" class="note" style="margin-top:8px;font-size:11px">${cartMaxDiscText()}</div>` : `
       <button class="btn ghost small" id="cartUnlockDiscountBtn" type="button">فك القفل</button>
       <div class="note" style="margin-top:6px;font-size:11px">الخصم والزيادة مقفولين بكلمة سر الأدمن.</div>`}
   </div>`;
@@ -1179,6 +1252,7 @@ function renderCartAdjustCard(){
 
 function renderCartQuoteDocument(){
   if(repAuthed && !cartExtrasCfg && !cartExtrasLoading && !cartExtrasError) loadCartExtras();
+  maybeRefreshCartAdminInfo();
   const { subtotal, vat, total, gross, adj } = cartTotals();
   const exLines = cartExtraLines();
   const exQty = l => l.mode === 'fixed' ? '—' : (cartRound2(l.qty).toLocaleString('en-US'));
@@ -1209,6 +1283,7 @@ function renderCartQuoteDocument(){
 
       ${renderCartExtrasCard()}
       ${renderCartAdjustCard()}
+      ${renderCartAdminInfoCard()}
     </div>
     <div id="quotePrintArea" class="quote-shell">
       <div class="card quote-banner" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center;padding-top:16px;padding-bottom:16px">

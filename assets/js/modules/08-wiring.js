@@ -386,6 +386,7 @@ function wire(){
       }
       cartSpecialAmt = v; await loadCartAdminInfo(); render();
     };
+    if(currentView==='products' && cartQuoteView) wireAdminInfo(async()=>{ await loadCartAdminInfo(); render(); });
     const cartSpecialAmtBtn = document.getElementById('cartSpecialAmtBtn');
     if(cartSpecialAmtBtn) cartSpecialAmtBtn.onclick = applyCartSpecial;
     const cartSpecialAmtInput = document.getElementById('cartSpecialAmtInput');

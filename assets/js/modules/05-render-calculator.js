@@ -878,10 +878,10 @@ function buildFinancialsDonut(cost, profit, vat){
 }
 
 /* معلومات إضافية (أدمن): بعد فك القفل تتطوي/تتفتح بضغطة من غير باسورد، و"قفل" بيرجّع طلب الباسورد */
-function adminInfoCardHtml(fin){
+function adminInfoCardHtml(fin, renderer){
   if(!adminInfoUnlocked) return `<h3 id="adminInfoTrigger" style="cursor:default">معلومات إضافية</h3>`;
   return `<h3 id="adminInfoTrigger" style="cursor:pointer;display:flex;align-items:center;gap:8px;user-select:none" title="اضغط للطيّ / الفتح"><span id="adminInfoCaret" style="font-size:12px">${adminInfoCollapsed?'◀':'▼'}</span> معلومات إضافية</h3>
-    <div id="adminInfoBody" style="${adminInfoCollapsed?'display:none':''}">${fin ? renderAdminFinancials(fin) : `<div class="note">جارِ التحميل...</div>`}</div>`;
+    <div id="adminInfoBody" style="${adminInfoCollapsed?'display:none':''}">${fin ? (renderer || renderAdminFinancials)(fin) : `<div class="note">جارِ التحميل...</div>`}</div>`;
 }
 function renderAdminFinancials(q){
   const onItems = q.items.filter(it=>it.on);
