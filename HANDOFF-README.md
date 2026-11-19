@@ -4,11 +4,12 @@
 > انسخها فوق الريبو كما هي (مفيش ملف اتحذف).
 
 ## 1) اللي اتنفّذ فعلاً على Supabase (HoloulEnergyQL) — لايف الآن
-ثلاث migrations اتطبّقت بعد اختبارها في transaction بتتراجع:
+أربع migrations اتطبّقت بعد اختبارها في transaction بتتراجع:
 | Migration | الأثر |
 |---|---|
 | `cart_cost_floor` (0058) | عروض السلة: السيرفر يتحقق من سعر كل صنف، ويمنع أي خصم يخلّي الصافي أقل من تكلفة الأصناف. الصنف خارج الكتالوج بيتحسب بدون هامش. |
 | `invoice_cost_floor` (0059) | الفاتورة (مش الإشعار الدائن): صافيها قبل الضريبة لا ينزل عن تكلفة العرض المصدر. أي خصم على فاتورة تكلفتها مجهولة مرفوض. |
+| `quotations_cost_floor` (0061) | عروض الأسعار الرسمية (`quotations`): `total - vat_amount` لا ينزل تحت `cost`، وأي خصم مع `cost` فاضي مرفوض. الجدول فاضي حالياً. |
 | `settlement_discount_floor` (0060) | خصم التسوية: قيمة المشروع بدون ضريبة بعد الخصم لا تقل عن تكاليفه المسجلة (بنفس حساب الصافي في المالية). |
 
 ملفات الـSQL موجودة في `supabase/migrations/` (للتوثيق — **متطبّقة بالفعل**، لا تشغّلها تاني). التراجع: `supabase/rollbacks/`.
@@ -29,7 +30,7 @@ supabase functions deploy compute-quote --project-ref xhgwvszdatqlvlgqiikj
 - `assets/js/modules/07-render-admin.js` — لوحة «معلومات إضافية» (تكلفة/هامش بألوان/أقصى خصم)، ومعالجة رفض الحفظ (يوقف الطباعة والإرسال).
 - `assets/js/modules/08-wiring.js` — فك القفل بيحمّل حد التكلفة، وتأكيد الخصم بيخفّضه للحد المسموح (fail-closed لو الحد ما اتحمّلش).
 - `tests/regression/` — `engine-floor.test.js` و`cart-guard.test.js` جداد، و`cart-quote.test.js` معدّل سطرين.
-- `supabase/migrations/0058..0060`, `supabase/rollbacks/*`.
+- `supabase/migrations/0058..0061`, `supabase/rollbacks/*`.
 شغّل: `for t in tests/regression/*.test.js; do node $t; done` (كلهم نجحوا عندي).
 
 ## 4) اللي رجّعته وللي ما رجّعتوش (مراجعة آخر رفع)
@@ -43,5 +44,5 @@ supabase functions deploy compute-quote --project-ref xhgwvszdatqlvlgqiikj
 - التركيب والنقل في السلة: بدون نموذج تكلفة، فمعتبرين بدون هامش.
 - فاتورة من عرض قديم (قبل `quote_financials`) أو فاتورة حرة: أي خصم عليها مرفوض (تكلفتها مجهولة).
 - خصم التسوية: لو مفيش تكاليف مسجلة على المشروع لسه، الحد صفر.
-- `quotations` (عروض CRM) لسه من غير حد تكلفة سيرفر.
+- `quotations`: محمي بالـtrigger لكن `cost` بيكتبه المرسل، وما فيش في الريبو كود بيكتب في الجدول؛ `crm-api` المنشورة (v59) ما اتقراتش.
 - `crm-api` المنشورة (v59، ميزة دمج العملاء) و3 migrations (`crm_customers_ordered_*`, `customer_merge_feature`) **موجودين على Supabase وغير موجودين في الريبو** — ارفعهم من عندك عشان الريبو يطابق الإنتاج.
