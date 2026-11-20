@@ -725,6 +725,7 @@ html.embed-mode body{ padding-top:0; }
   border-radius:8px;padding:3px 6px;height:30px;box-shadow:var(--shadow-soft);box-sizing:border-box;}
 .brand-logo-chip>img.brand-logo-img{width:auto;height:100%;max-width:64px;object-fit:contain;display:block;}
 .brand-logo-chip.on-photo{position:absolute;top:8px;inset-inline-end:8px;z-index:2;}
+.pcard2-photo .brand-logo-chip.on-photo{inset-inline-end:auto;inset-inline-start:8px;}  /* الشعار يمين الكرت، وزر الإضافة للسلة يسار */
 .brand-logo-chip.small{height:24px;padding:2px 5px;}
 .brand-logo-chip.small>img.brand-logo-img{max-width:48px;}
 .brand-logo-chip.inline{position:static;height:22px;padding:2px 5px;margin-inline-start:6px;vertical-align:middle;box-shadow:none;}
