@@ -472,9 +472,9 @@ function wire(){
       if(navigator.share && window.matchMedia && window.matchMedia('(pointer:coarse)').matches){
         try{ await navigator.share({ title, text, url }); return; }catch(e){ if(e && e.name==='AbortError') return; }
       }
-      try{ await navigator.clipboard.writeText(url); shareBtn.textContent = '✓'; shareBtn.title = 'تم نسخ الرابط'; }
+      try{ await navigator.clipboard.writeText(url); shareBtn.dataset.ico = shareBtn.dataset.ico || shareBtn.innerHTML; shareBtn.textContent = '✓'; shareBtn.title = 'تم نسخ الرابط'; }
       catch(e){ window.prompt('انسخ رابط المنتج:', url); }
-      setTimeout(()=>{ shareBtn.textContent = '🔗'; shareBtn.title = 'مشاركة المنتج'; }, 2000);
+      setTimeout(()=>{ if(shareBtn.dataset.ico) shareBtn.innerHTML = shareBtn.dataset.ico; shareBtn.title = 'مشاركة المنتج'; }, 2000);
     };
     const waBtn = document.getElementById('shareWhatsappBtn');
     if(waBtn) waBtn.onclick = ()=>{

@@ -758,3 +758,21 @@ html.embed-mode body{ padding-top:0; }
 .share-icon-btn:hover{border-color:var(--teal);background:var(--teal-tint);}
 .share-wa-btn{color:#1a8f4c;border-color:#1a8f4c;margin-bottom:var(--sp-2);}
 .share-wa-btn:hover{background:#e8f7ee;}
+
+/* تنظيم صفحة تفاصيل المنتج: فئة/توفر/مشاركة ← براند ← اسم ← سعر ← طلب عرض ← سلة+واتساب ← داتا شيت */
+.detail-info{display:flex;flex-direction:column;gap:var(--sp-2);}
+.detail-topline{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.detail-avail{color:var(--teal-dark);font-size:13px;font-weight:700;}
+.detail-topline .share-icon-btn{margin-inline-start:auto;}
+.detail-brand-name{font-size:13px;font-weight:800;color:var(--teal-dark);letter-spacing:.5px;margin-bottom:-8px;}
+.detail-title{margin:0;font-size:26px;line-height:1.3;font-weight:800;}
+.detail-price-block{margin:0;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;}
+.detail-price-block .big-price{font-size:38px;}
+.detail-vat{font-size:12.5px;color:var(--muted);}
+.detail-cta{display:flex;flex-direction:column;gap:10px;}
+.detail-quote-main{width:100%;height:52px;font-size:16px;font-weight:800;border-radius:12px;}
+.detail-cta .detail-actions-row{margin-bottom:0;}
+.detail-cta .detail-actions-row>*{flex:1;min-height:46px;}
+.detail-cta .share-wa-btn{margin-bottom:0;font-size:13.5px;}
+.detail-datasheet{font-size:13.5px;font-weight:700;color:var(--teal-dark);text-decoration:none;display:inline-flex;align-items:center;gap:6px;min-height:36px;}
+.detail-datasheet:hover{text-decoration:underline;}

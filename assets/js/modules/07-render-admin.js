@@ -1487,29 +1487,30 @@ function renderProducts(){
       <div class="card">
         <div class="detail-split">
           <div class="photo">${img ? `<img src="${img}" alt="${row[0]}" loading="lazy">` : `<div class="noimg">📦</div>`}${brandLogoChip(detail.brandLogo, detail.brand, 'on-photo')}</div>
-          <div>
-            <span class="detail-cat-badge">${cat.category}</span>
-            ${detail.brand ? `<span class="detail-brand-line">${brandLogoChip(detail.brandLogo, detail.brand, 'inline')}<span>${esc(detail.brand)}</span></span>` : ''}
-            <div style="display:flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap;margin-top:var(--sp-1)">
-              <h2 style="margin:0">${row[0]}</h2>
-              ${!available ? `<span class="unavail-chip">غير متاح حاليًا</span>` : `<span class="tag">✓ متوفر</span>`}
-              <button type="button" class="share-icon-btn no-print" id="shareProductLinkBtn" title="مشاركة المنتج" aria-label="مشاركة المنتج" data-shareproduct="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" data-sharename="${escAttr(String(row[0]))}" data-shareprice="${available && priceVal!=null && priceVal!=='' ? escAttr(String(priceVal)) : ''}" data-sharebrand="${escAttr(detail.brand||'')}">🔗</button>
+          <div class="detail-info">
+            <div class="detail-topline">
+              <span class="detail-cat-badge">${cat.category}</span>
+              ${!available ? `<span class="unavail-chip">غير متاح حاليًا</span>` : `<span class="detail-avail">✓ متوفر</span>`}
+              <button type="button" class="share-icon-btn no-print" id="shareProductLinkBtn" title="مشاركة المنتج" aria-label="مشاركة المنتج" data-shareproduct="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" data-sharename="${escAttr(String(row[0]))}" data-shareprice="${available && priceVal!=null && priceVal!=='' ? escAttr(String(priceVal)) : ''}" data-sharebrand="${escAttr(detail.brand||'')}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4"/></svg></button>
             </div>
+            ${detail.brand ? `<div class="detail-brand-name">${esc(detail.brand)}</div>` : ''}
+            <h2 class="detail-title">${row[0]}</h2>
             <div class="detail-price-block">
               ${available
-                ? `<div class="big-price">${priceVal} ﷼</div><div class="note" style="display:inline-block;margin-top:4px">* السعر بدون ضريبة القيمة المضافة</div>`
+                ? `<span class="big-price">${priceVal} ﷼</span><span class="detail-vat">بدون ضريبة القيمة المضافة 15%</span>`
                 : `<div class="big-price" style="font-size:20px;color:var(--muted)">سوف يتوفر في اقرب وقت</div>`}
             </div>
-            ${detail.datasheetUrl ? `<a href="${detail.datasheetUrl}" target="_blank" rel="noopener" class="btn ghost full" style="margin-bottom:var(--sp-2)">📄 تحميل الداتا شيت</a>` : ''}
-            <div class="detail-actions-row no-print">
-              <label class="pcard2-cartcheck detail-cartcheck" title="أضف للسلة">
-                <input type="checkbox" data-carttoggle="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" ${cartHas(selectedProduct.catIdx,selectedProduct.rowIdx)?'checked':''}>
-                <span>🛒 ${cartHas(selectedProduct.catIdx,selectedProduct.rowIdx)?'في السلة':'أضف للسلة'}</span>
-              </label>
-              <button type="button" class="btn small pcard2-quote" data-requestquote="${selectedProduct.catIdx}:${selectedProduct.rowIdx}">🗨️ طلب عرض سعر</button>
+            <div class="detail-cta no-print">
+              <button type="button" class="btn pcard2-quote detail-quote-main" data-requestquote="${selectedProduct.catIdx}:${selectedProduct.rowIdx}">🗨️ طلب عرض سعر</button>
+              <div class="detail-actions-row">
+                <label class="pcard2-cartcheck detail-cartcheck" title="أضف للسلة">
+                  <input type="checkbox" data-carttoggle="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" ${cartHas(selectedProduct.catIdx,selectedProduct.rowIdx)?'checked':''}>
+                  <span>🛒 ${cartHas(selectedProduct.catIdx,selectedProduct.rowIdx)?'في السلة':'أضف للسلة'}</span>
+                </label>
+                <button type="button" class="btn ghost small share-wa-btn" id="shareWhatsappBtn" data-shareproduct="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" data-sharename="${escAttr(String(row[0]))}" data-shareprice="${available && priceVal!=null && priceVal!=='' ? escAttr(String(priceVal)) : ''}" data-sharebrand="${escAttr(detail.brand||'')}">💬 أرسله عبر واتساب</button>
+              </div>
             </div>
-            <button type="button" class="btn ghost small no-print share-wa-btn" id="shareWhatsappBtn" data-shareproduct="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" data-sharename="${escAttr(String(row[0]))}" data-shareprice="${available && priceVal!=null && priceVal!=='' ? escAttr(String(priceVal)) : ''}" data-sharebrand="${escAttr(detail.brand||'')}">💬 أرسل المنتج عبر واتساب</button>
-            <div class="detail-meta-line">رقم المنتج: ${row[0]} &nbsp;|&nbsp; التصنيف: ${cat.category}</div>
+            ${detail.datasheetUrl ? `<a href="${detail.datasheetUrl}" target="_blank" rel="noopener" class="detail-datasheet">📄 تحميل الداتا شيت</a>` : ''}
           </div>
         </div>
       </div>
