@@ -98,6 +98,7 @@ function cmpBody(){
   const f0 = n=>Math.round(n).toLocaleString('en-US');
 
   const seg = `<div class="seg" style="margin-bottom:10px">
+      ${hasCurrent ? `<button type="button" data-cmpscope="current" class="${sc==='current'?'active':''}">حسب البنود المفعّلة</button>` : ''}
       <button type="button" data-cmpscope="materials" class="${sc==='materials'?'active':''}">توريد فقط</button>
       <button type="button" data-cmpscope="turnkey" class="${sc==='turnkey'?'active':''}">توريد وتركيب</button>
     </div>`;
