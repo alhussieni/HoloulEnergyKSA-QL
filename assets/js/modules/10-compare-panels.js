@@ -4,7 +4,7 @@
    التكلفة والهامش بتظهر فقط لجلسة الأدمن (السيرفر بيتحقق من التوكن).
    ======================================================================= */
 const COMPARE_FN = SUPABASE_URL + '/functions/v1/compare-panels';
-let cmpData = null, cmpScope = 'materials', cmpLoading = false, cmpError = null, cmpSort = 'price';
+let cmpData = null, cmpScope = 'materials', cmpLoading = false, cmpError = null, cmpSort = 'price', cmpHideCosts = false;
 
 /* موظفو الشركة فقط: مندوب مسجّل الدخول أو أدمن. العميل (guest) مفيش عنده توكن → مفيش مقارنة.
    السيرفر بيتحقق من التوكن بنفسه (compare-panels بيرفض أي طلب من غير توكن صالح)، والإخفاء هنا للشكل بس. */
@@ -63,6 +63,7 @@ function cmpDraw(){
   q('#cmpX').onclick = cmpClose;
   o.querySelectorAll('[data-cmpscope]').forEach(b=>b.onclick = ()=>{ cmpScope = b.dataset.cmpscope; cmpDraw(); });
   o.querySelectorAll('[data-cmpsort]').forEach(b=>b.onclick = ()=>{ cmpSort = b.dataset.cmpsort; cmpDraw(); });
+  const tgl = q('#cmpToggleCosts'); if(tgl) tgl.onclick = ()=>{ cmpHideCosts = !cmpHideCosts; cmpDraw(); };
   const unlock = q('#cmpUnlock');
   if(unlock) unlock.onclick = ()=>adminPasswordGate(()=>{ adminInfoUnlocked = true; openPanelCompare(); });
   const retry = q('#cmpRetry'); if(retry) retry.onclick = openPanelCompare;
@@ -77,7 +78,8 @@ function cmpBody(){
   if(cmpError) return head + `<div class="note" style="color:#B0432C;padding:20px">${esc(cmpError)}</div><button class="btn small" id="cmpRetry" type="button">إعادة المحاولة</button>`;
   if(!cmpData || !cmpData.panels || !cmpData.panels.length) return head + `<div class="note">لا توجد ألواح متاحة للمقارنة.</div>`;
 
-  const admin = !!cmpData.admin;
+  const adminData = !!cmpData.admin;
+  const admin = adminData && !cmpHideCosts;   // «إخفاء التفاصيل»: يخفي التكلفة والهامش والربح من الشاشة (للعرض أمام العميل)
   const sc = cmpScope;
   const rows = cmpData.panels.slice().sort((a,b)=>{
     if(cmpSort === 'profit' && admin) return b.scopes[sc].profit - a.scopes[sc].profit;
@@ -93,9 +95,12 @@ function cmpBody(){
       <button type="button" data-cmpscope="materials" class="${sc==='materials'?'active':''}">توريد فقط</button>
       <button type="button" data-cmpscope="turnkey" class="${sc==='turnkey'?'active':''}">توريد وتركيب</button>
     </div>`;
-  const sortBar = admin ? `<div style="font-size:12px;margin-bottom:8px">ترتيب حسب:
+  const hideBtn = adminData ? `<button type="button" class="btn ghost small" id="cmpToggleCosts">${cmpHideCosts ? '👁 إظهار الهامش والربح' : '🙈 إخفاء الهامش والربح'}</button>` : '';
+  const sortBar = adminData ? `<div style="font-size:12px;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      ${admin ? `ترتيب حسب:
       <button type="button" class="btn ghost small" data-cmpsort="price" ${cmpSort==='price'?'style="font-weight:800"':''}>الأقل سعراً</button>
-      <button type="button" class="btn ghost small" data-cmpsort="profit" ${cmpSort==='profit'?'style="font-weight:800"':''}>الأعلى ربحاً</button></div>` : '';
+      <button type="button" class="btn ghost small" data-cmpsort="profit" ${cmpSort==='profit'?'style="font-weight:800"':''}>الأعلى ربحاً</button>` : ''}
+      <span style="flex:1"></span>${hideBtn}</div>` : '';
 
   const th = t=>`<th style="white-space:nowrap">${t}</th>`;
   const costCols = admin ? th('التكلفة') + th('الهامش') + th('الهامش %') : '';
@@ -126,8 +131,8 @@ function cmpBody(){
   }).join('');
 
   const warns = rows.filter(r=>r.warning).map(r=>`<div class="note" style="color:#8A2E1D">⚠ ${esc(r.brand)} ${esc(String(r.power))}W: ${esc(r.warning)}</div>`).join('');
-  const adminHint = admin
-    ? `<div class="notice-row" style="margin-top:8px">${infoIcon(`التكلفة = تكلفة البنود المفعّلة قبل الضريبة · الهامش = السعر قبل الضريبة − التكلفة (بعد خصم الفئة والخصم الخاص الحاليين). ظاهرة لجلسة الأدمن فقط.`)}</div>`
+  const adminHint = adminData
+    ? (admin ? `<div class="notice-row" style="margin-top:8px">${infoIcon(`التكلفة = تكلفة البنود المفعّلة قبل الضريبة · الهامش = السعر قبل الضريبة − التكلفة (بعد خصم الفئة والخصم الخاص الحاليين). ظاهرة لجلسة الأدمن فقط.`)}</div>` : '')
     : `<div style="margin-top:8px"><button type="button" class="btn ghost small" id="cmpUnlock">عرض التكلفة والهامش (أدمن)</button></div>`;
 
   return head + seg + sortBar + `
