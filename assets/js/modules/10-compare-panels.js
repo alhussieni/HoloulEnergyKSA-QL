@@ -4,7 +4,7 @@
    التكلفة والهامش بتظهر فقط لجلسة الأدمن (السيرفر بيتحقق من التوكن).
    ======================================================================= */
 const COMPARE_FN = SUPABASE_URL + '/functions/v1/compare-panels';
-let cmpData = null, cmpScope = 'materials', cmpLoading = false, cmpError = null, cmpSort = 'price', cmpHideCosts = false;
+let cmpData = null, cmpScope = 'materials', cmpLoading = false, cmpError = null, cmpSort = 'price', cmpHideCosts = true;   // مخفية افتراضيًا؛ زر «معلومات إضافية» يفتحها
 
 /* موظفو الشركة فقط: مندوب مسجّل الدخول أو أدمن. العميل (guest) مفيش عنده توكن → مفيش مقارنة.
    السيرفر بيتحقق من التوكن بنفسه (compare-panels بيرفض أي طلب من غير توكن صالح)، والإخفاء هنا للشكل بس. */
@@ -95,7 +95,7 @@ function cmpBody(){
       <button type="button" data-cmpscope="materials" class="${sc==='materials'?'active':''}">توريد فقط</button>
       <button type="button" data-cmpscope="turnkey" class="${sc==='turnkey'?'active':''}">توريد وتركيب</button>
     </div>`;
-  const hideBtn = adminData ? `<button type="button" class="btn ghost small" id="cmpToggleCosts">${cmpHideCosts ? '👁 إظهار الهامش والربح' : '🙈 إخفاء الهامش والربح'}</button>` : '';
+  const hideBtn = adminData ? `<button type="button" class="btn ghost small" id="cmpToggleCosts" aria-pressed="${cmpHideCosts ? 'false' : 'true'}" style="${cmpHideCosts ? '' : 'font-weight:800'}">ⓘ معلومات إضافية</button>` : '';
   const sortBar = adminData ? `<div style="font-size:12px;margin-bottom:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       ${admin ? `ترتيب حسب:
       <button type="button" class="btn ghost small" data-cmpsort="price" ${cmpSort==='price'?'style="font-weight:800"':''}>الأقل سعراً</button>
@@ -133,7 +133,7 @@ function cmpBody(){
   const warns = rows.filter(r=>r.warning).map(r=>`<div class="note" style="color:#8A2E1D">⚠ ${esc(r.brand)} ${esc(String(r.power))}W: ${esc(r.warning)}</div>`).join('');
   const adminHint = adminData
     ? (admin ? `<div class="notice-row" style="margin-top:8px">${infoIcon(`التكلفة = تكلفة البنود المفعّلة قبل الضريبة · الهامش = السعر قبل الضريبة − التكلفة (بعد خصم الفئة والخصم الخاص الحاليين). ظاهرة لجلسة الأدمن فقط.`)}</div>` : '')
-    : `<div style="margin-top:8px"><button type="button" class="btn ghost small" id="cmpUnlock">عرض التكلفة والهامش (أدمن)</button></div>`;
+    : `<div style="margin-top:8px"><button type="button" class="btn ghost small" id="cmpUnlock">ⓘ معلومات إضافية</button></div>`;
 
   return head + seg + sortBar + `
     <div style="overflow-x:auto"><table class="bom" style="width:100%;font-size:12.5px">
