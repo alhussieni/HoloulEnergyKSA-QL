@@ -140,6 +140,38 @@ function renderAdminLogin(){
   </div>`;
 }
 
+// ---- Staggered entrance for product cards -------------------------------
+// Plays only when the page "signature" changes (category/page/sort/per-page/view),
+// NOT on every render() (cart toggle, etc.). Items below the fold animate as they
+// scroll into view; delay is per-batch index, capped so long lists never wait.
+let _stgSig = '', _stgIO = null;
+function staggerIn(container, sig, step = 50, cap = 8){
+  if(!container || sig === _stgSig) return;
+  _stgSig = sig;
+  if(_stgIO){ _stgIO.disconnect(); _stgIO = null; }
+  if(!('IntersectionObserver' in window) ||
+     (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+
+  const items = [...container.children].filter(el => el.classList.contains('pcard2'));
+  if(!items.length) return;
+  items.forEach(el => el.classList.add('stg-pending'));
+
+  _stgIO = new IntersectionObserver(entries => {
+    entries.filter(e => e.isIntersecting).forEach((e, i) => {
+      const el = e.target;
+      el.style.setProperty('--d', Math.min(i, cap) * step + 'ms');
+      el.classList.replace('stg-pending', 'stg-in');
+      el.addEventListener('animationend', () => {
+        el.classList.remove('stg-in');
+        el.style.removeProperty('--d');
+      }, { once: true });
+      _stgIO.unobserve(el);
+    });
+  }, { threshold: .1, rootMargin: '0px 0px -40px 0px' });
+
+  items.forEach(el => _stgIO.observe(el));
+}
+
 function render(){
   syncHeaderRoute();
   if(!repAuthed && !guestMode && currentView!=='admin' && currentView!=='products' && currentView!=='portfolio' && currentView!=='ready' && currentView!=='ready-detail' && currentView!=='irrigation-quick'){ app.innerHTML = renderRepLogin(); wire(); return; }
@@ -154,6 +186,13 @@ function render(){
   else if(currentView==='admin' && !adminAuthed) app.innerHTML = renderAdminLogin();
   else app.innerHTML = renderAdmin();
   wire();
+  if(currentView === 'products'){
+    staggerIn(
+      document.querySelector('.pcard2-grid'),
+      [selectedCategoryIdx, productsCurrentPage, productSort, productsPerPage, productViewMode].join('|'),
+      productsPerPage === Infinity ? 35 : 50
+    );
+  }
 }
 
 function wire(){
