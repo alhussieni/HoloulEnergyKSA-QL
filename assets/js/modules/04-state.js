@@ -424,7 +424,37 @@ function getCaptureScale(){
   return Math.max(1, Math.min(dpr, 2)) || 2;
 }
 
+// ---- Lazy-load html2canvas + jsPDF (only needed when a PDF is exported) ----
+// They used to be <script> tags in index.html, so every visitor downloaded
+// them on every page load even if they never exported a PDF.
+const PDF_LIB_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+];
+let _pdfLibsPromise = null;
+function _loadScriptOnce(src){
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = src; s.async = true;
+    s.onload = resolve;
+    s.onerror = ()=>reject(new Error('failed to load '+src));
+    document.head.appendChild(s);
+  });
+}
+function ensurePdfLibs(){
+  if(typeof html2canvas !== 'undefined' && ((window.jspdf && window.jspdf.jsPDF) || window.jsPDF)) return Promise.resolve();
+  if(!_pdfLibsPromise){
+    _pdfLibsPromise = Promise.all(PDF_LIB_URLS.map(_loadScriptOnce))
+      .catch(err=>{ _pdfLibsPromise = null; throw err; }); // allow retry on next click
+  }
+  return _pdfLibsPromise;
+}
+
 async function downloadQuotePdf(filename){
+  // Load the libs FIRST, then grab the DOM node: a render() during the
+  // download could otherwise leave us holding a detached #quotePrintArea.
+  try{ await ensurePdfLibs(); }
+  catch(err){ console.error('PDF libraries failed to load', err); return false; }
   const src = document.getElementById('quotePrintArea');
   if(!src || typeof html2canvas==='undefined') return false;
   const clone = src.cloneNode(true);

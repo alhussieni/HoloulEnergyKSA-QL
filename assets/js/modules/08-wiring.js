@@ -145,6 +145,7 @@ function renderAdminLogin(){
 // NOT on every render() (cart toggle, etc.). Items below the fold animate as they
 // scroll into view; delay is per-batch index, capped so long lists never wait.
 let _stgSig = '', _stgIO = null;
+let _searchRenderT = null;
 function staggerIn(container, sig, step = 50, cap = 8){
   if(!container || sig === _stgSig) return;
   _stgSig = sig;
@@ -189,9 +190,11 @@ function render(){
   if(currentView === 'products'){
     staggerIn(
       document.querySelector('.pcard2-grid'),
-      [selectedCategoryIdx, productsCurrentPage, productSort, productsPerPage, productViewMode].join('|'),
+      ['p', selectedCategoryIdx, productsCurrentPage, productSort, productsPerPage, productViewMode].join('|'),
       productsPerPage === Infinity ? 35 : 50
     );
+  } else if(currentView === 'ready'){
+    staggerIn(document.querySelector('.pcard2-grid'), ['r', readyViewMode].join('|'));
   }
 }
 
@@ -304,9 +307,10 @@ function wire(){
     const searchInput = document.getElementById('productSearch');
     if(searchInput){
       searchInput.oninput = e=>{
-        categorySearchQuery = e.target.value;
+        categorySearchQuery = e.target.value;   // keep state in sync on every keystroke
         productsCurrentPage = 1;
-        render();
+        clearTimeout(_searchRenderT);           // but re-render only once typing pauses
+        _searchRenderT = setTimeout(render, 180);
       };
       searchInput.focus();
       const slen = searchInput.value.length;

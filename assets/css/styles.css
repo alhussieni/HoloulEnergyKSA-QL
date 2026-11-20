@@ -731,3 +731,14 @@ html.embed-mode body{ padding-top:0; }
 .brand-logo-chip.inline>img.brand-logo-img{max-width:44px;}
 .detail-brand-line{display:inline-flex;align-items:center;gap:6px;margin-inline-start:8px;font-size:12px;font-weight:800;color:var(--teal-dark);}
 .detail-brand-line .brand-logo-chip.inline{margin:0;height:26px;}
+
+/* Respect "reduce motion" everywhere. Loading spinner is kept: it is feedback, not decoration. */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+    scroll-behavior:auto!important;
+  }
+  .reload-badge .spin{animation-duration:.7s!important;animation-iteration-count:infinite!important;}
+}
