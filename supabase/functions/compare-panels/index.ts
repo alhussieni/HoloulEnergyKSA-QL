@@ -34,6 +34,10 @@ export const SCOPE_TOGGLES: Record<string, Record<string, boolean>> = {
     structure: true, concrete: true, earth: false, reactor: false, civilworks: true, elecworks: true, supply: true },
 };
 
+// "current" = البنود المفعّلة حاليًا على شاشة المندوب (state.toggles) — تُمرَّر كما هي للمحرّك،
+// فتطابق المقارنة السعر الظاهر في الحاسبة بالضبط لكل لوح. (توريد فقط / توريد وتركيب تبقى كاختصارات جاهزة.)
+const SCOPE_CURRENT = "current";
+
 const MAX_PANELS = 20;
 
 type CallEngine = (action: string, payload: any) => Promise<{ status: number; data: any }>;
@@ -62,6 +66,11 @@ export async function buildComparison(callEngine: CallEngine, input: any, auth: 
   // 0) AUTH GATE — nothing is computed for anyone who is not company staff.
   let admin = false;
   const baseInput = { ...input, toggles: SCOPE_TOGGLES.materials };
+  const scopeMap: Record<string, Record<string, boolean>> = {
+    [SCOPE_CURRENT]: { ...((input && input.toggles) || {}) },
+    ...SCOPE_TOGGLES,
+  };
+  const enabled = Object.keys(scopeMap[SCOPE_CURRENT]).filter((k) => scopeMap[SCOPE_CURRENT][k]);
   if (auth.adminToken) {
     const a = await callEngine("admin-view", { adminToken: auth.adminToken, input: baseInput });
     if (a.status !== 200) return UNAUTH;
@@ -82,8 +91,8 @@ export async function buildComparison(callEngine: CallEngine, input: any, auth: 
   // 2) each panel x each scope through the real engine
   const jobs: Promise<any>[] = [];
   for (const opt of options) {
-    for (const scope of Object.keys(SCOPE_TOGGLES)) {
-      const inp = { ...input, panelIdx: opt.idx, toggles: SCOPE_TOGGLES[scope] };
+    for (const scope of Object.keys(scopeMap)) {
+      const inp = { ...input, panelIdx: opt.idx, toggles: scopeMap[scope] };
       const p = admin ? callEngine("admin-view", { adminToken, input: inp }) : callEngine("quote", { input: inp });
       jobs.push(p.then((r) => ({ opt, scope, r })));
     }
@@ -107,8 +116,8 @@ export async function buildComparison(callEngine: CallEngine, input: any, auth: 
     row.scopes[scope] = scopeSummary(q, admin);
   }
 
-  const list = Object.values(rows).filter((r: any) => r.scopes.materials && r.scopes.turnkey);
-  return { status: 200, body: { admin, hp: input.hp, invKW: list[0]?.invKW ?? null, panels: list } };
+  const list = Object.values(rows).filter((r: any) => r.scopes.materials && r.scopes.turnkey && r.scopes[SCOPE_CURRENT]);
+  return { status: 200, body: { admin, hp: input.hp, invKW: list[0]?.invKW ?? null, enabled, panels: list } };
 }
 
 if (import.meta.main !== false && typeof Deno !== "undefined") {

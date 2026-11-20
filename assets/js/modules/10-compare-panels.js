@@ -3,8 +3,9 @@
    في حالتين: توريد فقط / توريد وتركيب.
    التكلفة والهامش بتظهر فقط لجلسة الأدمن (السيرفر بيتحقق من التوكن).
    ======================================================================= */
+const CMP_TOGGLE_LABELS = { panel:'ألواح شمسية', inverter:'انفرتر', ip65:'حماية IP65', combiner:'لوحة تجميع', cables:'كابلات DC', mc4:'وصلات MC4', structure:'شاسيه/حوامل', concrete:'خرسانة', earth:'تأريض', reactor:'ريأكتور', civilworks:'أعمال مدنية', elecworks:'أعمال الكهرباء', supply:'نقل وتوريد' };
 const COMPARE_FN = SUPABASE_URL + '/functions/v1/compare-panels';
-let cmpData = null, cmpScope = 'materials', cmpLoading = false, cmpError = null, cmpSort = 'price', cmpHideCosts = true;   // مخفية افتراضيًا؛ زر «معلومات إضافية» يفتحها
+let cmpData = null, cmpScope = 'current', cmpLoading = false, cmpError = null, cmpSort = 'price', cmpHideCosts = true;   // مخفية افتراضيًا؛ زر «معلومات إضافية» يفتحها
 
 /* موظفو الشركة فقط: مندوب مسجّل الدخول أو أدمن. العميل (guest) مفيش عنده توكن → مفيش مقارنة.
    السيرفر بيتحقق من التوكن بنفسه (compare-panels بيرفض أي طلب من غير توكن صالح)، والإخفاء هنا للشكل بس. */
@@ -80,7 +81,12 @@ function cmpBody(){
 
   const adminData = !!cmpData.admin;
   const admin = adminData && !cmpHideCosts;   // «إخفاء التفاصيل»: يخفي التكلفة والهامش والربح من الشاشة (للعرض أمام العميل)
-  const sc = cmpScope;
+  // لو الخادم لسه على النسخة القديمة (من غير scope «current») نرجع لـ «توريد فقط» بدل ما تنكسر الشاشة
+  const hasCurrent = cmpData.panels.every(p=>p.scopes && p.scopes.current);
+  const sc = (cmpScope === 'current' && !hasCurrent) ? 'materials' : cmpScope;
+  const enabledKeys = Array.isArray(cmpData.enabled) ? cmpData.enabled : Object.keys(state.toggles||{}).filter(k=>state.toggles[k]);
+  const enabledChips = enabledKeys.map(k=>`<span style="display:inline-block;padding:1px 8px;margin:2px;border-radius:10px;font-size:11px;background:#EEF6F0;color:#1B6B3A">${esc(CMP_TOGGLE_LABELS[k]||k)}</span>`).join('');
+  const enabledBar = (sc === 'current') ? `<div style="font-size:12px;margin-bottom:8px">البنود المفعّلة في الحاسبة: ${enabledChips || '—'}</div>` : '';
   const rows = cmpData.panels.slice().sort((a,b)=>{
     if(cmpSort === 'profit' && admin) return b.scopes[sc].profit - a.scopes[sc].profit;
     return a.scopes[sc].final - b.scopes[sc].final;
@@ -135,7 +141,7 @@ function cmpBody(){
     ? (admin ? `<div class="notice-row" style="margin-top:8px">${infoIcon(`التكلفة = تكلفة البنود المفعّلة قبل الضريبة · الهامش = السعر قبل الضريبة − التكلفة (بعد خصم الفئة والخصم الخاص الحاليين). ظاهرة لجلسة الأدمن فقط.`)}</div>` : '')
     : `<div style="margin-top:8px"><button type="button" class="btn ghost small" id="cmpUnlock">ⓘ معلومات إضافية</button></div>`;
 
-  return head + seg + sortBar + `
+  return head + seg + enabledBar + sortBar + `
     <div style="overflow-x:auto"><table class="bom" style="width:100%;font-size:12.5px">
       <thead><tr>${th('اللوح')}${th('العدد')}${th('KW')}${th('ألواح×سلاسل')}${th('Voc (V)')}${th('Imp (A)')}${th('لوحة التجميع')}${costCols}${th('قبل الضريبة')}${th('الإجمالي شامل الضريبة')}${th('ريال/KW')}${th('الفرق عن الأوفر')}<th></th></tr></thead>
       <tbody>${body}</tbody></table></div>
