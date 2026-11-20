@@ -1469,6 +1469,11 @@ function renderProducts(){
       const priceVal = row[cat.columns.length-2];
       const specEntries = Object.entries(detail.specs||{});
       const otherCols = cat.columns.map((c,i)=>({c,i})).filter(({c,i},idx,arr)=>i!==0 && !c.includes('شامل الضريبة') && arr.findIndex(x=>x.c===c)===idx && arr.findIndex(x=>x.c===c)!==arr.length-1);
+      // كل المواصفات في جدول واحد: مواصفات المنتج التفصيلية (كانت في الكروت) + أعمدة الكتالوج، بدون تكرار
+      const _seen = new Set();
+      const allSpecRows = [];
+      specEntries.forEach(([k,v])=>{ const key=String(k).trim(); if(v==null||v===''||_seen.has(key)) return; _seen.add(key); allSpecRows.push([k,v]); });
+      otherCols.forEach(({c,i})=>{ const key=String(c).trim(); const v=row[i]; if(v==null||v===''||_seen.has(key)) return; _seen.add(key); allSpecRows.push([c,v]); });
       innerHtml = `
       <div class="card no-print">
         <div class="crumbs">
@@ -1507,12 +1512,6 @@ function renderProducts(){
           </div>
         </div>
       </div>
-      ${specEntries.length ? `
-      <div class="card">
-        <div class="spec-strip-wrap"><div class="spec-strip">
-          ${specEntries.map(([k,v])=>`<div class="spec-item"><div class="ico">${specIcon(k)}</div><div class="val">${v}</div><div class="lbl">${k}</div></div>`).join('')}
-        </div></div>
-      </div>` : ''}
       <div class="card">
         <div class="detail-tabs-nav no-print">
           <button class="${detailTab==='description'?'active':''}" data-detailtab="description">الوصف</button>
@@ -1521,12 +1520,11 @@ function renderProducts(){
         ${detailTab==='description' ? `
           ${detail.description ? `<div class="note" style="font-size:13px">${detail.description}</div>` : `<div class="note">لا يوجد وصف مفصّل لهذا المنتج بعد.</div>`}
         ` : `
-          <table class="admtable">
+          ${allSpecRows.length ? `<table class="admtable">
             <tbody>
-              ${otherCols.map(({c,i})=>`<tr><td style="font-weight:600;width:150px">${c}</td><td class="num">${row[i]}</td></tr>`).join('')}
+              ${allSpecRows.map(([k,v])=>`<tr><td style="font-weight:600;width:150px">${k}</td><td class="num">${v}</td></tr>`).join('')}
             </tbody>
-          </table>
-          ${!otherCols.length ? `<div class="note">راجع شريط المواصفات بالأعلى — كل التفاصيل معروضة هناك.</div>` : ''}
+          </table>` : `<div class="note">لا توجد مواصفات مفصّلة لهذا المنتج بعد.</div>`}
         `}
       </div>
       ${renderSimilarProducts(catalog, selectedProduct.catIdx, selectedProduct.rowIdx)}`;
