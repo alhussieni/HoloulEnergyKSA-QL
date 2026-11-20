@@ -88,7 +88,7 @@ function brandsTabHtml(){
       : `<div class="brd-grid">${cards}</div>`);
   return `<div class="card no-print">
     <h3>🏷️ الماركات وشعاراتها</h3>
-    <div class="note">سجّل شعار كل ماركة مرة واحدة هنا (JA / Aiko / Jinko / TW / VEICHI / SINOBOLY …) وهيتحفظ في الإعدادات ويتاح استخدامه في أي مكان مستقبلًا. الماركات اللي في الألواح والكتالوج بتظهر هنا تلقائيًا (JA وJa نفس الماركة). الشعار بيتحفظ فور رفعه.</div>
+    <div class="notice-row">${infoIcon(`سجّل شعار كل ماركة مرة واحدة هنا (JA / Aiko / Jinko / TW / VEICHI / SINOBOLY …) وهيتحفظ في الإعدادات ويتاح استخدامه في أي مكان مستقبلًا. الماركات اللي في الألواح والكتالوج بتظهر هنا تلقائيًا (JA وJa نفس الماركة). الشعار بيتحفظ فور رفعه.`)}</div>
     <div class="brd-view" role="group" aria-label="طريقة العرض"><button type="button" data-brandview="cards" class="${brandsView==='cards'?'on':''}">▦ كروت</button><button type="button" data-brandview="list" class="${brandsView==='list'?'on':''}">☰ قائمة</button></div>
     ${body}
     <div class="brd-add">
@@ -346,7 +346,7 @@ function renderCustomersSection(){
     <h3>تصدير خارجي (اختياري) <span class="tag">${adminConfig.leadsWebhookUrl?'مفعّل — Google Sheet':'غير مفعّل'}</span></h3>
     <label>رابط المزامنة السحابية (Google Apps Script Web App URL)</label>
     <input type="text" id="a_webhook" value="${adminConfig.leadsWebhookUrl}" placeholder="https://script.google.com/macros/s/xxxxx/exec">
-    <div class="note" style="margin-top:6px">قاعدة العملاء أعلاه هي المصدر الرئيسي الآن (تشتغل من أي جهاز تلقائيًا). الرابط ده اختياري بس، لو حابب نسخة إضافية على Google Sheet.</div>
+    <div class="notice-row" style="margin-top:6px">${infoIcon(`قاعدة العملاء أعلاه هي المصدر الرئيسي الآن (تشتغل من أي جهاز تلقائيًا). الرابط ده اختياري بس، لو حابب نسخة إضافية على Google Sheet.`)}</div>
   </div>`;
 }
 
@@ -635,7 +635,7 @@ function renderCartAdminFinancials(info){
     </div>
 
     ${buildFinancialsDonut(cost, Math.max(0, profit), +f.vat || 0)}
-    <div class="note" style="margin-top:10px;font-size:11px">التركيب والنقل مالهمش نموذج تكلفة، فمعتبرين بدون هامش.</div>
+    <div class="notice-row" style="margin-top:10px">${infoIcon(`التركيب والنقل مالهمش نموذج تكلفة، فمعتبرين بدون هامش.`)}</div>
     ${btns}`;
 }
 // نفس بطاقة «معلومات إضافية» بتاعة الحاسبات (عنوان → باسورد الأدمن → طيّ/قفل)
@@ -871,7 +871,7 @@ function renderProductCartBar(){
         ${repAuthed ? `<button class="btn small" id="cartPrepareQuoteBtn" type="button">🧾 تجهيز عرض سعر</button>` : ''}
         <button class="btn small pcard2-quote" id="cartRequestQuoteBtn" type="button">🗨️ طلب عرض سعر للسلة</button>
       </div>
-      ${!repAuthed ? `<div class="note" style="margin-top:6px;font-size:11px;text-align:center">🧾 تجهيز عرض سعر رسمي (PDF) متاح للمناديب المسجّلين دخولهم فقط</div>` : ''}
+      ${!repAuthed ? `<div class="notice-row" style="margin-top:6px">${infoIcon(`🧾 تجهيز عرض سعر رسمي (PDF) متاح للمناديب المسجّلين دخولهم فقط`)}</div>` : ''}
     </div>` : ''}
     <button class="cart-bar" id="cartBarToggleBtn" type="button">
       <span class="cart-bar-ic">🛒</span>
@@ -1231,7 +1231,7 @@ function renderCartExtrasCard(){
   return `<div class="card no-print">
     <h3 style="margin-bottom:6px">التركيب والنقل</h3>
     ${rows}
-    <div class="note" style="margin-top:8px;font-size:11px">الألواح في السلة: ${st.panels} لوح (${st.kw} كيلووات) — الكميات المتغيرة بتتحسب منها تلقائيًا ويمكن تعديلها.${minNote} 🔒 السعر محدد من الإدارة · 🔓 مفتوح للتعديل.</div>
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`الألواح في السلة: ${st.panels} لوح (${st.kw} كيلووات) — الكميات المتغيرة بتتحسب منها تلقائيًا ويمكن تعديلها.${minNote} 🔒 السعر محدد من الإدارة · 🔓 مفتوح للتعديل.`)}</div>
   </div>`;
 }
 function renderCartAdjustCard(){
@@ -1243,10 +1243,10 @@ function renderCartAdjustCard(){
         <input type="number" id="cartSpecialAmtInput" value="${cartSpecialAmt}" step="50" style="flex:1">
         <button class="btn small" id="cartSpecialAmtBtn" type="button">تأكيد</button>
       </div>
-      <div class="note" style="margin-top:6px;font-size:11px">مبلغ صريح بالريال يُخصم من إجمالي البنود قبل الضريبة — استخدم رقمًا سالبًا مثل ‎-1000 لزيادة السعر بدلًا من خصمه. الخصم لا يتجاوز هامش الأصناف (لا بيع تحت التكلفة).</div>
+      <div class="notice-row" style="margin-top:6px">${infoIcon(`مبلغ صريح بالريال يُخصم من إجمالي البنود قبل الضريبة — استخدم رقمًا سالبًا مثل ‎-1000 لزيادة السعر بدلًا من خصمه. الخصم لا يتجاوز هامش الأصناف (لا بيع تحت التكلفة).`)}</div>
       <div id="cartMaxDiscLine" class="note" style="margin-top:8px;font-size:11px">${cartMaxDiscText()}</div>` : `
       <button class="btn ghost small" id="cartUnlockDiscountBtn" type="button">فك القفل</button>
-      <div class="note" style="margin-top:6px;font-size:11px">الخصم والزيادة مقفولين بكلمة سر الأدمن.</div>`}
+      <div class="notice-row" style="margin-top:6px">${infoIcon(`الخصم والزيادة مقفولين بكلمة سر الأدمن.`)}</div>`}
   </div>`;
 }
 
@@ -1277,7 +1277,7 @@ function renderCartQuoteDocument(){
           <button type="button" class="btn small ${cartDisplayMode==='detailed'?'':'ghost'}" id="cartModeDetailedBtn">🧾 تفصيلي (سعر كل بند)</button>
           <button type="button" class="btn small ${cartDisplayMode==='summary'?'':'ghost'}" id="cartModeSummaryBtn">📋 إجمالي (البنود بدون أسعار)</button>
         </div>
-        <div class="note" style="margin-top:6px;font-size:11px">${cartDisplayMode==='summary'?'يظهر في العرض: البنود والكميات فقط، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.':'يظهر في العرض: سعر الوحدة وإجمالي كل بند، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.'}</div>
+        <div class="notice-row" style="margin-top:6px">${infoIcon(`${cartDisplayMode==='summary'?'يظهر في العرض: البنود والكميات فقط، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.':'يظهر في العرض: سعر الوحدة وإجمالي كل بند، ثم الإجمالي قبل الضريبة والضريبة والإجمالي بعدها.'}`)}</div>
         <div class="note cart-rev-hint" style="margin-top:6px;font-size:11px;${cartRevHintText()?'':'display:none'}">${esc(cartRevHintText())}</div>
       </div>
 
@@ -1420,7 +1420,7 @@ function renderCartExtrasAdminCard(){
   return `
   <div class="card">
     <h3>عروض سلة المنتجات <span class="tag">يظهر للمندوب في عرض السعر</span></h3>
-    <div class="note" style="margin-bottom:10px">أسعار بيع فقط. <b>ثابت</b> = مبلغ واحد للبند مهما كان حجم المنظومة. <b>متغير</b> = سعر الوحدة × الكمية (الكمية بتتحسب تلقائيًا من الألواح في السلة والمندوب يقدر يعدّلها). <b>مفتوح للمندوب</b> = المندوب يقدر يغيّر سعر البند في العرض؛ <b>مقفول</b> = بيتسجّل بسعرك دايمًا (والسيرفر هو اللي يطبّق ده عند الحفظ).</div>
+    <div class="notice-row" style="margin-bottom:10px">${infoIcon(`أسعار بيع فقط. <b>ثابت</b> = مبلغ واحد للبند مهما كان حجم المنظومة. <b>متغير</b> = سعر الوحدة × الكمية (الكمية بتتحسب تلقائيًا من الألواح في السلة والمندوب يقدر يعدّلها). <b>مفتوح للمندوب</b> = المندوب يقدر يغيّر سعر البند في العرض؛ <b>مقفول</b> = بيتسجّل بسعرك دايمًا (والسيرفر هو اللي يطبّق ده عند الحفظ).`)}</div>
     <div style="overflow-x:auto">
     <table class="admtable">
       <thead><tr><th>البند</th><th>السعر (﷼)</th><th>نوع التسعير</th><th>الوحدة (للمتغير)</th><th>تعديل المندوب</th></tr></thead>
@@ -1496,7 +1496,7 @@ function renderProducts(){
             </div>
             <div class="detail-price-block">
               ${available
-                ? `<div class="big-price">${priceVal} ﷼</div><div class="note" style="display:inline-block;margin-top:4px">* السعر بدون ضريبة القيمة المضافة</div>`
+                ? `<div class="big-price">${priceVal} ﷼</div><div class="notice-row" style="display:inline-block;margin-top:4px">${infoIcon(`* السعر بدون ضريبة القيمة المضافة`)}</div>`
                 : `<div class="big-price" style="font-size:20px;color:var(--muted)">سوف يتوفر في اقرب وقت</div>`}
             </div>
             ${detail.datasheetUrl ? `<a href="${detail.datasheetUrl}" target="_blank" rel="noopener" class="btn ghost full" style="margin-bottom:var(--sp-2)">📄 تحميل الداتا شيت</a>` : ''}
@@ -1587,7 +1587,7 @@ function renderProducts(){
           <span class="sep">/</span>
           <span class="current">${cat.category}</span>
         </div>
-        <div class="note" style="color:var(--bad);font-weight:600;margin-bottom:10px">⚠️ الأسعار بدون ضريبة القيمة المضافة (15%)</div>
+        <div class="notice-row" style="margin-bottom:10px">${infoIcon(`⚠️ الأسعار بدون ضريبة القيمة المضافة (15%)`)}</div>
         <div class="catalog-toolbar">
           <input type="text" id="productSearch" placeholder="ابحث عن منتج..." value="${categorySearchQuery}">
           <select id="productSortSelect">
@@ -1641,8 +1641,8 @@ function renderProducts(){
     innerHtml = `
     <div class="card no-print">
       <h3>قائمة المنتجات</h3>
-      <div class="note">اختر نوع المنتج لعرض الموديلات المتاحة، أو تصفح المنظومات الجاهزة أدناه</div>
-      <div class="note" style="color:var(--bad);font-weight:600;margin-top:4px">⚠️ جميع الأسعار المعروضة بدون ضريبة القيمة المضافة (15%)</div>
+      <div class="notice-row">${infoIcon(`اختر نوع المنتج لعرض الموديلات المتاحة، أو تصفح المنظومات الجاهزة أدناه`)}</div>
+      <div class="notice-row" style="margin-top:4px">${infoIcon(`⚠️ جميع الأسعار المعروضة بدون ضريبة القيمة المضافة (15%)`)}</div>
       <input type="text" id="productGlobalSearch" placeholder="ابحث في كل المنتجات..." value="${productsGlobalSearch||''}" style="margin-top:10px">
       ${!gq ? `<div class="viewmode-toggle" role="group" aria-label="طريقة العرض" data-catview-toggle>
         <button class="${categoriesViewMode==='cards'?'active':''}" data-catviewmode="cards">▦ شبكة</button>
@@ -1822,7 +1822,7 @@ function renderReadySystems(){
       <span class="current">منظومات أوف-جريد جاهزة</span>
     </div>
     <h3>منظومات أوف-جريد جاهزة</h3>
-    <div class="note">اضغط على أي منظومة لمعرفة تفاصيل ومواصفات المكونات المستخدمة فيها.</div>
+    <div class="notice-row">${infoIcon(`اضغط على أي منظومة لمعرفة تفاصيل ومواصفات المكونات المستخدمة فيها.`)}</div>
     <div class="viewmode-toggle" role="group" aria-label="طريقة العرض">
       <button class="${readyViewMode==='cards'?'active':''}" data-readyviewmode="cards">▦ شبكة</button>
       <button class="${readyViewMode==='list'?'active':''}" data-readyviewmode="list">☰ ليستة</button>
@@ -1924,7 +1924,7 @@ function renderReadySystemDetail(id){
         </div>
         <div class="detail-price-block">
           <div class="big-price">${fmt(s.priceSar)} ﷼</div>
-          <div class="note" style="display:inline-block;margin-top:4px">* توريد المعدات فقط — بدون تركيب أو شاسيه</div>
+          <div class="notice-row" style="display:inline-block;margin-top:4px">${infoIcon(`* توريد المعدات فقط — بدون تركيب أو شاسيه`)}</div>
         </div>
         ${renderReadySystemAppliancesBlock(s)}
       </div>
@@ -2089,7 +2089,7 @@ function renderCompanySection(){
   return `
   <div class="card no-print">
     <h3 style="margin-top:0">🏢 هوية المؤسسة</h3>
-    <div class="note" style="margin-bottom:12px">البيانات دي بتظهر في عروض الأسعار والفواتير وشهادات الضمان ورسائل الواتساب، وبتتحمّل تلقائيًا في الحاسبة والـCRM. <b>الاسم والرقم الضريبي والعنوان لازم يطابقوا تسجيل المنشأة في هيئة الزكاة (ZATCA)</b>، لأنهم بيدخلوا في الـQR. الفواتير اللي اتصدرت قبل كده بتحتفظ ببيانات وقت إصدارها.</div>
+    <div class="notice-row" style="margin-bottom:12px">${infoIcon(`البيانات دي بتظهر في عروض الأسعار والفواتير وشهادات الضمان ورسائل الواتساب، وبتتحمّل تلقائيًا في الحاسبة والـCRM. <b>الاسم والرقم الضريبي والعنوان لازم يطابقوا تسجيل المنشأة في هيئة الزكاة (ZATCA)</b>، لأنهم بيدخلوا في الـQR. الفواتير اللي اتصدرت قبل كده بتحتفظ ببيانات وقت إصدارها.`)}</div>
     ${companyAdmin.loading ? '<div class="note">جاري تحميل البيانات…</div>' : ''}
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
       <img id="co_logo_img" src="${escAttr(logo)}" alt="logo" style="width:96px;height:96px;object-fit:contain;border:1px solid var(--line);border-radius:12px;padding:6px;background:#fff">
@@ -2097,7 +2097,7 @@ function renderCompanySection(){
         <input type="file" id="co_logo_file" accept="image/png,image/jpeg,image/webp" style="display:none">
         <button class="btn small" id="co_logo_btn" type="button" ${companyAdmin.busy?'disabled':''}>⬆️ رفع لوجو جديد</button>
         <button class="btn ghost small" id="co_logo_reset" type="button" ${companyAdmin.busy||!f.logoUrl?'disabled':''}>↩ الرجوع للوجو الافتراضي</button>
-        <div class="note" style="margin-top:6px">PNG أو JPG أو WEBP (حتى 2 ميجا). يفضّل خلفية شفافة ومربع تقريبًا. بيتصغّر تلقائيًا قبل الرفع.</div>
+        <div class="notice-row" style="margin-top:6px">${infoIcon(`PNG أو JPG أو WEBP (حتى 2 ميجا). يفضّل خلفية شفافة ومربع تقريبًا. بيتصغّر تلقائيًا قبل الرفع.`)}</div>
       </div>
     </div>
     <h4 style="margin:6px 0">الاسم</h4>
@@ -2290,7 +2290,7 @@ function renderAdmin(){
       <div><label>هامش بيع الكابلات الأساسي (معامل ضرب، قبل خصم البيع)</label><input type="number" id="a_cablemarkup" step="0.01" value="${adminConfig.cableMarkup}"></div>
       <div><label>الأنابيب المرنة (﷼/وحدة)</label><input type="number" id="a_flex" value="${adminConfig.flexTubePerUnit}"></div>
     </div>
-    <div class="note" style="margin-top:8px">سعر الكابل الأساسي (﷼/متر)، MC4 والريأكتور نفسهم بقوا يُسحبوا من صفحة "قائمة المنتجات" (فئة الكابلات والوصلات، وفئة الريأكتور). سعر البيع في عروض حاسبة الأنظمة = (السعر المرجعي × الهامش الأساسي هنا) ثم يتطبّق عليه خصم البيع المسجّل لنفس الفئة/الماركة من صفحة "الخصومات". أما التكلفة الداخلية (الربح) فبتتحدد بخصم المورد بس.</div>
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`سعر الكابل الأساسي (﷼/متر)، MC4 والريأكتور نفسهم بقوا يُسحبوا من صفحة "قائمة المنتجات" (فئة الكابلات والوصلات، وفئة الريأكتور). سعر البيع في عروض حاسبة الأنظمة = (السعر المرجعي × الهامش الأساسي هنا) ثم يتطبّق عليه خصم البيع المسجّل لنفس الفئة/الماركة من صفحة "الخصومات". أما التكلفة الداخلية (الربح) فبتتحدد بخصم المورد بس.`)}</div>
   </div>
   </div>
 
@@ -2313,7 +2313,7 @@ function renderAdmin(){
 
   <div class="card">
     <h3>جدول الأحمال — قائمة الأجهزة الافتراضية <span class="tag">قائمة "+ إضافة من القائمة" في حاسبة الأوف-جريد</span></h3>
-    <div class="note" style="margin-bottom:10px">التعديل هنا بيغيّر الأجهزة الجاهزة اللي تظهر للمناديب والعملاء وهما بيبنوا ملف الأحمال. الـ Surge (تيار البدء) بيستخدمه السيرفر لحساب هل الانفرتر المختار كافي وقت تشغيل الجهاز أول مرة (موتورات/كمبروسورات عادةً محتاجة ×3 لـ×7 وقت البدء، أجهزة كهربائية عادية ×1).</div>
+    <div class="notice-row" style="margin-bottom:10px">${infoIcon(`التعديل هنا بيغيّر الأجهزة الجاهزة اللي تظهر للمناديب والعملاء وهما بيبنوا ملف الأحمال. الـ Surge (تيار البدء) بيستخدمه السيرفر لحساب هل الانفرتر المختار كافي وقت تشغيل الجهاز أول مرة (موتورات/كمبروسورات عادةً محتاجة ×3 لـ×7 وقت البدء، أجهزة كهربائية عادية ×1).`)}</div>
     <table class="admtable" id="applPresetTable">
       <thead><tr><th>الجهاز</th><th>واط</th><th>نهار (س)</th><th>ليل (س)</th><th>Surge ×</th><th></th></tr></thead>
       <tbody>
@@ -2485,8 +2485,8 @@ ${(function(){
     })()}
     ${pfRenderPanels()}
     <button class="btn ghost small" id="addPanel">+ إضافة لوح</button>
-    <div class="note" style="margin-top:8px">الألواح مجمّعة حسب البراند (JA وJa نفس البراند) ومرتّبة بالقدرة. استخدم الفلاتر لتضييق القائمة، واضغط على عنوان أي براند لطيّه أو فتحه (اختيارك بيتحفظ على جهازك). التعديل والإضافة بيتموا من نافذة منفصلة وبيتحفظوا فورًا — الجدول نفسه للعرض فقط عشان ما يتغيّرش أي رقم بالغلط، ما عدا سويتش "ظاهر للعميل" فبيحفظ فورًا.</div>
-    <div class="note" style="margin-top:8px">اللوح يظهر للعميل فقط لو كان "ظاهر للعميل" مفعّل ومعاه سعر أكبر من صفر. عطّل التكة لإخفاء لوح مؤقتًا بدون حذفه.<br>اختَر لوح "افتراضي" ليكون هو المُحدَّد تلقائيًا للعميل عند فتح أي حاسبة (حتى لو أُضيفت ألواح جديدة بعد كده).</div>
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`الألواح مجمّعة حسب البراند (JA وJa نفس البراند) ومرتّبة بالقدرة. استخدم الفلاتر لتضييق القائمة، واضغط على عنوان أي براند لطيّه أو فتحه (اختيارك بيتحفظ على جهازك). التعديل والإضافة بيتموا من نافذة منفصلة وبيتحفظوا فورًا — الجدول نفسه للعرض فقط عشان ما يتغيّرش أي رقم بالغلط، ما عدا سويتش "ظاهر للعميل" فبيحفظ فورًا.`)}</div>
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`اللوح يظهر للعميل فقط لو كان "ظاهر للعميل" مفعّل ومعاه سعر أكبر من صفر. عطّل التكة لإخفاء لوح مؤقتًا بدون حذفه.<br>اختَر لوح "افتراضي" ليكون هو المُحدَّد تلقائيًا للعميل عند فتح أي حاسبة (حتى لو أُضيفت ألواح جديدة بعد كده).`)}</div>
   </div>
   </div>
 
@@ -2541,7 +2541,7 @@ ${(function(){
         </div>
       </div>`).join('')}
     <button class="btn ghost small" id="addProductCategory">+ إضافة فئة منتجات جديدة</button>
-    <div class="note" style="margin-top:8px">دي أسعار بيع مرجعية بدون خصم (منفصلة تمامًا عن أسعار محرك التسعير الداخلي للمحطات). هتظهر للمناديب في تبويب "قائمة المنتجات". أي خصم أو زيادة على هذه الأسعار يتم تسجيله من صفحة "الخصومات" فقط.</div>
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`دي أسعار بيع مرجعية بدون خصم (منفصلة تمامًا عن أسعار محرك التسعير الداخلي للمحطات). هتظهر للمناديب في تبويب "قائمة المنتجات". أي خصم أو زيادة على هذه الأسعار يتم تسجيله من صفحة "الخصومات" فقط.`)}</div>
     ${(adminConfig.productCatalog||[]).some(c=>c.category.includes('إكسسوارات')) ? `
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
       <button class="btn ghost small" id="splitAccessoriesBtn">🔀 تقسيم فئة "إكسسوارات VEICHI" لفئات منفصلة (ريأكتور / صناديق تجميع / كابلات ووصلات / قواطع وفيوزات)</button>
@@ -2585,7 +2585,7 @@ ${(function(){
       <button class="btn small" id="pde_apply">تطبيق</button>
       <button class="btn ghost small" id="pde_cancel">إلغاء</button>
     </div>
-    <div class="note" style="margin-top:8px">التعديلات هنا بتتطبق فورًا على النموذج، وتتحفظ نهائيًا لما تدوس "💾 حفظ التعديلات" تحت.</div>
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`التعديلات هنا بتتطبق فورًا على النموذج، وتتحفظ نهائيًا لما تدوس "💾 حفظ التعديلات" تحت.`)}</div>
   </div>
 
   <div class="card no-print" id="sharedImagePicker" style="display:none">
@@ -2601,7 +2601,7 @@ ${(function(){
   <div class="admsubsec ${currentAdminSubSection.products==='bomimages'?'active':''}" data-admsub="bomimages">
   <div class="card">
     <h3>صور عناصر عروض الأسعار <span class="tag">تظهر في جدول تفصيل العرض</span></h3>
-    <div class="note">صورة تمثيلية لكل بند متكرر (كابلات، شاسيه، صندوق تجميع...) تظهر في جدول تفصيل العرض بكل الحاسبات. الألواح والبطاريات وبعض الإنفرترات لها صور حقيقية تلقائيًا من قائمة المنتجات — هذا القسم للبنود العامة اللي مالهاش موديل محدد.</div>
+    <div class="notice-row">${infoIcon(`صورة تمثيلية لكل بند متكرر (كابلات، شاسيه، صندوق تجميع...) تظهر في جدول تفصيل العرض بكل الحاسبات. الألواح والبطاريات وبعض الإنفرترات لها صور حقيقية تلقائيًا من قائمة المنتجات — هذا القسم للبنود العامة اللي مالهاش موديل محدد.`)}</div>
     <div class="grid2" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--sp-2);margin-top:var(--sp-2)">
       ${BOM_GENERIC_ITEM_KEYS.map(([key,label])=>`
         <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:var(--radius);padding:var(--sp-1) var(--sp-2)">
@@ -2620,14 +2620,14 @@ ${(function(){
   <div class="admsubsec ${currentAdminSubSection.products==='items'?'active':''}" data-admsub="items">
   <div class="card">
     <h3>🏷️ الأصناف والضمان</h3>
-    <div class="note">كل صنف له رمز دائم (INV / PNL / BAT ...) بيتولّد تلقائيًا من تصنيفه. الضمان بيتحدد لكل <b>ماركة داخل الفئة</b>.</div>
+    <div class="notice-row">${infoIcon(`كل صنف له رمز دائم (INV / PNL / BAT ...) بيتولّد تلقائيًا من تصنيفه. الضمان بيتحدد لكل <b>ماركة داخل الفئة</b>.`)}</div>
     <div id="prodadm-root" style="margin-top:12px"></div>
   </div>
 </div>
 <div class="admsubsec ${currentAdminSubSection.products==='ready'?'active':''}" data-admsub="ready">
   <div class="card">
     <h3>منظومات أوف-جريد جاهزة <span class="tag">مراجعة كاملة + تغيير المعدات من قائمة المنتجات</span></h3>
-    <div class="note">لكل منظومة: عدّل الاسم/السعر/الحالة، وغيّر موديل الإنفرتر أو البطارية من نفس قائمة المنتجات الحقيقية، واضغط "🔄 إعادة حساب السعر" لتحديث السعر بناءً على أسعار الكتالوج الحالية وهوامش الربح في إعدادات الأوف-جريد بالأعلى. السعر المحسوب هو توريد خامات فقط (بدون تركيب أو شاسيه).</div>
+    <div class="notice-row">${infoIcon(`لكل منظومة: عدّل الاسم/السعر/الحالة، وغيّر موديل الإنفرتر أو البطارية من نفس قائمة المنتجات الحقيقية، واضغط "🔄 إعادة حساب السعر" لتحديث السعر بناءً على أسعار الكتالوج الحالية وهوامش الربح في إعدادات الأوف-جريد بالأعلى. السعر المحسوب هو توريد خامات فقط (بدون تركيب أو شاسيه).`)}</div>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px">
       <button class="btn" id="readysys-refresh-all">🔄 إعادة تسعير كل الباقات (حسب اللوح الافتراضي)</button>
       <span class="note">اللوح الافتراضي الحالي: <b>${(()=>{ const dp = (adminConfig.panels||[]).find(p=>`${p.brand}|${p.power}`===adminConfig.defaultPanelKey); return dp ? `${dp.brand} ${dp.power}W` : 'غير محدد'; })()}</b> — القدرة الكلية للباقة تُحفظ ويُقرَّب عدد الألواح لأعلى.</span>
@@ -2687,7 +2687,7 @@ ${(function(){
         ${s.notes ? `<div class="note" style="margin-top:6px">${s.notes}</div>` : ''}
       </details>`;
     }).join('')}
-    <div class="note" style="margin-top:8px">التعديلات هنا بتتحفظ مع باقي إعدادات الأدمن — لازم تضغط "💾 حفظ التعديلات" بالأسفل عشان تتفعّل فعليًا.</div>
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`التعديلات هنا بتتحفظ مع باقي إعدادات الأدمن — لازم تضغط "💾 حفظ التعديلات" بالأسفل عشان تتفعّل فعليًا.`)}</div>
   </div>
   </div>
   </div>
@@ -2697,7 +2697,7 @@ ${(function(){
 <section class="admsec ${currentAdminSection==='portfolio'?'active':''}" data-admsec="portfolio">
   <div class="card no-print">
     <h3>البورتفوليو</h3>
-    <div class="note">المحتوى هنا بيظهر في تبويب "البورتفوليو" العام (بدون تسجيل دخول). عدّل زي ما تحب، وادّي "💾 حفظ التعديلات" تحت عشان ينزل على الموقع.</div>
+    <div class="notice-row">${infoIcon(`المحتوى هنا بيظهر في تبويب "البورتفوليو" العام (بدون تسجيل دخول). عدّل زي ما تحب، وادّي "💾 حفظ التعديلات" تحت عشان ينزل على الموقع.`)}</div>
 
     <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px">
       <h4 style="margin:0 0 8px">الواجهة الرئيسية</h4>
@@ -2849,7 +2849,7 @@ ${renderCompanySection()}
       <button class="btn ghost" id="admImportBtn">⬆️ استيراد JSON</button>
       <input type="file" id="admImport" accept=".json" style="display:none">
     </div>
-    <div class="note" style="margin-top:12px">"حفظ التعديلات" يرفع الأسعار مباشرة للخادم — تنعكس فورًا على كل من يستخدم الأداة. "تصدير/استيراد JSON" لعمل نسخة احتياطية أو نقل الإعدادات.</div>
+    <div class="notice-row" style="margin-top:12px">${infoIcon(`"حفظ التعديلات" يرفع الأسعار مباشرة للخادم — تنعكس فورًا على كل من يستخدم الأداة. "تصدير/استيراد JSON" لعمل نسخة احتياطية أو نقل الإعدادات.`)}</div>
 </section>
   </div>
 </div>

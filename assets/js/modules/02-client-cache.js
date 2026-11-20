@@ -416,7 +416,7 @@ function renderIrrigationQuick(){
       <div class="card">
         <div class="detail-cat-badge">توريد خامات فقط</div>
         <h3>مواتير الري بالطاقة الشمسية</h3>
-        <div class="note">اختر قدرة الموتور أو الغاطس المتاح عندك فقط، وهيظهر لك السعر ومكونات المحطة على طول.</div>
+        <div class="notice-row">${infoIcon(`اختر قدرة الموتور أو الغاطس المتاح عندك فقط، وهيظهر لك السعر ومكونات المحطة على طول.`)}</div>
         <label>قدرة الموتور / الغاطس</label>
         <select id="iqHpSelect">
           ${IQ_STD_HP.map(h=>`<option value="${h}" ${h===iqHp?'selected':''}>${h} حصان</option>`).join('')}
@@ -437,7 +437,7 @@ function renderIrrigationQuick(){
         ${iqLoading ? `<div class="note" style="text-align:center;padding:var(--sp-4) 0">جارِ حساب السعر...</div>` : ''}
         ${q && !iqLoading ? `
         <div class="detail-price-block"><div class="big-price">${fmt(q.supplyOnlyTotal)} ﷼</div></div>
-        <div class="note">* شامل ضريبة القيمة المضافة — توريد الخامات فقط بدون التركيب</div>
+        <div class="notice-row">${infoIcon(`* شامل ضريبة القيمة المضافة — توريد الخامات فقط بدون التركيب`)}</div>
         <button class="btn full" id="iqWhatsappBtn" style="margin-top:var(--sp-3);background:#25D366;color:#fff">💬 اطلب عرض سعر عبر واتساب</button>
         ` : ''}
       </div>

@@ -127,7 +127,7 @@ function cmpBody(){
 
   const warns = rows.filter(r=>r.warning).map(r=>`<div class="note" style="color:#8A2E1D">⚠ ${esc(r.brand)} ${esc(String(r.power))}W: ${esc(r.warning)}</div>`).join('');
   const adminHint = admin
-    ? `<div class="note" style="margin-top:8px">التكلفة = تكلفة البنود المفعّلة قبل الضريبة · الهامش = السعر قبل الضريبة − التكلفة (بعد خصم الفئة والخصم الخاص الحاليين). ظاهرة لجلسة الأدمن فقط.</div>`
+    ? `<div class="notice-row" style="margin-top:8px">${infoIcon(`التكلفة = تكلفة البنود المفعّلة قبل الضريبة · الهامش = السعر قبل الضريبة − التكلفة (بعد خصم الفئة والخصم الخاص الحاليين). ظاهرة لجلسة الأدمن فقط.`)}</div>`
     : `<div style="margin-top:8px"><button type="button" class="btn ghost small" id="cmpUnlock">عرض التكلفة والهامش (أدمن)</button></div>`;
 
   return head + seg + sortBar + `
@@ -135,6 +135,6 @@ function cmpBody(){
       <thead><tr>${th('اللوح')}${th('العدد')}${th('KW')}${th('ألواح×سلاسل')}${th('Voc (V)')}${th('Imp (A)')}${th('لوحة التجميع')}${costCols}${th('قبل الضريبة')}${th('الإجمالي شامل الضريبة')}${th('ريال/KW')}${th('الفرق عن الأوفر')}<th></th></tr></thead>
       <tbody>${body}</tbody></table></div>
     ${warns}
-    <div class="note" style="margin-top:8px">الأسعار بالريال · الانفرتر ${esc(cmpData.invKW != null ? cmpData.invKW + ' KW' : '')} ثابت لكل الألواح · الحساب بنفس إعدادات الشاشة الحالية (إعدادات متقدمة/خصم).</div>
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`الأسعار بالريال · الانفرتر ${esc(cmpData.invKW != null ? cmpData.invKW + ' KW' : '')} ثابت لكل الألواح · الحساب بنفس إعدادات الشاشة الحالية (إعدادات متقدمة/خصم).`)}</div>
     ${adminHint}`;
 }

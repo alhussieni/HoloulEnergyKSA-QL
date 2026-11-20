@@ -92,7 +92,7 @@ function renderIrrigationCalc(){
           <button data-preset="materials" style="padding:10px">توريد خامات فقط (ألواح + انفرتر + لوحة تجميع + MC4 + كابلات)</button>
           <button data-preset="turnkey" style="padding:10px">توريد وتركيب شامل الضمان (كل البنود عدا التأريض والريأكتور)</button>
         </div>
-        <div class="note" style="margin-top:10px">اختيار أحد الخيارين يعبّئ البنود تلقائيًا تحت — وتقدر بعدها تعدّل أي بند يدويًا.</div>
+        <div class="notice-row" style="margin-top:10px">${infoIcon(`اختيار أحد الخيارين يعبّئ البنود تلقائيًا تحت — وتقدر بعدها تعدّل أي بند يدويًا.`)}</div>
       </div>
 
       <div class="card">
@@ -332,8 +332,8 @@ function renderQuoteBomAndTotal(q, introText, qtyEdit){
   </div>
   <div class="card">
     <h3>تفصيل عرض السعر</h3>
-    ${editableKeys.length ? `<div class="note no-print" style="margin-bottom:10px">✏️ تقدر تعدّل كمية أي بند من البنود المميّزة تحت (زوّد أو قلّل) حسب تقييمك الفني لوضع العميل والموقع — السعر والتحذيرات الفنية هيتحدّثوا تلقائيًا على أساس الكمية اللي تدخلها.</div>` : ''}
-    ${q.qtyOverrideNotice ? `<div class="note no-print" style="margin-bottom:10px;border-color:var(--sun-2);background:var(--sun-tint);color:#8a6208">${q.qtyOverrideNotice}</div>` : ''}
+    ${editableKeys.length ? `<div class="notice-row no-print" style="margin-bottom:10px">${infoIcon(`✏️ تقدر تعدّل كمية أي بند من البنود المميّزة تحت (زوّد أو قلّل) حسب تقييمك الفني لوضع العميل والموقع — السعر والتحذيرات الفنية هيتحدّثوا تلقائيًا على أساس الكمية اللي تدخلها.`)}</div>` : ''}
+    ${q.qtyOverrideNotice ? `<div class="notice-row no-print" style="margin-bottom:10px">${infoIcon(`${q.qtyOverrideNotice}`)}</div>` : ''}
     <table class="bom${anyNoteFor(q.items.map(it=>it.key||it.label)) ? ' has-notes' : ''}">
       <thead><tr><th>#</th><th>المكونات</th><th>النوع</th><th>العدد</th><th>الضمان</th>${noteTh()}</tr></thead>
       <tbody>
@@ -534,7 +534,7 @@ function renderOffgridTechSummary(q, o){
         {label:'الفائض', value: Math.max(0, usableCapacityKwh - sim.nightConsumptionKwh), color:'#0FA98D'},
       ], 'سعة البطاريات مقابل الاستهلاك الليلي (kWh)')}
     </div>
-    <div class="note" style="margin-top:16px">الأرقام تقديرية بناء على معطيات التصميم (ساعات الشمس القصوى، كفاءة النظام) — للتأكيد النهائي راجع مع المهندس المسؤول قبل التنفيذ.</div>
+    <div class="notice-row" style="margin-top:16px">${infoIcon(`الأرقام تقديرية بناء على معطيات التصميم (ساعات الشمس القصوى، كفاءة النظام) — للتأكيد النهائي راجع مع المهندس المسؤول قبل التنفيذ.`)}</div>
   </div>`;
 }
 
@@ -621,10 +621,10 @@ function renderOffgridCalc(){
       ${o.method==='consumption' ? `
       <label style="margin-top:10px">الاستهلاك النهاري (كيلوواط/ساعة)</label>
       <input type="number" id="og_daykwh" value="${o.dayKwh ?? (o.dailyKwh||10)/2}" min="0" step="0.1">
-      <div class="note">الأحمال اللي بتشتغل وقت إنتاج الألواح (من بعد الشروق بساعة لحد قبل الغروب بساعة تقريبًا).</div>
+      <div class="notice-row">${infoIcon(`الأحمال اللي بتشتغل وقت إنتاج الألواح (من بعد الشروق بساعة لحد قبل الغروب بساعة تقريبًا).`)}</div>
       <label style="margin-top:10px">الاستهلاك الليلي (كيلوواط/ساعة)</label>
       <input type="number" id="og_nightkwh" value="${o.nightKwh ?? (o.dailyKwh||10)/2}" min="0" step="0.1">
-      <div class="note">الأحمال اللي بتشتغل على البطارية بعد الغروب لحد الشروق.</div>
+      <div class="notice-row">${infoIcon(`الأحمال اللي بتشتغل على البطارية بعد الغروب لحد الشروق.`)}</div>
       <div class="note" id="og_split_total">الإجمالي اليومي: <b>${fmt1((+(o.dayKwh ?? (o.dailyKwh||10)/2)||0)+(+(o.nightKwh ?? (o.dailyKwh||10)/2)||0))}</b> كيلوواط/ساعة</div>
       ` : `
       <label style="margin-top:10px">قائمة الأجهزة</label>
@@ -727,7 +727,7 @@ function renderOffgridCalc(){
         <button type="button" data-ogpreset="materials" style="padding:10px">توريد خامات فقط (انفرتر + ألواح + بطاريات)</button>
         <button type="button" data-ogpreset="turnkey" style="padding:10px">توريد وتركيب (شامل كل البنود)</button>
       </div>
-      <div class="note" style="margin-top:10px">اختيار أحد الخيارين يعبّئ البنود تلقائيًا تحت — وتقدر بعدها تفعّل/تعطّل أي بند يدويًا (مثلاً: انفرتر وألواح بس من غير بطاريات، أو المكونات كاملة والشاسيه من غير تركيب).</div>
+      <div class="notice-row" style="margin-top:10px">${infoIcon(`اختيار أحد الخيارين يعبّئ البنود تلقائيًا تحت — وتقدر بعدها تفعّل/تعطّل أي بند يدويًا (مثلاً: انفرتر وألواح بس من غير بطاريات، أو المكونات كاملة والشاسيه من غير تركيب).`)}</div>
     </div>
     <div class="card">
       <h3>البنود المُفعّلة في العرض</h3>
