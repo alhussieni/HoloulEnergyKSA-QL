@@ -752,3 +752,9 @@ html.embed-mode body{ padding-top:0; }
   }
   .reload-badge .spin{animation-duration:.7s!important;animation-iteration-count:infinite!important;}
 }
+
+/* مشاركة المنتج */
+.share-icon-btn{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:15px;line-height:1;display:inline-flex;align-items:center;justify-content:center;padding:0;color:var(--teal-dark);margin-inline-start:auto;}
+.share-icon-btn:hover{border-color:var(--teal);background:var(--teal-tint);}
+.share-wa-btn{color:#1a8f4c;border-color:#1a8f4c;margin-bottom:var(--sp-2);}
+.share-wa-btn:hover{background:#e8f7ee;}

@@ -458,16 +458,28 @@ function wire(){
     }
     const hideUnavailToggle = document.getElementById('hideUnavailableToggle');
     if(hideUnavailToggle) hideUnavailToggle.onchange = e=>{ hideUnavailableProducts = e.target.checked; render(); };
+    // مشاركة المنتج: أيقونة (قائمة المشاركة الأصلية على الجوال، أو نسخ الرابط على الكمبيوتر) + زر واتساب
+    const shareInfo = (el)=>{
+      const d = el.dataset;
+      const url = `${window.location.origin}${window.location.pathname}?product=${d.shareproduct}`;
+      const title = [d.sharebrand, d.sharename].filter(Boolean).join(' ');
+      const text = title + (d.shareprice ? ` — ${d.shareprice} ﷼ (بدون ضريبة)` : '');
+      return { url, title, text };
+    };
     const shareBtn = document.getElementById('shareProductLinkBtn');
     if(shareBtn) shareBtn.onclick = async ()=>{
-      const url = `${window.location.origin}${window.location.pathname}?product=${shareBtn.dataset.shareproduct}`;
-      try{
-        await navigator.clipboard.writeText(url);
-        shareBtn.textContent = '✓ تم نسخ الرابط';
-      }catch(e){
-        shareBtn.textContent = url;
+      const { url, title, text } = shareInfo(shareBtn);
+      if(navigator.share && window.matchMedia && window.matchMedia('(pointer:coarse)').matches){
+        try{ await navigator.share({ title, text, url }); return; }catch(e){ if(e && e.name==='AbortError') return; }
       }
-      setTimeout(()=>{ shareBtn.textContent = '🔗 نسخ رابط المنتج'; }, 2000);
+      try{ await navigator.clipboard.writeText(url); shareBtn.textContent = '✓'; shareBtn.title = 'تم نسخ الرابط'; }
+      catch(e){ window.prompt('انسخ رابط المنتج:', url); }
+      setTimeout(()=>{ shareBtn.textContent = '🔗'; shareBtn.title = 'مشاركة المنتج'; }, 2000);
+    };
+    const waBtn = document.getElementById('shareWhatsappBtn');
+    if(waBtn) waBtn.onclick = ()=>{
+      const { url, text } = shareInfo(waBtn);
+      window.open('https://wa.me/?text=' + encodeURIComponent(text + '\n' + url), '_blank', 'noopener');
     };
     return;
   }

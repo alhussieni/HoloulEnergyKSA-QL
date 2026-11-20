@@ -1493,6 +1493,7 @@ function renderProducts(){
             <div style="display:flex;align-items:center;gap:var(--sp-1);flex-wrap:wrap;margin-top:var(--sp-1)">
               <h2 style="margin:0">${row[0]}</h2>
               ${!available ? `<span class="unavail-chip">غير متاح حاليًا</span>` : `<span class="tag">✓ متوفر</span>`}
+              <button type="button" class="share-icon-btn no-print" id="shareProductLinkBtn" title="مشاركة المنتج" aria-label="مشاركة المنتج" data-shareproduct="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" data-sharename="${escAttr(String(row[0]))}" data-shareprice="${available && priceVal!=null && priceVal!=='' ? escAttr(String(priceVal)) : ''}" data-sharebrand="${escAttr(detail.brand||'')}">🔗</button>
             </div>
             <div class="detail-price-block">
               ${available
@@ -1507,7 +1508,7 @@ function renderProducts(){
               </label>
               <button type="button" class="btn small pcard2-quote" data-requestquote="${selectedProduct.catIdx}:${selectedProduct.rowIdx}">🗨️ طلب عرض سعر</button>
             </div>
-            <button type="button" class="btn ghost full no-print" id="shareProductLinkBtn" data-shareproduct="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" style="margin-bottom:var(--sp-2)">🔗 نسخ رابط المنتج</button>
+            <button type="button" class="btn ghost small no-print share-wa-btn" id="shareWhatsappBtn" data-shareproduct="${selectedProduct.catIdx}:${selectedProduct.rowIdx}" data-sharename="${escAttr(String(row[0]))}" data-shareprice="${available && priceVal!=null && priceVal!=='' ? escAttr(String(priceVal)) : ''}" data-sharebrand="${escAttr(detail.brand||'')}">💬 أرسل المنتج عبر واتساب</button>
             <div class="detail-meta-line">رقم المنتج: ${row[0]} &nbsp;|&nbsp; التصنيف: ${cat.category}</div>
           </div>
         </div>
