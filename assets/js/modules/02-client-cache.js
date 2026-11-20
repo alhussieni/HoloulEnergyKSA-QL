@@ -437,7 +437,7 @@ function renderIrrigationQuick(){
         ${iqLoading ? `<div class="note" style="text-align:center;padding:var(--sp-4) 0">جارِ حساب السعر...</div>` : ''}
         ${q && !iqLoading ? `
         <div class="detail-price-block"><div class="big-price">${fmt(q.supplyOnlyTotal)} ﷼</div></div>
-        <div class="notice-row">${infoIcon(`* شامل ضريبة القيمة المضافة — توريد الخامات فقط بدون التركيب`)}</div>
+        <div class="note">* شامل ضريبة القيمة المضافة — توريد الخامات فقط بدون التركيب</div>
         <button class="btn full" id="iqWhatsappBtn" style="margin-top:var(--sp-3);background:#25D366;color:#fff">💬 اطلب عرض سعر عبر واتساب</button>
         ` : ''}
       </div>

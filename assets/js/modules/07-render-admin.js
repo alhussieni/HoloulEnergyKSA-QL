@@ -1496,7 +1496,7 @@ function renderProducts(){
             </div>
             <div class="detail-price-block">
               ${available
-                ? `<div class="big-price">${priceVal} ﷼</div><div class="notice-row" style="display:inline-block;margin-top:4px">${infoIcon(`* السعر بدون ضريبة القيمة المضافة`)}</div>`
+                ? `<div class="big-price">${priceVal} ﷼</div><div class="note" style="display:inline-block;margin-top:4px">* السعر بدون ضريبة القيمة المضافة</div>`
                 : `<div class="big-price" style="font-size:20px;color:var(--muted)">سوف يتوفر في اقرب وقت</div>`}
             </div>
             ${detail.datasheetUrl ? `<a href="${detail.datasheetUrl}" target="_blank" rel="noopener" class="btn ghost full" style="margin-bottom:var(--sp-2)">📄 تحميل الداتا شيت</a>` : ''}
@@ -1587,7 +1587,7 @@ function renderProducts(){
           <span class="sep">/</span>
           <span class="current">${cat.category}</span>
         </div>
-        <div class="notice-row" style="margin-bottom:10px">${infoIcon(`⚠️ الأسعار بدون ضريبة القيمة المضافة (15%)`)}</div>
+        <div class="note" style="color:var(--bad);font-weight:600;margin-bottom:10px">⚠️ الأسعار بدون ضريبة القيمة المضافة (15%)</div>
         <div class="catalog-toolbar">
           <input type="text" id="productSearch" placeholder="ابحث عن منتج..." value="${categorySearchQuery}">
           <select id="productSortSelect">
@@ -1642,7 +1642,7 @@ function renderProducts(){
     <div class="card no-print">
       <h3>قائمة المنتجات</h3>
       <div class="notice-row">${infoIcon(`اختر نوع المنتج لعرض الموديلات المتاحة، أو تصفح المنظومات الجاهزة أدناه`)}</div>
-      <div class="notice-row" style="margin-top:4px">${infoIcon(`⚠️ جميع الأسعار المعروضة بدون ضريبة القيمة المضافة (15%)`)}</div>
+      <div class="note" style="color:var(--bad);font-weight:600;margin-top:4px">⚠️ جميع الأسعار المعروضة بدون ضريبة القيمة المضافة (15%)</div>
       <input type="text" id="productGlobalSearch" placeholder="ابحث في كل المنتجات..." value="${productsGlobalSearch||''}" style="margin-top:10px">
       ${!gq ? `<div class="viewmode-toggle" role="group" aria-label="طريقة العرض" data-catview-toggle>
         <button class="${categoriesViewMode==='cards'?'active':''}" data-catviewmode="cards">▦ شبكة</button>
