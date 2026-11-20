@@ -985,9 +985,36 @@ function wire(){
       const isDef = idx!=null && `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||'');
       document.getElementById('pm_title').textContent = idx==null ? 'إضافة لوح جديد' : `تعديل لوح — ${p.brand} ${p.power}W`;
       document.getElementById('pm_fields').innerHTML = PM_FIELDS.map(([k,l,t,st])=>`<div class="modal-field"><label>${l}</label><input id="pm_${k}" type="${t}" ${st?`step="${st}" min="0"`:''} value="${pnlEsc(p[k])}"></div>`).join('')
+        + `<div class="modal-field"><label>الداتا شيت (رابط أو ملف PDF)</label>
+             <input id="pm_datasheetUrl" type="url" placeholder="https://... أو ارفع ملف PDF بالزر تحت" value="${pnlEsc(p.datasheetUrl||'')}">
+             <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+               <input id="pm_datasheetFile" type="file" accept="application/pdf,.pdf" style="max-width:100%">
+               <span id="pm_datasheetMsg" style="font-size:12px;color:var(--muted)"></span>
+             </div></div>`
         + `<label style="display:flex;align-items:center;gap:8px;margin:6px 0"><input type="checkbox" id="pm_visible" style="width:auto" ${p.visible!==false?'checked':''}><span>ظاهر للعميل</span></label>`
         + `<label style="display:flex;align-items:center;gap:8px;margin:6px 0"><input type="checkbox" id="pm_default" style="width:auto" ${isDef?'checked':''}><span>اللوح الافتراضي في الحاسبة</span></label>`;
       const er = document.getElementById('pm_error'); er.style.display='none'; er.textContent='';
+      /* رفع PDF للداتا شيت → دالة upload-datasheet (أدمن فقط) → الرابط يتحط في الحقل، والحفظ بيتم بزر «حفظ اللوح» */
+      const dsFile = document.getElementById('pm_datasheetFile'), dsMsg = document.getElementById('pm_datasheetMsg');
+      dsFile.onchange = async ()=>{
+        const f = dsFile.files[0]; if(!f) return;
+        if(!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf'){ dsMsg.style.color='#B0432C'; dsMsg.textContent='لازم يكون ملف PDF'; dsFile.value=''; return; }
+        if(f.size > 10*1024*1024){ dsMsg.style.color='#B0432C'; dsMsg.textContent='الحجم أكبر من 10MB'; dsFile.value=''; return; }
+        dsMsg.style.color='var(--muted)'; dsMsg.textContent='جارِ الرفع...';
+        try{
+          const pdfBase64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(String(r.result).split(',').pop()); r.onerror=rej; r.readAsDataURL(f); });
+          const resp = await fetch(SUPABASE_URL + '/functions/v1/upload-datasheet', {
+            method:'POST',
+            headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+SUPABASE_ANON_KEY, 'apikey':SUPABASE_ANON_KEY },
+            body: JSON.stringify({ adminToken: adminTokenMem, pdfBase64, filename: f.name })
+          });
+          let d = {}; try{ d = await resp.json(); }catch(_){}
+          if(!resp.ok || !d.url) throw new Error(d.error || 'فشل الرفع');
+          document.getElementById('pm_datasheetUrl').value = d.url;
+          dsMsg.style.color='#1B6B3A'; dsMsg.textContent='تم الرفع ✔ — اضغط «حفظ اللوح» لتثبيته';
+        }catch(e){ dsMsg.style.color='#B0432C'; dsMsg.textContent='تعذر الرفع: '+(e.message||e); }
+        dsFile.value='';
+      };
       pmOverlay.style.display = 'flex';
       setTimeout(()=>{ const f=document.getElementById('pm_brand'); if(f) f.focus(); }, 50);
     }
@@ -1034,6 +1061,8 @@ function wire(){
       }
       const key = `${brand}|${n.power}`;
       if(adminConfig.panels.some((p,i)=>i!==pmEditIdx && `${p.brand}|${p.power}`===key)) return showErr('اللوح ده موجود بالفعل (نفس البراند والقدرة)');
+      const dsUrl = v('datasheetUrl');
+      if(dsUrl && !/^https?:\/\//i.test(dsUrl)) return showErr('رابط الداتا شيت لازم يبدأ بـ https://');
       const wantDefault = document.getElementById('pm_default').checked;
       let oldKey = null;
       if(pmEditIdx!=null){
@@ -1042,7 +1071,7 @@ function wire(){
            !confirm(`تغيير البراند من "${o.brand}" إلى "${brand}" هيفصل الخصومات المسجلة على "${o.brand}" في صفحة الخصومات. تكمل؟`)) return;
       }
       harvestAdminInputs();
-      const rec = { brand, power:n.power, vimp:n.vimp, voc:n.voc, iimp:n.iimp, isc:n.isc, priceW:n.priceW, model:v('model'), visible:document.getElementById('pm_visible').checked };
+      const rec = { brand, power:n.power, vimp:n.vimp, voc:n.voc, iimp:n.iimp, isc:n.isc, priceW:n.priceW, model:v('model'), datasheetUrl:dsUrl, visible:document.getElementById('pm_visible').checked };
       if(n.maxPanelsPerString) rec.maxPanelsPerString = n.maxPanelsPerString;
       if(pmEditIdx==null) adminConfig.panels.push(rec);
       else{
