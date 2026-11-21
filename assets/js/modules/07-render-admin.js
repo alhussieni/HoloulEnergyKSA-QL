@@ -1765,18 +1765,59 @@ async function loadReadySystems(){
   render();
 }
 
+/* ---- أسعار قائمة المنتجات: السعر المُسجَّل = قبل الضريبة، والعمود الأخير "السعر شامل الضريبة" بيتحسب تلقائيًا من نسبة الضريبة المسجلة في النظام ---- */
+function catVatRate(){
+  const el = (typeof document !== 'undefined') ? document.getElementById('a_vat') : null;
+  const v = el ? parseFloat(el.value) : NaN;
+  const r = isFinite(v) ? v : parseFloat(typeof adminConfig !== 'undefined' && adminConfig ? adminConfig.vat : NaN);
+  return (isFinite(r) && r >= 0) ? r : 0.15;
+}
+// نفس اتفاق المحرك: السعر قبل الضريبة = قبل-الأخير، والأخير = شامل الضريبة (لو اسمه فيه "شامل")
+function catPriceCols(cat){
+  const cols = (cat && cat.columns) || [];
+  const n = cols.length;
+  return (n >= 2 && /شامل/.test(cols[n-1])) ? { price: n-2, incl: n-1 } : null;
+}
+function catInclPrice(priceVal, vat){
+  const s = String(priceVal == null ? '' : priceVal).replace(/,/g, '').trim();
+  const p = parseFloat(s);
+  if(s === '' || !isFinite(p)) return '';
+  return (Math.round(p * (1 + vat) * 100 + 1e-7) / 100).toFixed(2);
+}
+function catSyncInclPrices(){
+  if(typeof adminConfig === 'undefined' || !adminConfig) return;
+  const vr = catVatRate();
+  (adminConfig.productCatalog || []).forEach(cat=>{
+    const pc = catPriceCols(cat); if(!pc) return;
+    (cat.rows || []).forEach(r=>{ r[pc.incl] = catInclPrice(r[pc.price], vr); });
+  });
+}
+
 function openAddProductModal(catIdx){
   const cat = adminConfig.productCatalog[catIdx];
   document.getElementById('apm_categoryName').textContent = `الفئة: ${cat.category}`;
   const fieldsEl = document.getElementById('apm_fields');
+  const apmPc = catPriceCols(cat);
   fieldsEl.innerHTML = cat.columns.map((col,i)=>{
     const isPrice = /سعر/.test(col);
+    if(apmPc && i === apmPc.incl){
+      return `<div class="modal-field">
+      <label>${col} (يُحسب تلقائيًا)</label>
+      <input data-apmfield="${i}" type="text" readonly tabindex="-1" placeholder="يُحسب من السعر قبل الضريبة" style="background:#f1f3f5;color:#555">
+      <div class="modal-error" data-apmerr="${i}"></div>
+    </div>`;
+    }
     return `<div class="modal-field">
-      <label>${col}${isPrice?' (رقم)':''}</label>
+      <label>${col}${isPrice?' (رقم)':''}${apmPc && i === apmPc.price ? ' — قبل الضريبة' : ''}</label>
       <input data-apmfield="${i}" type="${isPrice?'number':'text'}" placeholder="${col}">
       <div class="modal-error" data-apmerr="${i}"></div>
     </div>`;
   }).join('');
+  if(apmPc){
+    const pIn = fieldsEl.querySelector(`[data-apmfield="${apmPc.price}"]`);
+    const iIn = fieldsEl.querySelector(`[data-apmfield="${apmPc.incl}"]`);
+    if(pIn && iIn) pIn.addEventListener('input', ()=>{ iIn.value = catInclPrice(pIn.value, catVatRate()); });
+  }
   document.getElementById('apm_error').style.display = 'none';
   document.getElementById('addProductModalOverlay').dataset.cat = catIdx;
   document.getElementById('addProductModalOverlay').style.display = 'flex';
@@ -2528,7 +2569,11 @@ ${(function(){
             ${cat.rows.map((row,ri)=>{
               const detail = (cat.productDetails && cat.productDetails[ri]) || {};
               return `<tr>
-              ${row.map((cell,coli)=>`<td><input data-pcell="${ci}:${ri}:${coli}" value="${cell}"></td>`).join('')}
+              ${row.map((cell,coli)=>{
+                const pc = catPriceCols(cat);
+                if(pc && coli === pc.incl) return `<td><input data-pvatcell="${ci}:${ri}" value="${catInclPrice(row[pc.price], catVatRate())}" readonly tabindex="-1" title="يُحسب تلقائيًا من السعر قبل الضريبة ونسبة الضريبة المسجلة في النظام" style="background:#f1f3f5;color:#555"></td>`;
+                return `<td><input data-pcell="${ci}:${ri}:${coli}" value="${cell}"></td>`;
+              }).join('')}
               <td style="text-align:center"><input type="checkbox" data-pavail="${ci}:${ri}" ${detail.available!==false?'checked':''} title="المنتج متاح حاليًا"></td>
               <td class="op" style="white-space:nowrap">
                 <button class="btn ghost small" data-editdetail="${ci}:${ri}">${detail.image||detail.description?'✏️ تعديل التفاصيل':'+ تفاصيل'}</button>
@@ -2543,7 +2588,7 @@ ${(function(){
         </div>
       </div>`).join('')}
     <button class="btn ghost small" id="addProductCategory">+ إضافة فئة منتجات جديدة</button>
-    <div class="notice-row" style="margin-top:8px">${infoIcon(`دي أسعار بيع مرجعية بدون خصم (منفصلة تمامًا عن أسعار محرك التسعير الداخلي للمحطات). هتظهر للمناديب في تبويب "قائمة المنتجات". أي خصم أو زيادة على هذه الأسعار يتم تسجيله من صفحة "الخصومات" فقط.`)}</div>
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`سجّل السعر <b>قبل الضريبة</b> فقط، وعمود "السعر شامل الضريبة" بيتحسب تلقائيًا بنسبة الضريبة المسجلة في النظام. دي أسعار بيع مرجعية بدون خصم (منفصلة تمامًا عن أسعار محرك التسعير الداخلي للمحطات). هتظهر للمناديب في تبويب "قائمة المنتجات". أي خصم أو زيادة على هذه الأسعار يتم تسجيله من صفحة "الخصومات" فقط.`)}</div>
     ${(adminConfig.productCatalog||[]).some(c=>c.category.includes('إكسسوارات')) ? `
     <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
       <button class="btn ghost small" id="splitAccessoriesBtn">🔀 تقسيم فئة "إكسسوارات VEICHI" لفئات منفصلة (ريأكتور / صناديق تجميع / كابلات ووصلات / قواطع وفيوزات)</button>

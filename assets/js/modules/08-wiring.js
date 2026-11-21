@@ -684,6 +684,7 @@ function wire(){
         const [ci,ri,coli] = inp.dataset.pcell.split(':').map(Number);
         adminConfig.productCatalog[ci].rows[ri][coli] = inp.value;
       });
+      catSyncInclPrices(); // السعر شامل الضريبة = السعر قبل الضريبة × (1 + نسبة الضريبة) — دايمًا محسوب، مش مُدخل
       document.querySelectorAll('[data-pavail]').forEach(inp=>{
         const [ci,ri] = inp.dataset.pavail.split(':').map(Number);
         const cat = adminConfig.productCatalog[ci];
@@ -1258,6 +1259,31 @@ function wire(){
       harvestAdminInputs();
       openAddProductModal(+b.dataset.addrow);
     });
+    // تحديث "السعر شامل الضريبة" لحظيًا وقت كتابة السعر قبل الضريبة، أو لو نسبة الضريبة اتغيّرت
+    if(!window.__catVatLiveWired){
+      window.__catVatLiveWired = true;
+      document.addEventListener('input', (e)=>{
+        const el = e.target; if(!el || !el.dataset) return;
+        try{
+          if(el.dataset.pcell){
+            const [ci,ri,coli] = el.dataset.pcell.split(':').map(Number);
+            const cat = adminConfig.productCatalog[ci]; const pc = catPriceCols(cat);
+            if(pc && coli === pc.price){
+              const o = document.querySelector(`[data-pvatcell="${ci}:${ri}"]`);
+              if(o) o.value = catInclPrice(el.value, catVatRate());
+            }
+          } else if(el.id === 'a_vat'){
+            const vr = catVatRate();
+            document.querySelectorAll('[data-pvatcell]').forEach(o=>{
+              const [ci,ri] = o.dataset.pvatcell.split(':').map(Number);
+              const cat = adminConfig.productCatalog[ci]; const pc = catPriceCols(cat); if(!pc) return;
+              const pIn = document.querySelector(`[data-pcell="${ci}:${ri}:${pc.price}"]`);
+              o.value = catInclPrice(pIn ? pIn.value : cat.rows[ri][pc.price], vr);
+            });
+          }
+        }catch(err){}
+      });
+    }
     document.querySelectorAll('[data-addcol]').forEach(b=>b.onclick=()=>{
       harvestAdminInputs();
       const cat = adminConfig.productCatalog[+b.dataset.addcol];
@@ -1508,6 +1534,7 @@ function wire(){
           document.getElementById('apm_error').style.display = 'block';
           return;
         }
+        { const pc = catPriceCols(cat); if(pc) values[pc.incl] = catInclPrice(values[pc.price], catVatRate()); }
         cat.rows.push(values);
         apmOverlay.style.display = 'none';
         render();
