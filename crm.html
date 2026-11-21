@@ -3684,11 +3684,17 @@ function printCustomerQuote(q, c){
    بنمرّر بيانات العرض للحاسبة عبر localStorage (مفتاح مؤقت بينتهي بعد دقيقتين)،
    والحاسبة بتحمّله وتعتبر أي حفظ/طباعة بعده مراجعة جديدة لنفس العرض. */
 const CRM_EDIT_HANDOFF_KEY = 'holoul_crm_edit_handoff_v1';
+function qpIsCart(q){
+  const s = q && q.snapshot;
+  return !!(s && s.type === 'product-cart' && Array.isArray(s.items) && s.items.length);
+}
 function qpEditable(q){
   const s = q && q.snapshot;
+  if(qpIsCart(q)) return true; // عروض سلة المنتجات: التعديل بيفتح سلة المنتجات بالبنود محمّلة
   return !!(s && s.hp != null && s.panelIdx != null && s.toggles && typeof s.toggles === 'object');
 }
 function editQuoteInCalculator(q, c){
+  if(qpIsCart(q)) return editCartQuote(q, c);
   const s = q.snapshot;
   const payload = {
     ts: Date.now(),
@@ -3718,10 +3724,26 @@ function editQuoteInCalculator(q, c){
    العرض بيتربط بالعميل بالجوال، وتريجر الداتابيز بيربطه بالصفقة المفتوحة أو بيفتح صفقة جديدة. */
 const CRM_NEWQUOTE_KEY = 'holoul_crm_newquote_v1';
 function stageIsOpen(st){ return st !== 'won' && st !== 'lost'; }
-function writeNewQuoteHandoff(c, kind){
-  const payload = { ts: Date.now(), kind: kind || 'calc', name: c.name || '', phone: c.phone || '', role: SESSION.role, token: SESSION.token, displayName: SESSION.displayName || '' };
+function writeNewQuoteHandoff(c, kind, extra){
+  const payload = Object.assign({ ts: Date.now(), kind: kind || 'calc', name: c.name || '', phone: c.phone || '', role: SESSION.role, token: SESSION.token, displayName: SESSION.displayName || '' }, extra || {});
   try{ localStorage.setItem(CRM_NEWQUOTE_KEY, JSON.stringify(payload)); return true; }
   catch(e){ toast('⚠️ تعذّر تجهيز العرض (التخزين المحلي غير متاح)'); return false; }
+}
+/* تعديل عرض سلة منتجات (مراجعة جديدة): بنفتح سلة المنتجات في تبويب جديد والبنود/الخصم محمّلين من العرض المحفوظ.
+   أي حفظ أو طباعة بعد التعديل بيتسجل كمراجعة جديدة (R1, R2...) لنفس العرض. */
+function editCartQuote(q, c){
+  const s = q.snapshot;
+  const cc = Object.assign({}, c, { name: c.name || q.client_name || '', phone: c.phone || q.client_phone || '' });
+  const ok = writeNewQuoteHandoff(cc, 'cart', { editQuote: {
+    client_name: q.client_name || cc.name || '',
+    final_total: q.final_total != null ? Number(q.final_total) : null,
+    ref_code: q.ref_code || s.refCode || null,
+    snapshot: s
+  }});
+  if(!ok) return;
+  const w = window.open('index.html?newquote=1', '_blank');
+  if(!w) toast('⚠️ المتصفح منع فتح نافذة جديدة — اسمح بالنوافذ المنبثقة وجرّب تاني');
+  else toast('اتفتحت سلة المنتجات للتعديل — بعد الحفظ حدّث صفحة العميل');
 }
 async function newQuoteForCustomer(c, opportunities){
   if(!c || !c.phone){ toast('لازم يكون للعميل رقم هاتف صحيح علشان يتسجل له عرض'); return; }

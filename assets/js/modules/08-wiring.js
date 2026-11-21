@@ -1920,6 +1920,26 @@ function applyCrmNewQuoteHandoff(){
     productsNav = 'categories';
     currentView = 'products';
     document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.view === 'products'));
+    // تعديل عرض سلة محفوظ (زر "تعديل (مراجعة جديدة)" في الـ CRM): حمّل بنوده وخصمه بعد ما الكتالوج يجهز
+    if(h.editQuote && h.editQuote.snapshot && Array.isArray(h.editQuote.snapshot.items)){
+      const eq = h.editQuote;
+      let tries = 0;
+      const t0 = setInterval(()=>{
+        tries++;
+        const ready = (typeof cachedProductCatalog !== 'undefined' && cachedProductCatalog && cachedProductCatalog.length);
+        if(!ready && tries < 40) return;
+        clearInterval(t0);
+        try{
+          cartLoadPrev({ snapshot: eq.snapshot, client_name: eq.client_name, final_total: eq.final_total });
+          const b = document.createElement('div');
+          b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#0b6b3a;color:#fff;padding:9px 14px;text-align:center;font:600 13.5px Cairo,sans-serif;direction:rtl;cursor:pointer;';
+          b.textContent = '✏️ تم تحميل عرض ' + (eq.ref_code || '') + ' للتعديل — أي طباعة أو حفظ بعد التعديل هيتسجل كمراجعة جديدة (اضغط لإخفاء)';
+          b.onclick = ()=>b.remove();
+          document.body.appendChild(b);
+          setTimeout(()=>b.remove(), 12000);
+        }catch(e){ console.warn('cart edit load failed', e); }
+      }, 200);
+    }
   }
   showRepBadge();
   return true;
