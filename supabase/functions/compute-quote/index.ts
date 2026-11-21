@@ -105,11 +105,14 @@ function computeQuote(D: any, inp: any) {
   const IscCalc = Isc * 1.25;
   const expectedVAC = Vimp * 0.88 / Math.SQRT2;
 
-  const inverterCalcKW = Math.ceil(hp * 0.8) + (inp.inverterPowerIncrease ?? D.inverterPowerIncrease);
+  const invMargin = Number(inp.inverterPowerIncrease ?? D.inverterPowerIncrease) || 0;
+  const inverterCalcKW = Math.ceil(hp * 0.8) + invMargin;
   // اختيار الانفرتر تلقائيًا: أول موديل يكفي قدرة الموتور، وبعدها لو قدرة الألواح أكبر من أقصى قدرة ألواح
   // يتحملها الانفرتر ننتقل لأول موديل أكبر يتحملها (الموديلات بدون سعر مسجل بتتجاهل).
+  // الهامش بالسالب = تصغير يدوي مقصود: ما نرجّعش الانفرتر لأكبر تلقائيًا (كان بيلغي التصغير)، ويظهر تحذير
+  // inverterOversizeWarning لو قدرة الألواح فوق الحد الأقصى للانفرتر الأصغر. الهامش صفر/موجب: السلوك زي ما هو.
   const motorPick = pickPumpInverter(D, inverterCalcKW);
-  const pumpPick = pickPumpInverter(D, inverterCalcKW, calcKW);
+  const pumpPick = invMargin < 0 ? motorPick : pickPumpInverter(D, inverterCalcKW, calcKW);
   const inverterAutoUpsizedFromKW: number | null = pumpPick.idx > motorPick.idx ? motorPick.picked.kw : null;
   const inv = pumpPick.picked;
   const invKW = inv.kw;

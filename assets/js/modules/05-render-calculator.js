@@ -68,7 +68,8 @@ function renderIrrigationCalc(){
           <label>تعديل عدد السلاسل (Strings)</label>
           <input type="number" id="in_str" value="${state.stringsAdjust}" step="1">
           <label>هامش زيادة قدرة الانفرتر (KW)</label>
-          <input type="number" id="in_invinc" value="${state.inverterPowerIncrease}" step="1">
+          <input type="number" id="in_invinc" value="${state.inverterPowerIncrease}" step="1" placeholder="0">
+          <div class="note" style="font-size:11px;margin:2px 0 6px">موجب = تكبير الانفرتر، سالب (مثل ‎-5) = تصغيره. بعد التعديل دوس "تأكيد التعديلات".</div>
           <button class="btn small" id="adv_confirm" type="button" style="margin-top:8px;width:100%">✔ تأكيد التعديلات</button>
 
           ${discountUnlocked ? `
