@@ -4,6 +4,8 @@
    التكلفة والهامش بتظهر فقط لجلسة الأدمن (السيرفر بيتحقق من التوكن).
    ======================================================================= */
 const CMP_TOGGLE_LABELS = { panel:'ألواح شمسية', inverter:'انفرتر', ip65:'حماية IP65', combiner:'لوحة تجميع', cables:'كابلات DC', mc4:'وصلات MC4', structure:'شاسيه/حوامل', concrete:'خرسانة', earth:'تأريض', reactor:'ريأكتور', civilworks:'أعمال مدنية', elecworks:'أعمال الكهرباء', supply:'نقل وتوريد' };
+/* أقصى جهد دخل DC يتحمله انفرتر مضخات VEICHI الحالي (V) — لو Voc السلسلة أعلى منه: تحذير أحمر + استبعاد اللوح من تمييز «أعلى Vmp» */
+const CMP_MAX_VOC = 900;
 const COMPARE_FN = SUPABASE_URL + '/functions/v1/compare-panels';
 let cmpData = null, cmpScope = 'current', cmpLoading = false, cmpError = null, cmpSort = 'price', cmpHideCosts = true, cmpTech = false;   // «تفاصيل فنية» مخفية افتراضيًا (الجدول عريض)
 /* أرقام فنية للمقارنة — 30 سنة = ‎100 − تدهور السنة الأولى − (التدهور السنوي × 29)‎ ، وفقد الحرارة عند خلية 65°م = |معامل Pmax| × 40 */
@@ -120,10 +122,42 @@ function cmpBody(){
   const th = t=>`<th style="white-space:nowrap">${t}</th>`;
   const techOn = cmpTech && rows.some(r=>r.tech);
   const tv = rows.map(r=>cmpTechVals(r.tech));
-  const best = (key, hi)=>{ const xs = tv.map(t=>t[key]).filter(x=>x!=null); return xs.length ? (hi ? Math.max(...xs) : Math.min(...xs)) : null; };
-  const bEff = best('eff',true), bHeat = best('heat',false), bAnn = best('ann',false), b30 = best('after30',true);
+  const vocBad = rows.map(r=>r.Voc > CMP_MAX_VOC);
+
+  /* التمييز: لكل عمود أفضل قيمة (الأقل أو الأعلى حسب البند). لو القيم كلها متساوية أو لوح واحد = مفيش تمييز. التعادل = كل المتعادلين يتميّزوا. */
+  const colSpec = {
+    count:  { v: rows.map(r=>r.totalPanels),                 hi:false },   // عدد ألواح أقل = مساحة وتركيب أقل
+    comb:   { v: rows.map(r=>r.combinerInputs),              hi:false },   // مداخل لوحة تجميع أقل
+    vmp:    { v: rows.map((r,i)=>vocBad[i] ? null : r.Vimp), hi:true  },   // أعلى جهد تشغيل طالما Voc ≤ حد الانفرتر
+    imp:    { v: rows.map(r=>r.Iimp),                        hi:true  },   // أعلى تيار
+    net:    { v: rows.map(r=>r.scopes[sc].net),              hi:false },
+    final:  { v: rows.map(r=>r.scopes[sc].final),            hi:false },
+    perKw:  { v: rows.map(r=>r.scopes[sc].perKw),            hi:false }
+  };
+  if(admin){ colSpec.profit = { v: rows.map(r=>r.scopes[sc].profit), hi:true }; colSpec.profitPct = { v: rows.map(r=>r.scopes[sc].profitPct), hi:true }; }
+  if(techOn){
+    colSpec.eff    = { v: tv.map(t=>t.eff),    hi:true  };
+    colSpec.coef   = { v: tv.map(t=>t.coef),   hi:true  };   // الأقرب للصفر (-0.26 أفضل من -0.29)
+    colSpec.heat   = { v: tv.map(t=>t.heat),   hi:false };
+    colSpec.ann    = { v: tv.map(t=>t.ann),    hi:false };
+    colSpec.after30= { v: tv.map(t=>t.after30),hi:true  };
+  }
+  for(const k of Object.keys(colSpec)){
+    const c = colSpec[k], xs = c.v.filter(x=>x!=null && isFinite(x));
+    const b = xs.length ? (c.hi ? Math.max(...xs) : Math.min(...xs)) : null;
+    c.best = (xs.length >= 2 && !xs.every(x=>x===b)) ? b : null;
+  }
+  const isBest = (k,i)=>{ const c = colSpec[k]; return !!c && c.best != null && c.v[i] != null && c.v[i] === c.best; };
+  const wins = rows.map((_,i)=>Object.keys(colSpec).filter(k=>isBest(k,i)).length);
+  const winsTxt = n=>n===1 ? 'بند واحد' : n===2 ? 'بندين' : n<=10 ? n+' بنود' : n+' بنداً';
+  // خلية بيانات: لو أفضل قيمة في عمودها → خلفية خضراء + ✓ ؛ base = ستايل أساسي لو مش الأفضل
+  const hc = (k,i,txt,base)=>{
+    const on = isBest(k,i);
+    const st = on ? `${base||''};background:#DDF3E4;color:#1B6B3A;font-weight:800` : (base||'');
+    return `<td class="num"${st ? ` style="${st}"` : ''}>${txt}${on ? ' ✓' : ''}</td>`;
+  };
+
   const techCols = techOn ? th('الكفاءة') + th('معامل الحرارة (Pmax)') + th('فقد الحرارة عند 65°م') + th('التدهور السنوي') + th('الإنتاج بعد 30 سنة') : '';
-  const techCell = (v, best, txt, hiGood)=>`<td class="num"${(v!=null && best!=null && v===best && rows.length>1) ? ' style="font-weight:800;color:#1B6B3A"' : ''}>${v==null ? '—' : txt}</td>`;
   const techBtn = `<button type="button" class="btn ghost small" id="cmpTechBtn" aria-pressed="${cmpTech?'true':'false'}" style="margin-bottom:10px;${cmpTech?'font-weight:800':''}">🔬 تفاصيل فنية (كفاءة · حرارة · تدهور)</button>`;
   const costCols = admin ? th('التكلفة') + th('الهامش') + th('الهامش %') : '';
   const body = rows.map((r,ri)=>{
@@ -133,37 +167,43 @@ function cmpBody(){
     const diff = s.final - minF;
     const labels = (isMin ? tag('الأوفر','#DDF3E4','#1B6B3A') : '') + (isMax ? tag('بريميوم','#EEE','#555') : '')
       + (admin && s.profit === maxProfit ? tag('الأعلى ربحاً','#FFF1CC','#8A6100') : '')
-      + (r.warning ? tag('⚠ انفرتر','#FEECEA','#8A2E1D') : '');
-    const costTds = admin ? `<td class="num">${f0(s.cost)}</td><td class="num" style="font-weight:700;color:${s.profit>=0?'#1B6B3A':'#B0432C'}">${f0(s.profit)}</td><td class="num">${s.profitPct.toFixed(1)}%</td>` : '';
+      + (r.warning ? tag('⚠ انفرتر','#FEECEA','#8A2E1D') : '')
+      + (vocBad[ri] ? tag('⚠ Voc أعلى من '+CMP_MAX_VOC+'V','#FEECEA','#8A2E1D') : '');
+    const costTds = admin ? `<td class="num">${f0(s.cost)}</td>` + hc('profit',ri,f0(s.profit),`color:${s.profit>=0?'#1B6B3A':'#B0432C'};font-weight:700`) + hc('profitPct',ri,s.profitPct.toFixed(1)+'%') : '';
+    const techTds = techOn ? hc('eff',ri,T.eff!=null?T.eff.toFixed(1)+'%':'—') + hc('coef',ri,T.coef!=null?T.coef.toFixed(2)+'%/°م':'—') + hc('heat',ri,T.heat!=null?T.heat.toFixed(1)+'%':'—') + hc('ann',ri,T.ann!=null?T.ann.toFixed(2)+'%':'—') + hc('after30',ri,T.after30!=null?T.after30.toFixed(1)+'%':'—') : '';
+    const vocTd = vocBad[ri] ? `<td class="num" style="color:#B0432C;font-weight:800" title="أعلى من الحد المسموح للانفرتر (${CMP_MAX_VOC}V)">${f0(r.Voc)} ⚠</td>` : `<td class="num">${f0(r.Voc)}</td>`;
     const sel = (r.idx === state.panelIdx) ? ' (الحالي)' : '';
+    const winsLine = wins[ri] ? `<div style="font-size:11px;font-weight:600;color:#1B6B3A;margin-top:2px">✓ الأفضل في ${winsTxt(wins[ri])}</div>` : '';
     return `<tr${isMin?' style="background:#F3FBF6"':''}>
-      <td style="white-space:nowrap;font-weight:700">${esc(r.brand)} ${esc(String(r.power))}W${sel}${labels}</td>
-      <td class="num">${r.totalPanels}</td>
+      <td style="white-space:nowrap;font-weight:700">${esc(r.brand)} ${esc(String(r.power))}W${sel}${labels}${winsLine}</td>
+      ${hc('count',ri,r.totalPanels)}
       <td class="num">${r.calcKW.toFixed(1)}</td>
       <td class="num">${r.panelsPerString}×${r.arrays}</td>
-      <td class="num">${f0(r.Voc)}</td>
-      <td class="num">${f0(r.Iimp)}</td>
-      <td class="num">${r.combinerInputs ?? '—'}</td>
-      ${techOn ? techCell(T.eff,bEff,T.eff!=null?T.eff.toFixed(1)+'%':'') + techCell(T.coef,null,T.coef!=null?T.coef.toFixed(2)+'%/°م':'') + techCell(T.heat,bHeat,T.heat!=null?T.heat.toFixed(1)+'%':'') + techCell(T.ann,bAnn,T.ann!=null?T.ann.toFixed(2)+'%':'') + techCell(T.after30,b30,T.after30!=null?T.after30.toFixed(1)+'%':'') : ''}
+      ${vocTd}
+      ${hc('vmp',ri,f0(r.Vimp))}
+      ${hc('imp',ri,f0(r.Iimp))}
+      ${hc('comb',ri,r.combinerInputs ?? '—')}
+      ${techTds}
       ${costTds}
-      <td class="num">${f0(s.net)}</td>
-      <td class="num" style="font-weight:800">${f0(s.final)}</td>
-      <td class="num">${f0(s.perKw)}</td>
+      ${hc('net',ri,f0(s.net))}
+      ${hc('final',ri,f0(s.final),'font-weight:800')}
+      ${hc('perKw',ri,f0(s.perKw))}
       <td class="num">${diff === 0 ? '—' : '+' + f0(diff) + ' (' + (diff / minF * 100).toFixed(1) + '%)'}</td>
       <td><button type="button" class="btn small" data-cmppick="${r.idx}">اختيار</button></td>
     </tr>`;
   }).join('');
 
   const warns = rows.filter(r=>r.warning).map(r=>`<div class="note" style="color:#8A2E1D">⚠ ${esc(r.brand)} ${esc(String(r.power))}W: ${esc(r.warning)}</div>`).join('');
+  const vocWarns = rows.filter((r,i)=>vocBad[i]).map(r=>`<div class="note" style="color:#8A2E1D">⚠ ${esc(r.brand)} ${esc(String(r.power))}W: جهد Voc للسلسلة ${f0(r.Voc)}V أعلى من أقصى جهد يتحمله الانفرتر (${CMP_MAX_VOC}V) — غير آمن، ومستبعد من تمييز أعلى Vmp.</div>`).join('');
   const adminHint = adminData
     ? (admin ? `<div class="notice-row" style="margin-top:8px">${infoIcon(`التكلفة = تكلفة البنود المفعّلة قبل الضريبة · الهامش = السعر قبل الضريبة − التكلفة (بعد خصم الفئة والخصم الخاص الحاليين). ظاهرة لجلسة الأدمن فقط.`)}</div>` : '')
     : `<div style="margin-top:8px"><button type="button" class="btn ghost small" id="cmpUnlock">ⓘ معلومات إضافية</button></div>`;
 
   return head + seg + enabledBar + techBtn + sortBar + `
     <div style="overflow-x:auto"><table class="bom" style="width:100%;font-size:12.5px">
-      <thead><tr>${th('اللوح')}${th('العدد')}${th('KW')}${th('ألواح×سلاسل')}${th('Voc (V)')}${th('Imp (A)')}${th('لوحة التجميع')}${techCols}${costCols}${th('قبل الضريبة')}${th('الإجمالي شامل الضريبة')}${th('ريال/KW')}${th('الفرق عن الأوفر')}<th></th></tr></thead>
+      <thead><tr>${th('اللوح')}${th('العدد')}${th('KW')}${th('ألواح×سلاسل')}${th('Voc (V)')}${th('Vmp (V)')}${th('Imp (A)')}${th('لوحة التجميع')}${techCols}${costCols}${th('قبل الضريبة')}${th('الإجمالي شامل الضريبة')}${th('ريال/KW')}${th('الفرق عن الأوفر')}<th></th></tr></thead>
       <tbody>${body}</tbody></table></div>
-    ${warns}
-    <div class="notice-row" style="margin-top:8px">${infoIcon(`الأسعار بالريال · الانفرتر ${esc(cmpData.invKW != null ? cmpData.invKW + ' KW' : '')} ثابت لكل الألواح · الحساب بنفس إعدادات الشاشة الحالية (إعدادات متقدمة/خصم).${techOn ? ' · الإنتاج بعد 30 سنة والتدهور حسب ضمان الأداء في الداتا شيت · فقد الحرارة = انخفاض القدرة عند حرارة خلية 65°م مقارنة بـ 25°م · الأخضر = الأفضل.' : ''}`)}</div>
+    ${warns}${vocWarns}
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`الأسعار بالريال · الانفرتر ${esc(cmpData.invKW != null ? cmpData.invKW + ' KW' : '')} ثابت لكل الألواح · الحساب بنفس إعدادات الشاشة الحالية (إعدادات متقدمة/خصم).${' · الأخضر ✓ = الأفضل في البند: الأقل في (السعر · العدد · لوحة التجميع'+(techOn?' · فقد الحرارة · التدهور':'')+') والأعلى في (Vmp · Imp'+(techOn?' · الكفاءة · الإنتاج بعد 30 سنة · معامل الحرارة الأقرب للصفر':'')+(admin?' · الهامش':'')+') · Vmp يُميَّز فقط للألواح التي Voc السلسلة فيها ≤ '+CMP_MAX_VOC+'V · Imp = تيار الحقل كاملاً (يتناسب عكسيًا مع الجهد).'}${techOn ? ' · الإنتاج بعد 30 سنة والتدهور حسب ضمان الأداء في الداتا شيت · فقد الحرارة = انخفاض القدرة عند حرارة خلية 65°م مقارنة بـ 25°م.' : ''}`)}</div>
     ${adminHint}`;
 }
