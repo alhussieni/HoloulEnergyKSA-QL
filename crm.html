@@ -546,6 +546,12 @@ table.tkTbl tbody tr{cursor:default;} table.tkTbl tr.tkOver td{background:#fff5f
 
   <main>
     <section id="view-dashboard" class="view active">
+      <div class="card" id="dashTasksCard">
+        <h3><span class="lbl" id="dashTasksTitle">✅ مهامي اليوم</span><span class="tag" style="background:var(--sun-tint);color:#8a6209" id="dashTasksCount">0</span></h3>
+        <div id="dashTasksSummary" class="emptyNote" style="margin-bottom:8px"></div>
+        <div id="dashTasksList"><div class="loadingNote">بيحمّل...</div></div>
+        <div style="margin-top:8px"><button class="btn ghost small" id="dashTasksAll" type="button">كل المهام ←</button></div>
+      </div>
       <div class="kpiGrid" id="kpiGrid"></div>
       <div class="panels">
         <div>
@@ -1465,7 +1471,9 @@ function enterStaff(){
   if(!mine.length){ nav.innerHTML=''; document.getElementById('staffBody').innerHTML='<div class="card"><div class="emptyNote">مفيش صلاحيات متاحة لحسابك لسه. كلّم الأدمن.</div></div>'; return; }
   nav.innerHTML = mine.map(x=>`<button class="btn ghost small" type="button" data-sk="${x.key}">${x.label}</button>`).join('');
   nav.onclick = e=>{ const b=e.target.closest('[data-sk]'); if(b) staffShow(b.dataset.sk); };
-  staffShow(mine[0].key);
+  // أول شاشة للموظف: مهامه (أو مهام الفريق) لو متاحة، وبعدها باقي الشاشات
+  const first = mine.find(x=>x.key==='mytasks') || mine.find(x=>x.key==='teamtasks') || mine[0];
+  staffShow(first.key);
 }
 async function staffShow(k){
   document.querySelectorAll('#staffNav [data-sk]').forEach(b=>b.style.outline = b.dataset.sk===k?'2px solid var(--sun)':'none');
@@ -3386,7 +3394,37 @@ async function loadSegments(){
 }
 
 /* ============ DASHBOARD ============ */
+/* مهام اليوم أعلى لوحة المتابعة — أول حاجة يشوفها المستخدم بعد الدخول (للأدمن/المدير: مهام الفريق، للباقي: مهامه هو) */
+async function loadDashTasks(){
+  const L = document.getElementById('dashTasksList'); if(!L) return;
+  const team = tkIsAdmin() || tkCan('tasks.view_all');
+  document.getElementById('dashTasksTitle').textContent = team ? '✅ مهام الفريق النشطة' : '✅ مهامي اليوم';
+  const allBtn = document.getElementById('dashTasksAll');
+  allBtn.onclick = () => { const tb = document.querySelector('#tabsNav button[data-tab="tasks"]'); if(tb) tb.click(); };
+  try{
+    if(team) await tkLoadUsers().catch(()=>{});
+    const d = await crmApi(team ? 'tasks-list-all' : 'tasks-list-mine', team ? {status:'active'} : {status:'active'});
+    const all = (d.tasks || []).filter(x => x.status === 'open' || x.status === 'in_progress');
+    const today = new Date().toDateString();
+    const isToday = x => x.due_at && new Date(x.due_at).toDateString() === today;
+    const urgentNow = all.filter(x => x.overdue || isToday(x) || x.status === 'in_progress');
+    const pr = {urgent:0, high:1, normal:2, low:3};
+    const rank = x => (x.overdue ? 0 : (isToday(x) ? 1 : 2)) * 10 + (pr[x.priority] != null ? pr[x.priority] : 2);
+    const show = (urgentNow.length ? urgentNow : all).slice().sort((a,b) => rank(a) - rank(b)).slice(0, 8);
+    const overdueN = all.filter(x => x.overdue).length, todayN = all.filter(x => !x.overdue && isToday(x)).length;
+    document.getElementById('dashTasksCount').textContent = all.length;
+    document.getElementById('dashTasksSummary').textContent = all.length
+      ? (overdueN + ' متأخرة · ' + todayN + ' مستحقة النهاردة · ' + all.length + ' نشطة إجمالًا' + (all.length > show.length ? ' — المعروض أهم ' + show.length : ''))
+      : '';
+    const reload = () => loadDashTasks();
+    L.innerHTML = tkTasksTable(show, {team: team, empty: 'مفيش مهام نشطة دلوقتي 👌', noLinks: SESSION.role === 'staff'});
+    tkBindTable(L, show, reload);
+  }catch(e){
+    L.innerHTML = '<div class="emptyNote">تعذر تحميل المهام: ' + escapeHtml(e.message) + '</div>';
+  }
+}
 async function loadDashboard(){
+  loadDashTasks();
   try{
     const d = await crmApi('admin-crm-stats');
     const sc = d.statusCounts || {};

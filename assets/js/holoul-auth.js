@@ -168,7 +168,12 @@
     destination: function (session, next) {
       var n = Auth.safeNext(next, session.modules);
       if (n) return n;
-      if (session.modules && session.modules.length === 1) return session.modules[0].url;
+      var mods = session.modules || [];
+      if (mods.length === 1) return mods[0].url;
+      // أول حاجة بعد الدخول: لوحة المتابعة + قائمة المهام (جوه صفحة الـ CRM / بوابة الموظف) عشان كل مستخدم يعرف المطلوب منه النهاردة
+      var has = function (k) { return mods.some(function (m) { return m.key === k; }); };
+      if (has('crm')) return 'crm.html';
+      if (has('staff')) return 'crm.html?portal=staff';
       return 'home.html';
     },
 
