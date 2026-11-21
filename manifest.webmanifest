@@ -1,0 +1,14 @@
+{
+  "name": "حلول الطاقة المتجددة — النظام",
+  "short_name": "حلول الطاقة",
+  "start_url": "home.html",
+  "scope": "./",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "ar",
+  "background_color": "#0D3452",
+  "theme_color": "#155E85",
+  "icons": [
+    { "src": "assets/logo.png", "sizes": "240x240", "type": "image/png", "purpose": "any" }
+  ]
+}

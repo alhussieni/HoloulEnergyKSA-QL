@@ -472,6 +472,9 @@ table.tkTbl tbody tr{cursor:default;} table.tkTbl tr.tkOver td{background:#fff5f
 .tkRepRow{display:flex;gap:8px;align-items:center;margin:4px 0;font-weight:500;}
 </style>
 <script src="assets/js/holoul-auth.js"></script>
+<script src="assets/js/holoul-offline.js"></script>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#155E85">
 </head>
 <body>
 
@@ -919,6 +922,8 @@ async function crmApi(action, payload={}){
   if(data.seller && INVOICE_ACTIONS.has(action)) applySeller(data.seller); // مصدر واحد: بيانات البائع من السيرفر
   return data;
 }
+// الوضع الأوفلاين: يغلّف النقدية/البضاعة بطابور idempotent + كاش قراءة. لو الوحدة معطّلة يرجع crmApi كما هو.
+if(window.HoloulOffline) crmApi = HoloulOffline.wrapCrmApi(crmApi, function(){ return SESSION && SESSION.role; });
 
 async function pipeApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
@@ -937,7 +942,9 @@ async function pipeApi(action, payload={}){
 // تسجيل الدخول اتنقل لصفحة login.html الموحّدة (مفيش تمييز بين مندوب/أدمن/موظف هنا).
 
 document.getElementById('logoutBtn').addEventListener('click', ()=>{
-  HoloulAuth.logout();
+  // كاش القراءة الحساس يُمسح عند الخروج؛ طابور العمليات غير المزامنة يبقى ويُرسل عند الدخول التالي
+  if(window.HoloulOffline && HoloulOffline.enabled()) HoloulOffline.wipeReadCache().then(()=>HoloulAuth.logout());
+  else HoloulAuth.logout();
 });
 
 async function enterApp(){
@@ -2109,6 +2116,11 @@ async function trSubmit(e, kind){ const d=finFd(e); finRun(async()=>{
     if(kind==='supplier_payment' && d.billId){ delete d.poId; delete d.projectId; }
     if(kind==='credit_note') rec = await crmApi('treasury-record-bill',{...d,docType:'credit_note'});
     else rec = await crmApi(kind==='bill'?'purchasing-record-bill':'treasury-record-entry',{kind,...d});
+  }
+  if(rec && rec.queued){ // محفوظة في طابور الأوفلاين (أو بانتظار مراجعة الأدمن) — المرفقات تُضاف بعد المزامنة
+    const hadAtt = attStage.length; attStage = []; finOverlay.classList.remove('show'); finLK = null;
+    toast(`حُفظت أوفلاين (${rec.ref}) — بانتظار ${rec.review?'مراجعة الأدمن':'المزامنة'}${hadAtt?' · أضف المرفقات بعدها':''}`);
+    return;
   }
   if(attStage.length){
     let ref = null;
@@ -6128,7 +6140,7 @@ async function renderSupplyPanel(box, project){
     const id = Number(b.dataset.supaddsn), ta = box.querySelector(`[data-supta="${id}"]`);
     if(!ta.value.trim()) return;
     b.disabled = true;
-    try{ const r = await crmApi('supply-add-serials', {lineId:id, serials: ta.value}); toast(`تم تسجيل ${r.result.added} رقم`); refresh(); }
+    try{ const r = await crmApi('supply-add-serials', {lineId:id, serials: ta.value}); if(r.queued){ toast(`حُفظ أوفلاين (${r.ref}) — بانتظار ${r.review?'مراجعة الأدمن':'المزامنة'}`); } else { toast(`تم تسجيل ${r.result.added} رقم`); refresh(); } }
     catch(e){ fail(e); b.disabled = false; }
   }));
   box.querySelectorAll('[data-supdeliver],[data-supreturn]').forEach(b=> b.addEventListener('click', async ()=>{
@@ -6137,7 +6149,7 @@ async function renderSupplyPanel(box, project){
     if(!Number.isInteger(q) || q <= 0){ alert('اكتب كمية صحيحة أكبر من صفر'); return; }
     const note = box.querySelector(`[data-supnote="${id}"]`).value;
     b.disabled = true;
-    try{ await crmApi('supply-record-qty', {lineId:id, qty: isRet ? -q : q, note}); toast(isRet?'تم تسجيل المرتجع':'تم تسجيل التسليم'); refresh(); }
+    try{ const rq = await crmApi('supply-record-qty', {lineId:id, qty: isRet ? -q : q, note}); if(rq.queued){ toast(`حُفظ أوفلاين (${rq.ref}) — بانتظار ${rq.review?'مراجعة الأدمن':'المزامنة'}`); } else { toast(isRet?'تم تسجيل المرتجع':'تم تسجيل التسليم'); refresh(); } }
     catch(e){ fail(e); b.disabled = false; }
   }));
   box.querySelectorAll('[data-supedit]').forEach(b=> b.addEventListener('click', async ()=>{
