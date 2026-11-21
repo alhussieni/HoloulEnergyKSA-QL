@@ -978,13 +978,33 @@ function wire(){
       ['model','الموديل (اختياري — مثال: GRH78DW)','text'],
       ['maxPanelsPerString','أقصى عدد ألواح في السلسلة (اختياري — فاضي = حسب الجهد فقط، مثال: 16 بسبب الشاسيه)','number','1']
     ];
-    const PM_OPTIONAL = ['maxPanelsPerString'];   // حقول رقمية مسموح تفضل فاضية
+    const PM_OPTIONAL = ['maxPanelsPerString'];
+    /* بيانات فنية اختيارية للمقارنة بين الألواح (من الداتا شيت): كفاءة % / معامل حرارة Pmax %/°م (سالب) / تدهور سنوي % / تدهور السنة الأولى % */
+    const PM_TECH = [['effPct','الكفاءة % (مثال: 23.5)','0.1'], ['tempCoefPmax','معامل حرارة Pmax %/°م (مثال: -0.29)','0.001'],
+                     ['annualDegPct','التدهور السنوي % (مثال: 0.4)','0.01'], ['firstYearDegPct','تدهور السنة الأولى % (مثال: 1)','0.01']];   // حقول رقمية مسموح تفضل فاضية
+    const PM_WARRANTY_KEYS = ['ضمان المنتج','ضمان الأداء الخطي'];   // بتتدخل من حقلي السنوات مش من خانة المواصفات
+    function pmSpecsToText(specs){
+      return Object.entries(specs||{}).filter(([k])=>!PM_WARRANTY_KEYS.includes(k)).map(([k,val])=>`${k}: ${val}`).join('\n');
+    }
+    function pmYears(txt){ const m = String(txt==null?'':txt).match(/[\d.]+/); return m ? m[0] : ''; }
     function pmOpen(idx){
       pmEditIdx = idx;
       const p = idx==null ? {brand:'',power:'',vimp:'',voc:'',iimp:'',isc:'',priceW:'',model:'',visible:true} : adminConfig.panels[idx];
       const isDef = idx!=null && `${p.brand}|${p.power}`===(adminConfig.defaultPanelKey||'');
       document.getElementById('pm_title').textContent = idx==null ? 'إضافة لوح جديد' : `تعديل لوح — ${p.brand} ${p.power}W`;
       document.getElementById('pm_fields').innerHTML = PM_FIELDS.map(([k,l,t,st])=>`<div class="modal-field"><label>${l}</label><input id="pm_${k}" type="${t}" ${st?`step="${st}" min="0"`:''} value="${pnlEsc(p[k])}"></div>`).join('')
+        + `<div style="margin:8px 0 2px;font-weight:700;font-size:13px">صفحة المنتج (تظهر للعميل في صفحة المنتجات)</div>`
+        + `<div class="modal-field"><label>وصف اللوح</label><textarea id="pm_description" rows="3" style="width:100%" placeholder="لوح ... ثنائي الزجاج، تقنية ...، بكفاءة ...%">${pnlEsc(p.description||'')}</textarea></div>`
+        + `<div class="modal-field"><label>مواصفات اللوح (كل مواصفة في سطر بصيغة: الاسم: القيمة)</label><textarea id="pm_specs" rows="7" style="width:100%;font-size:12.5px" placeholder="الوزن: 32.2 كجم&#10;الأبعاد: 2382×1134×30 مم&#10;عدد الخلايا: 144 (6×24)&#10;الكفاءة (STC): 24.4%">${pnlEsc(pmSpecsToText(p.specs))}</textarea></div>`
+        + `<div class="modal-field"><label>ضمان المنتج (سنوات)</label><input id="pm_warrProduct" type="number" min="0" step="1" value="${pnlEsc(pmYears((p.specs||{})['ضمان المنتج']))}"></div>`
+        + `<div class="modal-field"><label>ضمان الأداء الخطي (سنوات)</label><input id="pm_warrPerf" type="number" min="0" step="1" value="${pnlEsc(pmYears((p.specs||{})['ضمان الأداء الخطي']))}"></div>`
+        + `<div class="modal-field"><label>صورة اللوح (رابط أو ارفع صورة)</label>
+             <input id="pm_image" type="url" placeholder="https://... أو ارفع صورة بالزر تحت" value="${pnlEsc(p.image||'')}">
+             <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
+               <input id="pm_imageFile" type="file" accept="image/png,image/jpeg,image/webp" style="max-width:100%">
+               <span id="pm_imageMsg" style="font-size:12px;color:var(--muted)"></span>
+             </div></div>`
+        + `<div style="margin:8px 0 2px;font-weight:700;font-size:13px">بيانات فنية للمقارنة (اختيارية — من الداتا شيت)</div>` + PM_TECH.map(([k,l,st])=>`<div class="modal-field"><label>${l}</label><input id="pm_${k}" type="number" step="${st}" value="${pnlEsc(p[k]==null?'':p[k])}"></div>`).join('')
         + `<div class="modal-field"><label>الداتا شيت (رابط أو ملف PDF)</label>
              <input id="pm_datasheetUrl" type="url" placeholder="https://... أو ارفع ملف PDF بالزر تحت" value="${pnlEsc(p.datasheetUrl||'')}">
              <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap">
@@ -1014,6 +1034,21 @@ function wire(){
           dsMsg.style.color='#1B6B3A'; dsMsg.textContent='تم الرفع ✔ — اضغط «حفظ اللوح» لتثبيته';
         }catch(e){ dsMsg.style.color='#B0432C'; dsMsg.textContent='تعذر الرفع: '+(e.message||e); }
         dsFile.value='';
+      };
+      const imgFile = document.getElementById('pm_imageFile'), imgMsg = document.getElementById('pm_imageMsg');
+      imgFile.onchange = async ()=>{
+        const f = imgFile.files[0]; if(!f) return;
+        if(!/^image\/(png|jpe?g|webp)$/i.test(f.type)){ imgMsg.style.color='#B0432C'; imgMsg.textContent='الصيغ المسموحة: PNG / JPG / WEBP'; imgFile.value=''; return; }
+        if(f.size > 5*1024*1024){ imgMsg.style.color='#B0432C'; imgMsg.textContent='الحجم أكبر من 5MB'; imgFile.value=''; return; }
+        imgMsg.style.color='var(--muted)'; imgMsg.textContent='جارِ الرفع...';
+        try{
+          const imageBase64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsDataURL(f); });
+          const d = await callEngine('upload-product-image', { adminToken: adminTokenMem, imageBase64, filename: f.name });
+          if(!d || !d.url) throw new Error('فشل الرفع');
+          document.getElementById('pm_image').value = d.url;
+          imgMsg.style.color='#1B6B3A'; imgMsg.textContent='تم الرفع ✔ — اضغط «حفظ اللوح» لتثبيته';
+        }catch(e){ imgMsg.style.color='#B0432C'; imgMsg.textContent='تعذر الرفع: '+(e.message||e); }
+        imgFile.value='';
       };
       pmOverlay.style.display = 'flex';
       setTimeout(()=>{ const f=document.getElementById('pm_brand'); if(f) f.focus(); }, 50);
@@ -1063,6 +1098,34 @@ function wire(){
       if(adminConfig.panels.some((p,i)=>i!==pmEditIdx && `${p.brand}|${p.power}`===key)) return showErr('اللوح ده موجود بالفعل (نفس البراند والقدرة)');
       const dsUrl = v('datasheetUrl');
       if(dsUrl && !/^https?:\/\//i.test(dsUrl)) return showErr('رابط الداتا شيت لازم يبدأ بـ https://');
+      if(pmEditIdx==null && !dsUrl) return showErr('الداتا شيت إلزامية عند إضافة لوح جديد (ارفع ملف PDF أو اكتب الرابط)');
+      const imgUrl = v('image');
+      if(imgUrl && !/^https?:\/\//i.test(imgUrl)) return showErr('رابط الصورة لازم يبدأ بـ https://');
+      const description = document.getElementById('pm_description').value.trim();
+      const specs = {};
+      for(const line of document.getElementById('pm_specs').value.split('\n')){
+        const t = line.trim(); if(!t) continue;
+        const i = t.search(/[:：]/);
+        if(i<=0 || !t.slice(i+1).trim()) return showErr('كل مواصفة لازم تكون بصيغة «الاسم: القيمة» — السطر: '+t.slice(0,40));
+        const k = t.slice(0,i).trim();
+        if(PM_WARRANTY_KEYS.includes(k)) return showErr('الضمان بيتكتب في خانتي الضمان (سنوات) مش في المواصفات');
+        specs[k] = t.slice(i+1).trim();
+      }
+      for(const [id,key,l] of [['warrProduct','ضمان المنتج','ضمان المنتج'],['warrPerf','ضمان الأداء الخطي','ضمان الأداء الخطي']]){
+        const x = v(id); if(x==='') continue;
+        if(!isFinite(+x) || +x<=0 || +x>50) return showErr(l+': اكتب عدد سنوات صحيح');
+        specs[key] = (+x)+' سنة';
+      }
+      const tech = {}, techEmpty = [];
+      for(const [k,l] of PM_TECH){
+        const x = v(k);
+        if(x===''){ techEmpty.push(k); continue; }
+        if(!isFinite(+x)) return showErr('رقم غير صالح في: '+l);
+        if(k==='effPct' && (+x<=0 || +x>100)) return showErr('الكفاءة لازم تكون بين 0 و 100');
+        if(k==='tempCoefPmax' && +x>0) return showErr('معامل حرارة Pmax بيكون سالب (مثال: -0.29)');
+        if((k==='annualDegPct' || k==='firstYearDegPct') && (+x<0 || +x>10)) return showErr('نسبة التدهور لازم تكون بين 0 و 10');
+        tech[k] = +x;
+      }
       const wantDefault = document.getElementById('pm_default').checked;
       let oldKey = null;
       if(pmEditIdx!=null){
@@ -1073,10 +1136,18 @@ function wire(){
       harvestAdminInputs();
       const rec = { brand, power:n.power, vimp:n.vimp, voc:n.voc, iimp:n.iimp, isc:n.isc, priceW:n.priceW, model:v('model'), datasheetUrl:dsUrl, visible:document.getElementById('pm_visible').checked };
       if(n.maxPanelsPerString) rec.maxPanelsPerString = n.maxPanelsPerString;
+      Object.assign(rec, tech);
+      if(description) rec.description = description;
+      if(Object.keys(specs).length) rec.specs = specs;
+      if(imgUrl) rec.image = imgUrl;
       if(pmEditIdx==null) adminConfig.panels.push(rec);
       else{
         Object.assign(adminConfig.panels[pmEditIdx], rec);   // بيحافظ على باقي بيانات اللوح (داتا شيت/صورة...)
         if(!n.maxPanelsPerString) delete adminConfig.panels[pmEditIdx].maxPanelsPerString;   // فاضي = شيل الحد
+        techEmpty.forEach(k=>{ delete adminConfig.panels[pmEditIdx][k]; });   // فاضي = شيل القيمة
+        if(!description) delete adminConfig.panels[pmEditIdx].description;
+        if(!Object.keys(specs).length) delete adminConfig.panels[pmEditIdx].specs;
+        if(!imgUrl) delete adminConfig.panels[pmEditIdx].image;
       }
       if(wantDefault) adminConfig.defaultPanelKey = key;
       else if(oldKey && adminConfig.defaultPanelKey===oldKey) adminConfig.defaultPanelKey = key;   // لو كان هو الافتراضي واتغيّر اسمه

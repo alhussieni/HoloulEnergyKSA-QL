@@ -5,7 +5,14 @@
    ======================================================================= */
 const CMP_TOGGLE_LABELS = { panel:'ألواح شمسية', inverter:'انفرتر', ip65:'حماية IP65', combiner:'لوحة تجميع', cables:'كابلات DC', mc4:'وصلات MC4', structure:'شاسيه/حوامل', concrete:'خرسانة', earth:'تأريض', reactor:'ريأكتور', civilworks:'أعمال مدنية', elecworks:'أعمال الكهرباء', supply:'نقل وتوريد' };
 const COMPARE_FN = SUPABASE_URL + '/functions/v1/compare-panels';
-let cmpData = null, cmpScope = 'current', cmpLoading = false, cmpError = null, cmpSort = 'price', cmpHideCosts = true;   // مخفية افتراضيًا؛ زر «معلومات إضافية» يفتحها
+let cmpData = null, cmpScope = 'current', cmpLoading = false, cmpError = null, cmpSort = 'price', cmpHideCosts = true, cmpTech = false;   // «تفاصيل فنية» مخفية افتراضيًا (الجدول عريض)
+/* أرقام فنية للمقارنة — 30 سنة = ‎100 − تدهور السنة الأولى − (التدهور السنوي × 29)‎ ، وفقد الحرارة عند خلية 65°م = |معامل Pmax| × 40 */
+function cmpTechVals(t){
+  if(!t) return {};
+  const n = x=>(x==null||!isFinite(x))?null:+x;
+  const eff=n(t.effPct), coef=n(t.tempCoefPmax), ann=n(t.annualDegPct), first=n(t.firstYearDegPct);
+  return { eff, coef, ann, heat: coef==null?null:Math.abs(coef)*40, after30: (ann==null)?null:(100-(first==null?1:first)-ann*29) };
+}   // مخفية افتراضيًا؛ زر «معلومات إضافية» يفتحها
 
 /* موظفو الشركة فقط: مندوب مسجّل الدخول أو أدمن. العميل (guest) مفيش عنده توكن → مفيش مقارنة.
    السيرفر بيتحقق من التوكن بنفسه (compare-panels بيرفض أي طلب من غير توكن صالح)، والإخفاء هنا للشكل بس. */
@@ -63,6 +70,7 @@ function cmpDraw(){
   const q = s=>o.querySelector(s);
   q('#cmpX').onclick = cmpClose;
   o.querySelectorAll('[data-cmpscope]').forEach(b=>b.onclick = ()=>{ cmpScope = b.dataset.cmpscope; cmpDraw(); });
+  const tb = q('#cmpTechBtn'); if(tb) tb.onclick = ()=>{ cmpTech = !cmpTech; cmpDraw(); };
   o.querySelectorAll('[data-cmpsort]').forEach(b=>b.onclick = ()=>{ cmpSort = b.dataset.cmpsort; cmpDraw(); });
   const tgl = q('#cmpToggleCosts'); if(tgl) tgl.onclick = ()=>{ cmpHideCosts = !cmpHideCosts; cmpDraw(); };
   const unlock = q('#cmpUnlock');
@@ -110,8 +118,16 @@ function cmpBody(){
       <span style="flex:1"></span>${hideBtn}</div>` : '';
 
   const th = t=>`<th style="white-space:nowrap">${t}</th>`;
+  const techOn = cmpTech && rows.some(r=>r.tech);
+  const tv = rows.map(r=>cmpTechVals(r.tech));
+  const best = (key, hi)=>{ const xs = tv.map(t=>t[key]).filter(x=>x!=null); return xs.length ? (hi ? Math.max(...xs) : Math.min(...xs)) : null; };
+  const bEff = best('eff',true), bHeat = best('heat',false), bAnn = best('ann',false), b30 = best('after30',true);
+  const techCols = techOn ? th('الكفاءة') + th('معامل الحرارة (Pmax)') + th('فقد الحرارة عند 65°م') + th('التدهور السنوي') + th('الإنتاج بعد 30 سنة') : '';
+  const techCell = (v, best, txt, hiGood)=>`<td class="num"${(v!=null && best!=null && v===best && rows.length>1) ? ' style="font-weight:800;color:#1B6B3A"' : ''}>${v==null ? '—' : txt}</td>`;
+  const techBtn = `<button type="button" class="btn ghost small" id="cmpTechBtn" aria-pressed="${cmpTech?'true':'false'}" style="margin-bottom:10px;${cmpTech?'font-weight:800':''}">🔬 تفاصيل فنية (كفاءة · حرارة · تدهور)</button>`;
   const costCols = admin ? th('التكلفة') + th('الهامش') + th('الهامش %') : '';
-  const body = rows.map(r=>{
+  const body = rows.map((r,ri)=>{
+    const T = tv[ri];
     const s = r.scopes[sc];
     const isMin = s.final === minF, isMax = s.final === maxF && rows.length > 1;
     const diff = s.final - minF;
@@ -128,6 +144,7 @@ function cmpBody(){
       <td class="num">${f0(r.Voc)}</td>
       <td class="num">${f0(r.Iimp)}</td>
       <td class="num">${r.combinerInputs ?? '—'}</td>
+      ${techOn ? techCell(T.eff,bEff,T.eff!=null?T.eff.toFixed(1)+'%':'') + techCell(T.coef,null,T.coef!=null?T.coef.toFixed(2)+'%/°م':'') + techCell(T.heat,bHeat,T.heat!=null?T.heat.toFixed(1)+'%':'') + techCell(T.ann,bAnn,T.ann!=null?T.ann.toFixed(2)+'%':'') + techCell(T.after30,b30,T.after30!=null?T.after30.toFixed(1)+'%':'') : ''}
       ${costTds}
       <td class="num">${f0(s.net)}</td>
       <td class="num" style="font-weight:800">${f0(s.final)}</td>
@@ -142,11 +159,11 @@ function cmpBody(){
     ? (admin ? `<div class="notice-row" style="margin-top:8px">${infoIcon(`التكلفة = تكلفة البنود المفعّلة قبل الضريبة · الهامش = السعر قبل الضريبة − التكلفة (بعد خصم الفئة والخصم الخاص الحاليين). ظاهرة لجلسة الأدمن فقط.`)}</div>` : '')
     : `<div style="margin-top:8px"><button type="button" class="btn ghost small" id="cmpUnlock">ⓘ معلومات إضافية</button></div>`;
 
-  return head + seg + enabledBar + sortBar + `
+  return head + seg + enabledBar + techBtn + sortBar + `
     <div style="overflow-x:auto"><table class="bom" style="width:100%;font-size:12.5px">
-      <thead><tr>${th('اللوح')}${th('العدد')}${th('KW')}${th('ألواح×سلاسل')}${th('Voc (V)')}${th('Imp (A)')}${th('لوحة التجميع')}${costCols}${th('قبل الضريبة')}${th('الإجمالي شامل الضريبة')}${th('ريال/KW')}${th('الفرق عن الأوفر')}<th></th></tr></thead>
+      <thead><tr>${th('اللوح')}${th('العدد')}${th('KW')}${th('ألواح×سلاسل')}${th('Voc (V)')}${th('Imp (A)')}${th('لوحة التجميع')}${techCols}${costCols}${th('قبل الضريبة')}${th('الإجمالي شامل الضريبة')}${th('ريال/KW')}${th('الفرق عن الأوفر')}<th></th></tr></thead>
       <tbody>${body}</tbody></table></div>
     ${warns}
-    <div class="notice-row" style="margin-top:8px">${infoIcon(`الأسعار بالريال · الانفرتر ${esc(cmpData.invKW != null ? cmpData.invKW + ' KW' : '')} ثابت لكل الألواح · الحساب بنفس إعدادات الشاشة الحالية (إعدادات متقدمة/خصم).`)}</div>
+    <div class="notice-row" style="margin-top:8px">${infoIcon(`الأسعار بالريال · الانفرتر ${esc(cmpData.invKW != null ? cmpData.invKW + ' KW' : '')} ثابت لكل الألواح · الحساب بنفس إعدادات الشاشة الحالية (إعدادات متقدمة/خصم).${techOn ? ' · الإنتاج بعد 30 سنة والتدهور حسب ضمان الأداء في الداتا شيت · فقد الحرارة = انخفاض القدرة عند حرارة خلية 65°م مقارنة بـ 25°م · الأخضر = الأفضل.' : ''}`)}</div>
     ${adminHint}`;
 }

@@ -13,6 +13,8 @@
 //   Sees cost basis, profit and margin % unless `showCosts` is false.
 // - No valid token -> 401, before any pricing work is done.
 
+import { createClient } from "npm:@supabase/supabase-js@2";
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -62,7 +64,20 @@ export interface CompareAuth { adminToken?: string; repToken?: string; showCosts
 
 const UNAUTH = { status: 401, body: { error: "هذه الخاصية لموظفي الشركة فقط — الرجاء تسجيل الدخول" } };
 
-export async function buildComparison(callEngine: CallEngine, input: any, auth: CompareAuth) {
+// البيانات الفنية لكل لوح (كفاءة / معامل حرارة / تدهور سنوي) من إعدادات الألواح — للعرض فقط، مفيش أي حساب سعر هنا.
+export type GetPanels = () => Promise<any[]>;
+function numOrNull(x: any): number | null { const n = Number(x); return x === "" || x == null || !isFinite(n) ? null : n; }
+function techOf(p: any) {
+  if (!p) return null;
+  return {
+    effPct: numOrNull(p.effPct),
+    tempCoefPmax: numOrNull(p.tempCoefPmax),
+    annualDegPct: numOrNull(p.annualDegPct),
+    firstYearDegPct: numOrNull(p.firstYearDegPct),
+  };
+}
+
+export async function buildComparison(callEngine: CallEngine, input: any, auth: CompareAuth, getPanels?: GetPanels) {
   // 0) AUTH GATE — nothing is computed for anyone who is not company staff.
   let admin = false;
   const baseInput = { ...input, toggles: SCOPE_TOGGLES.materials };
@@ -116,6 +131,14 @@ export async function buildComparison(callEngine: CallEngine, input: any, auth: 
     row.scopes[scope] = scopeSummary(q, admin);
   }
 
+  // أرقام فنية للمقارنة (لو القراءة فشلت المقارنة تكمل عادي من غيرها)
+  if (getPanels) {
+    try {
+      const allPanels = await getPanels();
+      for (const r of Object.values(rows) as any[]) r.tech = techOf(allPanels[r.idx]);
+    } catch { /* optional */ }
+  }
+
   const list = Object.values(rows).filter((r: any) => r.scopes.materials && r.scopes.turnkey && r.scopes[SCOPE_CURRENT]);
   return { status: 200, body: { admin, hp: input.hp, invKW: list[0]?.invKW ?? null, enabled, panels: list } };
 }
@@ -142,12 +165,19 @@ if (import.meta.main !== false && typeof Deno !== "undefined") {
       return { status: res.status, data };
     };
 
+    const getPanels: GetPanels = async () => {
+      const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      const { data, error } = await sb.from("pricing_config").select("data").eq("id", 1).single();
+      if (error) throw error;
+      return Array.isArray(data?.data?.panels) ? data.data.panels : [];
+    };
+
     try {
       const out = await buildComparison(callEngine, body.input, {
         adminToken: body.adminToken || undefined,
         repToken: body.token || undefined,
         showCosts: body.showCosts,
-      });
+      }, getPanels);
       return json(out.body, out.status);
     } catch (e) {
       return json({ error: (e as Error).message || "compare failed" }, 500);
