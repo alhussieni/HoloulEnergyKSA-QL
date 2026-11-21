@@ -461,6 +461,15 @@ body.printing-cert #certPrintArea{display:block!important;}
 .taxBox .taxOpts label,.taxBox .taxChk{display:flex;align-items:center;gap:6px;margin:0;font-weight:600;cursor:pointer;}
 .taxBox input[type=radio],.taxBox input[type=checkbox]{width:auto;margin:0;}
 .taxBox .taxPrev{margin:6px 0 0;color:var(--ink);font-weight:600;}
+
+/* ---------- team: tasks / distribution / performance ---------- */
+.tkTag{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:var(--sand);color:var(--night);border:1px solid var(--line);}
+.tkTag.bad{background:#fdeceb;border-color:#f3b9b0;color:var(--bad);}
+.tkTag.warn{background:#fff6dd;border-color:#f1d68a;color:#8a6200;}
+.tkTag.good{background:var(--good-tint,#DFF3EA);border-color:transparent;color:var(--good,#0FA98D);}
+.tkTag.mute{background:#f3f5f4;color:var(--muted);}
+table.tkTbl tbody tr{cursor:default;} table.tkTbl tr.tkOver td{background:#fff5f4;}
+.tkRepRow{display:flex;gap:8px;align-items:center;margin:4px 0;font-weight:500;}
 </style>
 <script src="assets/js/holoul-auth.js"></script>
 </head>
@@ -502,6 +511,12 @@ body.printing-cert #certPrintArea{display:block!important;}
         <button data-tab="pipeline"><span class="ic">🎯</span>الصفقات</button>
         <button data-tab="quotes"><span class="ic">📄</span>عروض الأسعار</button>
         <button data-tab="invoices"><span class="ic">🧾</span>الفواتير</button>
+      </div>
+      <div class="grp">
+        <div class="gt">فريق العمل</div>
+        <button data-tab="tasks" id="tasksTabBtn"><span class="ic">✅</span>المهام</button>
+        <button data-tab="distribute" id="distributeTabBtn" class="hidden"><span class="ic">🧭</span>توزيع العملاء</button>
+        <button data-tab="team" id="teamTabBtn" class="hidden"><span class="ic">📈</span>أداء الفريق</button>
       </div>
       <div class="grp">
         <div class="gt">التنفيذ</div>
@@ -743,6 +758,9 @@ body.printing-cert #certPrintArea{display:block!important;}
         <div id="staffFormBox"></div><div id="staffBox"><div class="loadingNote">بيحمّل...</div></div></div>
     </section>
 
+    <section id="view-tasks" class="view"><div id="tasksBox"></div></section>
+    <section id="view-distribute" class="view"><div id="distributeBox"></div></section>
+    <section id="view-team" class="view"><div id="teamBox"></div></section>
     <section id="view-audit" class="view">
       <div class="card" id="undoCard">
         <h3><span class="lbl">↩︎ الرجوع عن آخر 6 إضافات / تعديلات (للأدمن فقط)</span></h3>
@@ -765,6 +783,7 @@ body.printing-cert #certPrintArea{display:block!important;}
   </main>
 </div>
 
+<div class="overlay" id="tkOverlay"><div class="modal" id="tkModal" style="max-width:600px;"></div></div>
 <div class="overlay" id="custOverlay"><div class="modal" id="custModal"></div></div>
 <div class="overlay" id="mergeOverlay"><div class="modal" id="mergeModal" style="max-width:560px;"></div></div>
 
@@ -824,6 +843,7 @@ const UNDO_ACTIONS = new Set(['admin-undo-list','admin-undo-apply']);
 const PROCUREMENT_FN = SUPABASE_URL + '/functions/v1/finance-procurement'; // طلبات عروض الأسعار وكشف حساب المورد (أدمن فقط) — actions بتبدأ بـ proc-
 const PURCHASING_FN = SUPABASE_URL + '/functions/v1/finance-purchasing'; // المشتريات: أوامر الشراء وفواتير الموردين (أدمن فقط) — actions بتبدأ بـ purchasing-
 const CHK_FN = SUPABASE_URL + '/functions/v1/checklist-api'; // فحص التشغيل والتسليم — actions بتبدأ بـ chk-
+const TASKS_FN = SUPABASE_URL + '/functions/v1/tasks-api'; // المهام وتوزيع العملاء وأداء الفريق — actions بتبدأ بـ tasks-
 const STAFF_FN = SUPABASE_URL + '/functions/v1/staff-api'; // الأدوار والموظفين — actions بتبدأ بـ staff- / roles-
 const EXTRAS_FN = SUPABASE_URL + '/functions/v1/finance-extras'; // أعمال إضافية على المشروع (أمر تغيير) — أدمن فقط — actions بتبدأ بـ extras-
 const ATTACH_FN = SUPABASE_URL + '/functions/v1/finance-attachments'; // مرفقات فواتير الموردين (صور / PDF) — أدمن فقط — actions بتبدأ بـ attach-
@@ -882,7 +902,7 @@ function optHtml(list, current){
 
 async function crmApi(action, payload={}){
   const authField = SESSION.role === 'admin' ? {adminToken: SESSION.token} : {token: SESSION.token};
-  const res = await fetch(action.startsWith('chk-') ? CHK_FN : (action.startsWith('identity-')||action==='address-set') ? IDENTITY_FN : COMPANY_ACTIONS.has(action) ? COMPANY_FN : action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : (action.startsWith('staff-')||action.startsWith('roles-')) ? STAFF_FN : action.startsWith('extras-') ? EXTRAS_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
+  const res = await fetch(action.startsWith('tasks-') ? TASKS_FN : action.startsWith('chk-') ? CHK_FN : (action.startsWith('identity-')||action==='address-set') ? IDENTITY_FN : COMPANY_ACTIONS.has(action) ? COMPANY_FN : action.startsWith('supply-') ? SUPPLY_FN : UNDO_ACTIONS.has(action) ? UNDO_FN : TREASURY_EDIT_ACTIONS.has(action) ? TREASURY_EDIT_FN : (action.startsWith('staff-')||action.startsWith('roles-')) ? STAFF_FN : action.startsWith('extras-') ? EXTRAS_FN : action.startsWith('attach-') ? ATTACH_FN : action.startsWith('proc-') ? PROCUREMENT_FN : action.startsWith('purchasing-') ? PURCHASING_FN : action.startsWith('treasury-') ? TREASURY_FN : action.startsWith('finance-') ? FINANCE_FN : WARRANTY_ACTIONS.has(action) ? WARRANTY_FN : (INVOICE_ACTIONS.has(action) ? INVOICE_FN : (QUOTES_ACTIONS.has(action) ? QUOTES_FN : CRM_FN)), {
     method:"POST",
     headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+SUPABASE_ANON_KEY, "apikey":SUPABASE_ANON_KEY },
     body: JSON.stringify(Object.assign({action}, authField, payload))
@@ -927,6 +947,8 @@ async function enterApp(){
     document.getElementById('segmentsTabBtn').classList.remove('hidden');
     document.getElementById('financeTabBtn').classList.remove('hidden');
     document.getElementById('purchasesTabBtn').classList.remove('hidden');
+    document.getElementById('distributeTabBtn').classList.remove('hidden');
+    document.getElementById('teamTabBtn').classList.remove('hidden');
   }
   try{
     const s = await crmApi('admin-crm-settings');
@@ -995,8 +1017,355 @@ document.getElementById('tabsNav').addEventListener('click', (e)=>{
   if(tab==='segments') loadSegments();
   if(tab==='finance') loadFinance();
   if(tab==='purchases') loadPurchases();
+  if(tab==='tasks') loadTasksTab();
+  if(tab==='distribute') loadDistributeTab();
+  if(tab==='team') loadTeamTab();
 });
 
+
+/* ============ TEAM: المهام + توزيع العملاء + أداء الفريق (tasks-api) ============ */
+const TK_TYPES = {general:'عام', call:'اتصال', visit:'زيارة', survey:'معاينة', quote:'عرض سعر', follow_up:'متابعة', delivery:'توريد', maintenance:'صيانة', other:'أخرى'};
+const TK_STATUS = {open:'جديدة', in_progress:'جارية', done:'منتهية', cancelled:'ملغاة'};
+const TK_PRIO = {low:'منخفضة', normal:'عادية', high:'عالية', urgent:'عاجلة'};
+const TK_CPRIO = {hot:'🔥 ساخن', warm:'دافئ', cold:'بارد'};
+const TK = { users: [], userMap: {}, presetAssignee: '' };
+
+const tkIsAdmin = () => !!SESSION && SESSION.role === 'admin';
+const tkPermSet = () => new Set(Array.isArray(SESSION && SESSION.permissions) ? SESSION.permissions : []);
+const tkCan = (p) => tkIsAdmin() || tkPermSet().has(p);
+const tkFmtDt = (v) => { if(!v) return '—'; try{ return new Date(v).toLocaleString('ar-EG',{dateStyle:'short', timeStyle:'short'}); }catch(e){ return String(v).slice(0,16).replace('T',' '); } };
+const tkToLocalInput = (v) => { if(!v) return ''; const d = new Date(v), p = n => String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes()); };
+const tkFromLocalInput = (v) => v ? new Date(v).toISOString() : '';
+const tkPct = (v) => v == null ? '—' : v + '%';
+const tkNum = (v) => v == null ? '—' : v;
+
+function tkClose(){ document.getElementById('tkOverlay').classList.remove('show'); }
+function tkHead(t){ return '<div class="mhead"><div><h2>'+t+'</h2></div><button class="closeX" type="button" data-tk-close>×</button></div>'; }
+function tkShell(html){
+  const m = document.getElementById('tkModal');
+  m.innerHTML = html;
+  document.getElementById('tkOverlay').classList.add('show');
+  m.querySelectorAll('[data-tk-close]').forEach(b => b.onclick = tkClose);
+  return m;
+}
+async function tkLoadUsers(){
+  const d = await crmApi('tasks-assignable-users');
+  TK.users = d.users || [];
+  TK.userMap = {};
+  TK.users.forEach(u => { TK.userMap[u.kind+'|'+u.username] = u; });
+  return TK.users;
+}
+const tkUserName = (t) => { const u = TK.userMap[t.assignee_kind+'|'+t.assignee_username]; return escapeHtml((u && u.display_name) || t.assignee_username); };
+function tkTag(txt, cls){ return '<span class="tkTag '+(cls||'')+'">'+escapeHtml(txt)+'</span>'; }
+function tkPrioTag(p){ return tkTag(TK_PRIO[p]||p, p==='urgent'?'bad':(p==='high'?'warn':'mute')); }
+function tkStatusTag(s){ return tkTag(TK_STATUS[s]||s, s==='done'?'good':(s==='in_progress'?'warn':(s==='cancelled'?'mute':''))); }
+
+/* ---------- جدول المهام ---------- */
+function tkTasksTable(tasks, o){
+  o = o || {};
+  if(!tasks.length) return '<div class="card"><div class="emptyNote">'+(o.empty||'مفيش مهام.')+'</div></div>';
+  const rows = tasks.map(t => {
+    const c = t.customers;
+    const cust = c ? (o.noLinks ? escapeHtml(c.name||c.phone||('#'+c.id)) : '<a href="#" data-tk-cust="'+c.id+'">'+escapeHtml(c.name||c.phone||('#'+c.id))+'</a>') : '<span class="emptyNote">—</span>';
+    const due = t.due_at ? (t.overdue ? tkTag(tkFmtDt(t.due_at)+' · متأخرة','bad') : escapeHtml(tkFmtDt(t.due_at))) : '—';
+    const active = t.status === 'open' || t.status === 'in_progress';
+    const b = (act, label, cls) => '<button class="btn small '+(cls||'ghost')+'" type="button" data-tk-act="'+act+'" data-id="'+t.id+'">'+label+'</button>';
+    const acts = [];
+    if(t.status === 'open') acts.push(b('start','▶ بدأت'));
+    if(active) acts.push(b('done','✔ تمت',''));
+    if(o.team){
+      acts.push(b('edit','✏️'));
+      if(tkCan('tasks.assign')) acts.push(b('reassign','🔁 نقل'));
+    }
+    if(active) acts.push(b('cancel','✖'));
+    if(o.team && tkIsAdmin()) acts.push(b('delete','🗑'));
+    if(t.status === 'done' && t.completion_note) acts.push('<span class="emptyNote" title="'+escapeHtml(t.completion_note)+'">📝</span>');
+    return '<tr'+(t.overdue?' class="tkOver"':'')+'><td><b>'+escapeHtml(t.title)+'</b>'+(t.description?'<div class="emptyNote">'+escapeHtml(t.description).slice(0,140)+'</div>':'')+'</td>'
+      + (o.team ? '<td>'+tkUserName(t)+'</td>' : '')
+      + '<td>'+cust+'</td><td>'+escapeHtml(TK_TYPES[t.task_type]||t.task_type)+'</td><td>'+tkPrioTag(t.priority)+'</td><td>'+due+'</td><td>'+tkStatusTag(t.status)+'</td>'
+      + '<td style="white-space:nowrap;">'+acts.join(' ')+'</td></tr>';
+  }).join('');
+  return '<div class="card" style="padding:0;overflow:auto;"><table class="admtable tkTbl"><thead><tr><th>المهمة</th>'+(o.team?'<th>المسؤول</th>':'')+'<th>العميل</th><th>النوع</th><th>الأولوية</th><th>الموعد</th><th>الحالة</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+function tkBindTable(box, tasks, reload){
+  const byId = {}; tasks.forEach(t => byId[t.id] = t);
+  box.querySelectorAll('[data-tk-cust]').forEach(a => a.onclick = (e) => { e.preventDefault(); if(typeof openCustomer === 'function') openCustomer(Number(a.dataset.tkCust)); });
+  box.querySelectorAll('[data-tk-act]').forEach(btn => btn.onclick = async () => {
+    const t = byId[btn.dataset.id]; if(!t) return;
+    const act = btn.dataset.tkAct;
+    try{
+      if(act === 'start'){ await crmApi('tasks-set-status',{taskId:t.id, status:'in_progress'}); toast('بدأت المهمة'); reload(); }
+      else if(act === 'done'){ tkDoneDialog(t, reload); }
+      else if(act === 'cancel'){ if(confirm('إلغاء المهمة «'+t.title+'»؟')){ await crmApi('tasks-set-status',{taskId:t.id, status:'cancelled'}); toast('اتلغت المهمة'); reload(); } }
+      else if(act === 'edit'){ tkTaskForm({task:t}, reload); }
+      else if(act === 'reassign'){ tkReassignDialog(t, reload); }
+      else if(act === 'delete'){ if(confirm('حذف المهمة «'+t.title+'» نهائيًا؟')){ await crmApi('tasks-delete',{taskId:t.id}); toast('اتحذفت المهمة'); reload(); } }
+    }catch(e){ toast(e.message); }
+  });
+}
+
+/* ---------- نوافذ: إنهاء / نقل / مهمة جديدة أو تعديل ---------- */
+function tkDoneDialog(t, reload){
+  const m = tkShell(tkHead('✔ إنهاء المهمة')+'<div class="emptyNote" style="margin-bottom:8px;">'+escapeHtml(t.title)+'</div><label>ملاحظة الإنجاز (اختياري)</label><textarea id="tkNote" rows="3" placeholder="إيه اللي حصل؟ نتيجة الاتصال / الزيارة..."></textarea><div style="display:flex;gap:8px;margin-top:12px;"><button class="btn" id="tkOk" type="button">تأكيد الإنهاء</button><button class="btn ghost" data-tk-close type="button">إلغاء</button></div>');
+  m.querySelector('#tkOk').onclick = async () => {
+    try{ await crmApi('tasks-set-status',{taskId:t.id, status:'done', note:m.querySelector('#tkNote').value}); tkClose(); toast('تم إنهاء المهمة ✔'); reload(); }catch(e){ toast(e.message); }
+  };
+}
+async function tkReassignDialog(t, reload){
+  try{ if(!TK.users.length) await tkLoadUsers(); }catch(e){ return toast(e.message); }
+  const opts = TK.users.map(u => '<option value="'+u.kind+'|'+escapeHtml(u.username)+'" '+((u.kind===t.assignee_kind&&u.username===t.assignee_username)?'selected':'')+'>'+escapeHtml(u.display_name)+(u.kind==='rep'?' (مندوب)':' (موظف)')+' — مفتوحة: '+u.open_tasks+'</option>').join('');
+  const m = tkShell(tkHead('🔁 نقل المهمة لموظف آخر')+'<div class="emptyNote" style="margin-bottom:8px;">'+escapeHtml(t.title)+'</div><label>المسؤول الجديد</label><select id="tkWho">'+opts+'</select><div style="display:flex;gap:8px;margin-top:12px;"><button class="btn" id="tkOk" type="button">نقل</button><button class="btn ghost" data-tk-close type="button">إلغاء</button></div>');
+  m.querySelector('#tkOk').onclick = async () => {
+    const [kind, username] = m.querySelector('#tkWho').value.split('|');
+    try{ await crmApi('tasks-reassign',{taskId:t.id, assignee:username, assigneeKind:kind}); tkClose(); toast('اتنقلت المهمة'); reload(); }catch(e){ toast(e.message); }
+  };
+}
+async function tkTaskForm(o, reload){
+  o = o || {}; const t = o.task || null;
+  const canAssign = tkCan('tasks.assign');
+  if(canAssign && !t){ try{ if(!TK.users.length) await tkLoadUsers(); }catch(e){ return toast(e.message); } }
+  const sel = (map, cur) => Object.keys(map).map(k => '<option value="'+k+'" '+(k===cur?'selected':'')+'>'+map[k]+'</option>').join('');
+  const assignee = (canAssign && !t) ? '<div><label>المسؤول عن المهمة</label><select id="tkWho">'+TK.users.map(u => '<option value="'+u.kind+'|'+escapeHtml(u.username)+'" '+((o.assignee===u.kind+'|'+u.username)?'selected':'')+'>'+escapeHtml(u.display_name)+(u.kind==='rep'?' (مندوب)':' (موظف)')+'</option>').join('')+'</select></div>' : '';
+  const custBlock = t ? '' : '<div style="margin-top:10px;"><label>ربط بعميل (اختياري)</label><div style="display:flex;gap:6px;"><input type="text" id="tkCustQ" placeholder="اسم أو رقم العميل" value="'+escapeHtml(o.customerName||'')+'"><button class="btn ghost small" id="tkCustGo" type="button">بحث</button></div><select id="tkCustSel" style="margin-top:6px;'+(o.customerId?'':'display:none;')+'">'+(o.customerId?'<option value="'+o.customerId+'" selected>'+escapeHtml(o.customerName||('#'+o.customerId))+'</option>':'')+'</select></div>';
+  const m = tkShell(tkHead(t?'✏️ تعديل المهمة':'➕ مهمة جديدة')
+    + '<label>عنوان المهمة</label><input type="text" id="tkTitle" maxlength="200" value="'+escapeHtml(t?t.title:'')+'" placeholder="مثال: الاتصال بالعميل وتحديد موعد معاينة">'
+    + '<label style="margin-top:10px;display:block;">التفاصيل</label><textarea id="tkDesc" rows="3">'+escapeHtml(t&&t.description||'')+'</textarea>'
+    + '<div class="grid2" style="margin-top:10px;"><div><label>النوع</label><select id="tkType">'+sel(TK_TYPES, t?t.task_type:'general')+'</select></div><div><label>الأولوية</label><select id="tkPrio">'+sel(TK_PRIO, t?t.priority:'normal')+'</select></div>'
+    + '<div><label>الموعد</label><input type="datetime-local" id="tkDue" value="'+tkToLocalInput(t&&t.due_at)+'"></div>'+assignee+'</div>'
+    + custBlock
+    + '<div style="display:flex;gap:8px;margin-top:14px;"><button class="btn" id="tkOk" type="button">'+(t?'حفظ':'إنشاء المهمة')+'</button><button class="btn ghost" data-tk-close type="button">إلغاء</button></div>');
+  if(!t){
+    m.querySelector('#tkCustGo').onclick = async () => {
+      const q = m.querySelector('#tkCustQ').value.trim(); if(q.length < 2) return toast('اكتب حرفين على الأقل');
+      try{
+        const d = await crmApi('admin-crm-list-customers',{search:q});
+        const cs = (d.customers||[]).slice(0,10), s = m.querySelector('#tkCustSel');
+        s.innerHTML = '<option value="">— بدون ربط —</option>' + cs.map(c => '<option value="'+c.id+'">'+escapeHtml((c.name||'بدون اسم')+' · '+(c.phone||''))+'</option>').join('');
+        s.style.display = '';
+        if(!cs.length) toast('مفيش عملاء بالاسم/الرقم ده');
+      }catch(e){ toast(e.message); }
+    };
+  }
+  m.querySelector('#tkOk').onclick = async () => {
+    const title = m.querySelector('#tkTitle').value.trim(); if(!title) return toast('اكتب عنوان المهمة');
+    const due = tkFromLocalInput(m.querySelector('#tkDue').value);
+    try{
+      if(t){
+        await crmApi('tasks-update',{taskId:t.id, fields:{title, description:m.querySelector('#tkDesc').value, task_type:m.querySelector('#tkType').value, priority:m.querySelector('#tkPrio').value, due_at:due||null}});
+      }else{
+        const p = {title, description:m.querySelector('#tkDesc').value, taskType:m.querySelector('#tkType').value, priority:m.querySelector('#tkPrio').value, dueAt:due||undefined};
+        const w = m.querySelector('#tkWho'); if(w){ const [k,u] = w.value.split('|'); p.assignee = u; p.assigneeKind = k; }
+        const cs = m.querySelector('#tkCustSel'); if(cs && cs.value) p.customerId = Number(cs.value);
+        await crmApi('tasks-create', p);
+      }
+      tkClose(); toast(t?'اتحفظت المهمة':'اتعملت المهمة ✔'); reload();
+    }catch(e){ toast(e.message); }
+  };
+}
+
+/* ---------- مهامي (مندوب / موظف) ---------- */
+async function tkRenderMine(box){
+  box.innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  const st = box.dataset.st || 'active';
+  const reload = () => tkRenderMine(box);
+  try{
+    const [d, s] = await Promise.all([crmApi('tasks-list-mine',{status:st}), crmApi('tasks-stats')]);
+    const t = s.total || {};
+    box.innerHTML = '<div class="kpiGrid"><div class="stat"><div class="v">'+(t.open||0)+'</div><div class="l">جديدة</div></div><div class="stat sun"><div class="v">'+(t.in_progress||0)+'</div><div class="l">جارية</div></div><div class="stat bad"><div class="v">'+(t.overdue||0)+'</div><div class="l">متأخرة</div></div><div class="stat supC"><div class="v">'+(t.done_7d||0)+'</div><div class="l">أنجزتها آخر ٧ أيام</div></div></div>'
+      + '<div class="filterBar"><select id="tkSt"><option value="active">النشطة</option><option value="done">المنتهية</option><option value="cancelled">الملغاة</option><option value="all">الكل</option></select><span style="flex:1"></span><button class="btn" id="tkNew" type="button">➕ مهمة جديدة</button></div>'
+      + '<div id="tkList"></div>';
+    box.querySelector('#tkSt').value = st;
+    box.querySelector('#tkSt').onchange = (e) => { box.dataset.st = e.target.value; reload(); };
+    box.querySelector('#tkNew').onclick = () => tkTaskForm({}, reload);
+    const L = box.querySelector('#tkList');
+    L.innerHTML = tkTasksTable(d.tasks||[], {empty: st==='active' ? 'مفيش مهام نشطة عليك دلوقتي 👌' : 'مفيش مهام.', noLinks: SESSION.role==='staff'});
+    tkBindTable(L, d.tasks||[], reload);
+  }catch(e){ box.innerHTML = '<div class="card"><div class="emptyNote">'+escapeHtml(e.message)+'</div></div>'; }
+}
+
+/* ---------- لوحة الفريق (أدمن / مدير) ---------- */
+async function tkRenderTeam(box){
+  box.innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  const f = Object.assign({status:'active', assignee:TK.presetAssignee||'', priority:'', overdue:false}, box._f || {});
+  TK.presetAssignee = '';
+  box._f = f;
+  const reload = () => tkRenderTeam(box);
+  try{
+    await tkLoadUsers();
+    const q = {status:f.status}; if(f.assignee) q.assignee = f.assignee; if(f.priority) q.priority = f.priority; if(f.overdue) q.overdue = true;
+    const [d, s] = await Promise.all([crmApi('tasks-list-all', q), crmApi('tasks-stats')]);
+    const t = s.total || {};
+    const uopts = '<option value="">كل الموظفين</option>' + TK.users.map(u => '<option value="'+escapeHtml(u.username)+'" '+(u.username===f.assignee?'selected':'')+'>'+escapeHtml(u.display_name)+'</option>').join('');
+    box.innerHTML = '<div class="kpiGrid"><div class="stat"><div class="v">'+(t.open||0)+'</div><div class="l">جديدة</div></div><div class="stat sun"><div class="v">'+(t.in_progress||0)+'</div><div class="l">جارية</div></div><div class="stat bad clickable" id="tkKOver"><div class="v">'+(t.overdue||0)+'</div><div class="l">متأخرة (اضغط للتصفية)</div></div><div class="stat supC"><div class="v">'+(t.done_7d||0)+'</div><div class="l">اتنجزت آخر ٧ أيام</div></div></div>'
+      + '<div class="filterBar"><select id="tkFWho">'+uopts+'</select>'
+      + '<select id="tkFSt"><option value="active">النشطة</option><option value="done">المنتهية</option><option value="cancelled">الملغاة</option><option value="all">الكل</option></select>'
+      + '<select id="tkFPr"><option value="">كل الأولويات</option>'+Object.keys(TK_PRIO).map(k=>'<option value="'+k+'">'+TK_PRIO[k]+'</option>').join('')+'</select>'
+      + '<label style="display:flex;gap:6px;align-items:center;font-weight:600;"><input type="checkbox" id="tkFOv" style="width:auto;"> المتأخرة فقط</label><span style="flex:1"></span>'
+      + (tkCan('tasks.assign') ? '<button class="btn" id="tkNew" type="button">➕ تكليف مهمة</button>' : '') + '</div><div id="tkList"></div>';
+    box.querySelector('#tkFSt').value = f.status; box.querySelector('#tkFPr').value = f.priority; box.querySelector('#tkFOv').checked = f.overdue;
+    const upd = () => { box._f = {status:box.querySelector('#tkFSt').value, assignee:box.querySelector('#tkFWho').value, priority:box.querySelector('#tkFPr').value, overdue:box.querySelector('#tkFOv').checked}; reload(); };
+    ['#tkFWho','#tkFSt','#tkFPr','#tkFOv'].forEach(sel => box.querySelector(sel).onchange = upd);
+    box.querySelector('#tkKOver').onclick = () => { box._f = {status:'active', assignee:f.assignee, priority:'', overdue:true}; reload(); };
+    const nb = box.querySelector('#tkNew'); if(nb) nb.onclick = () => tkTaskForm({assignee: f.assignee ? (TK.users.find(u=>u.username===f.assignee)||{}).kind+'|'+f.assignee : ''}, reload);
+    const L = box.querySelector('#tkList');
+    L.innerHTML = tkTasksTable(d.tasks||[], {team:true, empty:'مفيش مهام بالفلاتر دي.', noLinks: SESSION.role==='staff'});
+    tkBindTable(L, d.tasks||[], reload);
+  }catch(e){ box.innerHTML = '<div class="card"><div class="emptyNote">'+escapeHtml(e.message)+'</div></div>'; }
+}
+
+/* ---------- توزيع العملاء على المناديب (أدمن / sales.reassign) ---------- */
+const TKD = { customers: [], sel: new Set(), reps: [], f: {priority:'', status:'', q:''}, result: null };
+async function tkRenderDistributeNew(box){
+  box.innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  try{
+    const q = {}; if(TKD.f.priority) q.priority = TKD.f.priority; if(TKD.f.status) q.status = TKD.f.status;
+    const [u, c] = await Promise.all([crmApi('tasks-assignable-users'), crmApi('tasks-unassigned-customers', q)]);
+    TKD.reps = (u.users||[]).filter(x => x.kind === 'rep');
+    TKD.customers = c.customers || [];
+    const ids = new Set(TKD.customers.map(x => x.id));
+    TKD.sel = new Set([...TKD.sel].filter(id => ids.has(id)));
+    tkDistDraw(box);
+  }catch(e){ box.innerHTML = '<div class="card"><div class="emptyNote">'+escapeHtml(e.message)+'</div></div>'; }
+}
+function tkDistVisible(){
+  const q = (TKD.f.q||'').trim().toLowerCase();
+  return !q ? TKD.customers : TKD.customers.filter(c => ((c.name||'')+' '+(c.phone||'')+' '+(c.city||'')).toLowerCase().includes(q));
+}
+function tkDistDraw(box){
+  const all = TKD.customers, vis = tkDistVisible();
+  const cnt = {hot:0, warm:0, cold:0}; all.forEach(c => { cnt[c.priority==='hot'?'hot':(c.priority==='cold'?'cold':'warm')]++; });
+  const statusOpts = '<option value="">كل الحالات النشطة</option>' + (typeof SETTINGS !== 'undefined' && SETTINGS.statuses ? SETTINGS.statuses.map(o => '<option value="'+o.value+'">'+escapeHtml(o.label)+'</option>').join('') : '');
+  const repRows = TKD.reps.map(r => '<label class="tkRepRow"><input type="checkbox" class="tkRepChk" value="'+escapeHtml(r.username)+'" checked style="width:auto;"> <b>'+escapeHtml(r.display_name)+'</b> <span class="emptyNote">عنده '+(r.customers_count||0)+' عميل · '+(r.open_tasks||0)+' مهمة مفتوحة'+(r.overdue_tasks?' · '+r.overdue_tasks+' متأخرة':'')+'</span></label>').join('');
+  const oneOpts = TKD.reps.map(r => '<option value="'+escapeHtml(r.username)+'">'+escapeHtml(r.display_name)+' ('+(r.customers_count||0)+' عميل)</option>').join('');
+  const tm = new Date(Date.now()+86400000); const tmStr = tm.getFullYear()+'-'+String(tm.getMonth()+1).padStart(2,'0')+'-'+String(tm.getDate()).padStart(2,'0');
+  const rows = vis.map(c => '<tr><td><input type="checkbox" class="tkSel" data-id="'+c.id+'" '+(TKD.sel.has(c.id)?'checked':'')+' style="width:auto;"></td><td><b>'+escapeHtml(c.name||'بدون اسم')+'</b></td><td dir="ltr" style="text-align:right;">'+escapeHtml(c.phone||'')+'</td><td>'+escapeHtml(c.city||'')+'</td><td>'+tkTag(TK_CPRIO[c.priority]||TK_CPRIO.warm, c.priority==='hot'?'bad':(c.priority==='cold'?'mute':'warn'))+'</td><td>'+escapeHtml(labelOf((typeof SETTINGS!=='undefined'&&SETTINGS.statuses)||[], c.status, c.status))+'</td><td>'+(c.quotes_count||0)+'</td><td>'+escapeHtml(fmtDate(c.created_at))+'</td></tr>').join('');
+  box.innerHTML =
+    '<div class="card"><h3 style="margin:0 0 6px;">🧭 توزيع العملاء على المناديب</h3><div class="emptyNote">العملاء اللي لسه ما اتعيّنوش لمندوب ('+all.length+'): <b>🔥 '+cnt.hot+'</b> ساخن · <b>'+cnt.warm+'</b> دافئ · <b>'+cnt.cold+'</b> بارد. القائمة مرتّبة من الأسخن للأبرد.</div></div>'
+    + (TKD.result ? '<div class="card" style="border-color:var(--good);"><b>✔ '+TKD.result+'</b></div>' : '')
+    + '<div class="filterBar"><input type="text" id="tkDq" placeholder="بحث بالاسم / الجوال / المدينة" value="'+escapeHtml(TKD.f.q)+'"><select id="tkDp"><option value="">كل الأولويات</option><option value="hot">🔥 ساخن</option><option value="warm">دافئ</option><option value="cold">بارد</option></select><select id="tkDs">'+statusOpts+'</select></div>'
+    + '<div class="filterBar"><button class="btn ghost small" id="tkSelHot" type="button">حدّد كل الساخنين (hot)</button><input type="number" id="tkTopN" min="1" placeholder="عدد" style="max-width:90px;"><button class="btn ghost small" id="tkSelTop" type="button">حدّد أول N</button><button class="btn ghost small" id="tkSelAll" type="button">حدّد الكل</button><button class="btn ghost small" id="tkSelNone" type="button">إلغاء التحديد</button><span class="emptyNote" id="tkSelCount"></span></div>'
+    + '<div class="card" style="padding:0;overflow:auto;max-height:430px;"><table class="admtable"><thead><tr><th style="width:34px;"></th><th>العميل</th><th>الجوال</th><th>المدينة</th><th>الأولوية</th><th>الحالة</th><th>عروض</th><th>أُضيف</th></tr></thead><tbody>'+(rows||'<tr><td colspan="8">لا يوجد عملاء غير معيّنين بالفلاتر دي 🎉</td></tr>')+'</tbody></table></div>'
+    + '<div class="card" id="tkAssignPanel"><h3 style="margin:0 0 10px;">تنفيذ التوزيع <span class="emptyNote" id="tkSelCount2"></span></h3>'
+    + '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;"><label style="display:flex;gap:6px;align-items:center;font-weight:700;"><input type="radio" name="tkMode" value="one" checked style="width:auto;"> لمندوب واحد</label><label style="display:flex;gap:6px;align-items:center;font-weight:700;"><input type="radio" name="tkMode" value="fair" style="width:auto;"> توزيع عادل بين عدّة مناديب</label></div>'
+    + '<div id="tkModeOne"><select id="tkRepOne">'+(oneOpts||'<option value="">لا يوجد مناديب فعّالين</option>')+'</select></div>'
+    + '<div id="tkModeFair" style="display:none;">'+(repRows||'<div class="emptyNote">لا يوجد مناديب فعّالين</div>')+'<div class="emptyNote">بيتوزّعوا بالدور مع الحفاظ على الترتيب (الساخن الأول)، فكل مندوب ياخد نصيبه من الساخنين.</div></div>'
+    + '<div class="grid2" style="margin-top:12px;"><div><label>أول موعد متابعة</label><input type="date" id="tkFollow" min="'+tmStr+'" value="'+tmStr+'"></div><div><label>ملاحظة للمندوب</label><input type="text" id="tkDnote" maxlength="500" placeholder="مثال: عميل مهتم بمنظومة ضخ، ابدأ بالاتصال"></div></div>'
+    + '<label style="display:flex;gap:6px;align-items:center;font-weight:600;margin-top:10px;"><input type="checkbox" id="tkMkTask" checked style="width:auto;"> افتح لكل عميل مهمة «التواصل مع العميل» للمندوب</label>'
+    + '<div style="margin-top:12px;"><button class="btn" id="tkGo" type="button">✅ تنفيذ التوزيع</button></div></div>';
+  const upCount = () => { const t = TKD.sel.size ? 'المحدد: '+TKD.sel.size+' عميل' : 'لسه ما حدّدتش عملاء'; box.querySelector('#tkSelCount').textContent = t; box.querySelector('#tkSelCount2').textContent = '— '+t; };
+  upCount();
+  const syncChecks = () => box.querySelectorAll('.tkSel').forEach(cb => cb.checked = TKD.sel.has(Number(cb.dataset.id)));
+  box.querySelectorAll('.tkSel').forEach(cb => cb.onchange = () => { const id = Number(cb.dataset.id); cb.checked ? TKD.sel.add(id) : TKD.sel.delete(id); upCount(); });
+  box.querySelector('#tkDp').value = TKD.f.priority; box.querySelector('#tkDs').value = TKD.f.status;
+  box.querySelector('#tkDp').onchange = (e) => { TKD.f.priority = e.target.value; tkRenderDistributeNew(box); };
+  box.querySelector('#tkDs').onchange = (e) => { TKD.f.status = e.target.value; tkRenderDistributeNew(box); };
+  let tm2 = null; box.querySelector('#tkDq').oninput = (e) => { TKD.f.q = e.target.value; clearTimeout(tm2); tm2 = setTimeout(() => { tkDistDraw(box); const i = box.querySelector('#tkDq'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }, 250); };
+  box.querySelector('#tkSelHot').onclick = () => { tkDistVisible().forEach(c => { if(c.priority === 'hot') TKD.sel.add(c.id); }); syncChecks(); upCount(); };
+  box.querySelector('#tkSelTop').onclick = () => { const n = Number(box.querySelector('#tkTopN').value); if(!n || n < 1) return toast('اكتب عدد'); tkDistVisible().slice(0, n).forEach(c => TKD.sel.add(c.id)); syncChecks(); upCount(); };
+  box.querySelector('#tkSelAll').onclick = () => { tkDistVisible().forEach(c => TKD.sel.add(c.id)); syncChecks(); upCount(); };
+  box.querySelector('#tkSelNone').onclick = () => { TKD.sel.clear(); syncChecks(); upCount(); };
+  box.querySelectorAll('input[name=tkMode]').forEach(r => r.onchange = () => { const fair = box.querySelector('input[name=tkMode]:checked').value === 'fair'; box.querySelector('#tkModeOne').style.display = fair ? 'none' : ''; box.querySelector('#tkModeFair').style.display = fair ? '' : 'none'; });
+  box.querySelector('#tkGo').onclick = async () => {
+    const ids = [...TKD.sel]; if(!ids.length) return toast('حدّد عملاء الأول');
+    const fair = box.querySelector('input[name=tkMode]:checked').value === 'fair';
+    const common = {customerIds: ids, followUp: box.querySelector('#tkFollow').value || undefined, note: box.querySelector('#tkDnote').value.trim() || undefined, createTask: box.querySelector('#tkMkTask').checked};
+    const nameOf = (u) => { const r = TKD.reps.find(x => x.username === u); return r ? r.display_name : u; };
+    try{
+      if(fair){
+        const reps = [...box.querySelectorAll('.tkRepChk:checked')].map(c => c.value);
+        if(!reps.length) return toast('اختار مندوب واحد على الأقل');
+        if(!confirm('هتوزّع '+ids.length+' عميل بالتساوي على: '+reps.map(nameOf).join('، ')+'. متأكد؟')) return;
+        const d = await crmApi('tasks-distribute-customers', Object.assign({reps}, common));
+        TKD.result = 'اتوزّع '+d.assigned+' عميل: '+Object.keys(d.perRep||{}).map(k => nameOf(k)+' ← '+d.perRep[k]).join(' · ');
+      }else{
+        const rep = box.querySelector('#tkRepOne').value; if(!rep) return toast('اختار المندوب');
+        if(!confirm('هتعيّن '+ids.length+' عميل على '+nameOf(rep)+'. متأكد؟')) return;
+        const d = await crmApi('tasks-assign-customers', Object.assign({rep}, common));
+        TKD.result = 'اتعيّن '+d.assigned+' عميل على '+nameOf(rep)+(d.skipped?' (اتخطّى '+d.skipped+' معيّنين بالفعل لنفس المندوب)':'');
+      }
+      TKD.sel.clear(); toast('تم التوزيع ✔'); tkRenderDistributeNew(box);
+    }catch(e){ toast(e.message); }
+  };
+}
+
+/* ---------- شاشة التوزيع: تبويبين (عملاء غير معيّنين | نقل بين المناديب) ---------- */
+TKD.mode = 'new'; TKD.src = ''; TKD.moveSel = new Set(); TKD.moveRows = []; TKD.moveResult = null;
+async function tkRenderDistribute(box){
+  box.innerHTML = '<div class="filterBar"><button class="btn small '+(TKD.mode==='new'?'':'ghost')+'" id="tkTabNew" type="button">🆕 عملاء غير معيّنين</button><button class="btn small '+(TKD.mode==='move'?'':'ghost')+'" id="tkTabMove" type="button">🔁 نقل عملاء بين المناديب</button></div><div id="tkDBody"></div>';
+  box.querySelector('#tkTabNew').onclick = () => { TKD.mode = 'new'; tkRenderDistribute(box); };
+  box.querySelector('#tkTabMove').onclick = () => { TKD.mode = 'move'; tkRenderDistribute(box); };
+  const body = box.querySelector('#tkDBody');
+  await (TKD.mode === 'move' ? tkRenderTransfer(body) : tkRenderDistributeNew(body));
+}
+async function tkRenderTransfer(box){
+  box.innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  try{
+    const u = await crmApi('tasks-assignable-users');
+    const reps = (u.users||[]).filter(x => x.kind === 'rep');
+    if(TKD.src && !reps.find(r => r.username === TKD.src)) TKD.src = '';
+    let rows = [];
+    if(TKD.src){ const d = await crmApi('tasks-customers-by-rep', {rep: TKD.src}); rows = d.customers || []; }
+    TKD.moveRows = rows;
+    TKD.moveSel = new Set([...TKD.moveSel].filter(id => rows.some(r => r.id === id)));
+    const srcOpts = '<option value="">— اختار المندوب اللي هتنقل منه —</option>' + reps.map(r => '<option value="'+escapeHtml(r.username)+'" '+(r.username===TKD.src?'selected':'')+'>'+escapeHtml(r.display_name)+' ('+(r.customers_count||0)+' عميل)</option>').join('');
+    const tgtOpts = reps.filter(r => r.username !== TKD.src).map(r => '<option value="'+escapeHtml(r.username)+'">'+escapeHtml(r.display_name)+' ('+(r.customers_count||0)+' عميل · '+(r.open_tasks||0)+' مهمة)</option>').join('');
+    const trs = rows.map(c => '<tr><td><input type="checkbox" class="tkMv" data-id="'+c.id+'" '+(TKD.moveSel.has(c.id)?'checked':'')+' style="width:auto;"></td><td><b>'+escapeHtml(c.name||'بدون اسم')+'</b></td><td dir="ltr" style="text-align:right;">'+escapeHtml(c.phone||'')+'</td><td>'+tkTag(TK_CPRIO[c.priority]||TK_CPRIO.warm, c.priority==='hot'?'bad':(c.priority==='cold'?'mute':'warn'))+'</td><td>'+escapeHtml(labelOf((typeof SETTINGS!=='undefined'&&SETTINGS.statuses)||[], c.status, c.status))+'</td><td>'+(c.open_opportunities==null?'—':c.open_opportunities)+'</td><td>'+(c.open_tasks==null?'—':c.open_tasks)+'</td></tr>').join('');
+    box.innerHTML =
+      '<div class="card"><h3 style="margin:0 0 6px;">🔁 نقل عملاء من مندوب لمندوب</h3><div class="emptyNote">العميل بيتنقل بكل اللي مرتبط بيه: المندوب الجديد هو اللي بيشوف عروضه وصفقاته ومزارعه ومشاريعه وفواتيره، والمندوب القديم مش هيشوفه تاني. <b>المهام والصفقات المفتوحة</b> بتتنقل معاه، أما المنتهية والمكسوبة والخاسرة فبتفضل في تاريخها.</div></div>'
+      + (TKD.moveResult ? '<div class="card" style="border-color:var(--good);"><b>✔ '+escapeHtml(TKD.moveResult)+'</b></div>' : '')
+      + '<div class="filterBar"><label style="font-weight:700;">من:</label><select id="tkMvSrc">'+srcOpts+'</select></div>'
+      + (TKD.src ? '<div class="filterBar"><button class="btn ghost small" id="tkMvAll" type="button">حدّد الكل</button><button class="btn ghost small" id="tkMvNone" type="button">إلغاء التحديد</button><span class="emptyNote" id="tkMvCount"></span></div>'
+        + '<div class="card" style="padding:0;overflow:auto;max-height:430px;"><table class="admtable"><thead><tr><th style="width:34px;"></th><th>العميل</th><th>الجوال</th><th>الأولوية</th><th>الحالة</th><th>صفقات مفتوحة</th><th>مهام مفتوحة</th></tr></thead><tbody>'+(trs||'<tr><td colspan="7">المندوب ده معندوش عملاء</td></tr>')+'</tbody></table></div>'
+        + '<div class="card"><h3 style="margin:0 0 10px;">النقل إلى</h3><div class="grid2"><div><label>المندوب الجديد</label><select id="tkMvTgt">'+(tgtOpts||'<option value="">لا يوجد مندوب آخر فعّال</option>')+'</select></div><div><label>ملاحظة (اختياري)</label><input type="text" id="tkMvNote" maxlength="500" placeholder="سبب النقل"></div></div><div style="margin-top:12px;"><button class="btn" id="tkMvGo" type="button">🔁 نقل المحدد</button></div></div>' : '');
+    const cnt = () => { const e = box.querySelector('#tkMvCount'); if(e) e.textContent = TKD.moveSel.size ? 'المحدد: '+TKD.moveSel.size+' عميل' : 'لسه ما حدّدتش عملاء'; };
+    box.querySelector('#tkMvSrc').onchange = (e) => { TKD.src = e.target.value; TKD.moveSel.clear(); TKD.moveResult = null; tkRenderTransfer(box); };
+    if(!TKD.src) return;
+    cnt();
+    box.querySelectorAll('.tkMv').forEach(cb => cb.onchange = () => { const id = Number(cb.dataset.id); cb.checked ? TKD.moveSel.add(id) : TKD.moveSel.delete(id); cnt(); });
+    const sync = () => box.querySelectorAll('.tkMv').forEach(cb => cb.checked = TKD.moveSel.has(Number(cb.dataset.id)));
+    box.querySelector('#tkMvAll').onclick = () => { rows.forEach(r => TKD.moveSel.add(r.id)); sync(); cnt(); };
+    box.querySelector('#tkMvNone').onclick = () => { TKD.moveSel.clear(); sync(); cnt(); };
+    box.querySelector('#tkMvGo').onclick = async () => {
+      const ids = [...TKD.moveSel]; if(!ids.length) return toast('حدّد عملاء الأول');
+      const tgt = box.querySelector('#tkMvTgt').value; if(!tgt) return toast('اختار المندوب الجديد');
+      const nm = (un) => { const r = reps.find(x => x.username === un); return r ? r.display_name : un; };
+      if(!confirm('هتنقل '+ids.length+' عميل من '+nm(TKD.src)+' إلى '+nm(tgt)+' (بكل مهامهم وصفقاتهم المفتوحة). متأكد؟')) return;
+      try{
+        const d = await crmApi('tasks-assign-customers', {customerIds: ids, rep: tgt, note: box.querySelector('#tkMvNote').value.trim() || undefined, createTask: false});
+        TKD.moveResult = 'اتنقل '+d.assigned+' عميل من '+nm(TKD.src)+' إلى '+nm(tgt);
+        TKD.moveSel.clear(); toast('تم النقل ✔'); tkRenderTransfer(box);
+      }catch(e){ toast(e.message); }
+    };
+  }catch(e){ box.innerHTML = '<div class="card"><div class="emptyNote">'+escapeHtml(e.message)+'</div></div>'; }
+}
+
+/* ---------- أداء الفريق (متابعة إنجاز كل موظف) ---------- */
+async function tkRenderPerf(box){
+  box.innerHTML = '<div class="loadingNote">بيحمّل...</div>';
+  const days = Number(box.dataset.days || 30);
+  try{
+    const d = await crmApi('tasks-performance', {days});
+    const rows = (d.rows||[]).slice().sort((a,b) => (b.done_period - a.done_period) || (b.open - a.open));
+    const tot = rows.reduce((s,r) => { s.open += r.open; s.over += r.overdue; s.done += r.done_period; s.assigned += r.assigned_period; s.inter += (r.interactions_period||0); return s; }, {open:0, over:0, done:0, assigned:0, inter:0});
+    const body = rows.map(r => '<tr><td><b>'+escapeHtml(r.display_name)+'</b></td><td>'+(r.kind==='rep'?'مندوب':'موظف')+'</td><td>'+tkNum(r.customers_count)+'</td><td>'+tkNum(r.hot_customers)+'</td><td>'+tkNum(r.won_customers)+'</td><td>'+(r.open+r.in_progress)+'</td><td>'+(r.overdue?tkTag(String(r.overdue),'bad'):'0')+'</td><td>'+r.assigned_period+'</td><td><b>'+r.done_period+'</b></td><td>'+tkPct(r.completion_rate)+'</td><td>'+tkPct(r.on_time_rate)+'</td><td>'+tkNum(r.interactions_period)+'</td><td><button class="btn ghost small" type="button" data-tk-who="'+escapeHtml(r.username)+'">مهامه</button></td></tr>').join('');
+    box.innerHTML = '<div class="kpiGrid"><div class="stat"><div class="v">'+rows.length+'</div><div class="l">موظف / مندوب</div></div><div class="stat sun"><div class="v">'+tot.open+'</div><div class="l">مهام مفتوحة</div></div><div class="stat bad"><div class="v">'+tot.over+'</div><div class="l">متأخرة</div></div><div class="stat supC"><div class="v">'+tot.done+'</div><div class="l">اتنجزت في الفترة</div></div><div class="stat"><div class="v">'+tot.inter+'</div><div class="l">تواصلات المناديب في الفترة</div></div></div>'
+      + '<div class="filterBar"><label style="font-weight:700;">الفترة:</label><select id="tkDays"><option value="7">آخر ٧ أيام</option><option value="30">آخر ٣٠ يوم</option><option value="90">آخر ٩٠ يوم</option><option value="365">آخر سنة</option></select></div>'
+      + '<div class="card" style="padding:0;overflow:auto;"><table class="admtable"><thead><tr><th>الموظف</th><th>النوع</th><th>عملاؤه</th><th>ساخنين</th><th>تم البيع</th><th>مهام مفتوحة</th><th>متأخرة</th><th>اتكلّف بيها</th><th>أنجز</th><th>نسبة الإنجاز</th><th>في الموعد</th><th>تواصلات</th><th></th></tr></thead><tbody>'+(body||'<tr><td colspan="13">لا بيانات</td></tr>')+'</tbody></table></div>'
+      + '<div class="emptyNote">نسبة الإنجاز = المهام اللي اتكلّف بيها في الفترة واتنهت ÷ كل اللي اتكلّف بيه. «في الموعد» = المنتهية قبل موعدها ÷ المنتهية اللي ليها موعد. «التواصلات» = تفاعلات متسجّلة على العملاء.</div>';
+    box.querySelector('#tkDays').value = String(days);
+    box.querySelector('#tkDays').onchange = (e) => { box.dataset.days = e.target.value; tkRenderPerf(box); };
+    box.querySelectorAll('[data-tk-who]').forEach(b => b.onclick = () => {
+      TK.presetAssignee = b.dataset.tkWho;
+      if(SESSION.role === 'staff'){ staffShow('teamtasks'); return; }
+      const tb = document.querySelector('#tabsNav button[data-tab="tasks"]'); if(tb) tb.click();
+    });
+  }catch(e){ box.innerHTML = '<div class="card"><div class="emptyNote">'+escapeHtml(e.message)+'</div></div>'; }
+}
+
+function loadTasksTab(){ const box = document.getElementById('tasksBox'); return (tkIsAdmin() || tkCan('tasks.view_all')) ? tkRenderTeam(box) : tkRenderMine(box); }
+function loadDistributeTab(){ return tkRenderDistribute(document.getElementById('distributeBox')); }
+function loadTeamTab(){ return tkRenderPerf(document.getElementById('teamBox')); }
+document.getElementById('tkOverlay').addEventListener('click', (e) => { if(e.target.id === 'tkOverlay') tkClose(); });
 
 /* ============ ROLES & STAFF — admin screen ============ */
 let ROLES_DATA = null, STAFF_DATA = [];
@@ -1080,6 +1449,10 @@ const STAFF_SCREENS = [
   { key:'customers', perm:'customers.fin.view', label:'👥 حسابات العملاء' },
   { key:'suppliers', perm:'suppliers.view', label:'🏭 الموردون' },
   { key:'treasury', perm:'treasury.view', label:'💰 الخزنة' },
+  { key:'mytasks', perm:'tasks.own', label:'✅ مهامي' },
+  { key:'teamtasks', perm:'tasks.view_all', label:'🗂️ مهام الفريق' },
+  { key:'distribute', perm:'sales.reassign', label:'🧭 توزيع العملاء' },
+  { key:'perf', perm:'sales.team.view', label:'📈 أداء الفريق' },
 ];
 function enterStaff(){
   document.getElementById('loginScreen').classList.add('hidden');
@@ -1099,7 +1472,11 @@ async function staffShow(k){
   const body = document.getElementById('staffBody'); body.innerHTML = '<div class="loadingNote">بيحمّل...</div>';
   const tbl = (head, rows) => `<div class="card" style="padding:0;overflow:auto"><table class="admtable"><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows||`<tr><td colspan="${head.length}">لا بيانات</td></tr>`}</tbody></table></div>`;
   try{
-    if(k==='projects'){
+    if(k==='mytasks'){ await tkRenderMine(body); }
+    else if(k==='teamtasks'){ await tkRenderTeam(body); }
+    else if(k==='distribute'){ await tkRenderDistribute(body); }
+    else if(k==='perf'){ await tkRenderPerf(body); }
+    else if(k==='projects'){
       const d = await crmApi('staff-projects');
       body.innerHTML = tbl(['المشروع','العميل','الحالة','التعاقد','التكاليف','الربح','الهامش %','المحصّل','المتبقي',''], d.projects.map(p=>`<tr><td>${escapeHtml(p.project_number||p.project_id)}</td><td>${escapeHtml(p.customer_name||'')}</td><td>${escapeHtml(p.status||'')}</td><td>${finN(p.contract_gross)}</td><td>${finN(p.cost_gross)}</td><td>${finS(p.actual_profit)}</td><td>${p.margin_pct==null?'—':finN(p.margin_pct)}</td><td>${finN(p.collected)}</td><td>${finN(p.remaining)}</td><td><button class="btn ghost small" type="button" onclick="staffProject(${p.project_id})">تفاصيل</button></td></tr>`).join(''));
     } else if(k==='profit'){
@@ -3666,7 +4043,7 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
       <div><label>المدينة</label><input type="text" id="f_city" value="${c.city||''}"></div>
       <div><label>المنطقة</label><select id="f_region">${optHtml(SETTINGS.regions, c.region)}</select></div>
       <div><label>مصدر العميل</label><select id="f_lead_source">${optHtml(SETTINGS.leadSources, c.lead_source)}</select></div>
-      <div><label>المندوب المسؤول</label><input type="text" id="f_rep" value="${c.assigned_rep||''}"></div>
+      <div><label>المندوب المسؤول</label><input type="text" id="f_rep" value="${c.assigned_rep||'— غير معيّن —'}" disabled title="نقل العميل لمندوب آخر بيتم من شاشة توزيع العملاء (أدمن / مدير)"></div>
     </div>
     ${mergedHtml}
 
@@ -3875,7 +4252,6 @@ function renderCustomerModal(c, quotes, interactions, contacts, sites, opportuni
         commercial_registration: m.querySelector('#f_cr').value.trim(),
         vat_number: m.querySelector('#f_vat').value.trim(),
         unified_number: m.querySelector('#f_unified').value.trim(),
-        assigned_rep: m.querySelector('#f_rep').value.trim(),
       };
       if(!hasOpps){
         fields.status = m.querySelector('#f_status').value;
